@@ -1,4 +1,4 @@
-import { LayoutDashboard, MapPin, LogOut } from "lucide-react";
+import { LayoutDashboard, MapPin, LogOut, Users, CalendarPlus } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,8 +17,10 @@ import {
 import { Button } from "@/components/ui/button";
 
 const items = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Agendamentos", url: "/agendamento", icon: CalendarPlus },
   { title: "Campo", url: "/campo", icon: MapPin },
+  { title: "Pecuaristas", url: "/pecuaristas", icon: Users },
 ];
 
 export function AppSidebar() {

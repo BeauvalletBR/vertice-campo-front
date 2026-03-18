@@ -29,18 +29,18 @@ export default function LoginPage() {
             Originação Goiás
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Entre com seu nome e e-mail para acessar o sistema.
+            Entre com seu Login e Senha para acessar o sistema.
           </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="name" className="text-xs font-semibold text-muted-foreground uppercase">Nome</Label>
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" className="h-12" required />
+              <Label htmlFor="name" className="text-xs font-semibold text-muted-foreground uppercase">Login</Label>
+              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu login" className="h-12" required />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-xs font-semibold text-muted-foreground uppercase">E-mail</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" className="h-12" required />
+              <Label htmlFor="email" className="text-xs font-semibold text-muted-foreground uppercase">Senha</Label>
+              <Input id="password" type="password" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Sua senha" className="h-12" required />
             </div>
             <Button type="submit" variant="action" size="xl" className="w-full mt-2">
               ENTRAR
