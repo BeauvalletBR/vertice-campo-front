@@ -9,7 +9,7 @@ import Index from "./pages/Index";
 import FieldPage from "./pages/FieldPage";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
-import Pecuaristas from "./pages/Pecuaristas";
+import Pecuaristas from "./pages/Visitas";
 import Agendamento from "./pages/Agendamento"; 
 
 const queryClient = new QueryClient();
@@ -34,7 +34,7 @@ function ProtectedLayout() {
               <Route path="/campo" element={<FieldPage />} />
               
               {/* 2. ADICIONAR A NOVA ROTA AQUI: */}
-              <Route path="/pecuaristas" element={<Pecuaristas />} />
+              <Route path="/visitas" element={<Pecuaristas />} />
               <Route path="/agendamento" element={<Agendamento />} />
               
               <Route path="*" element={<NotFound />} />

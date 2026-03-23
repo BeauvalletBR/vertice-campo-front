@@ -10,7 +10,8 @@ import {
   Maximize2, 
   Map as MapIcon, 
   Navigation, 
-  TrendingUp 
+  TrendingUp,
+  Loader2
 } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -58,8 +59,79 @@ export function Dashboard() {
   const [selectedCity, setSelectedCity] = useState<CityData | null>(null);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
 
+  // --- ESTADOS PARA DEBUG DE GEOLOCALIZAÇÃO ---
+  const [geoDebugLog, setGeoDebugLog] = useState<string>("Aguardando ação...\nClique no botão acima para iniciar o teste de GPS.");
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+
   const totalRanchers = mapData.reduce((a, s) => a + s.ranchersCount, 0);
   const totalHeads = mapData.reduce((a, s) => a + s.ranchersList.reduce((sum, r) => sum + r.headCount, 0), 0);
+
+  // --- FUNÇÃO DE DEBUG DO GPS ---
+  const handleGetLocation = () => {
+    setIsLocating(true);
+    setGeoDebugLog("Iniciando requisição de GPS...\nVerificando suporte do navegador...");
+
+    if (!navigator.geolocation) {
+      setGeoDebugLog(prev => prev + "\n[ERRO FATAL] O seu navegador NÃO suporta a API de Geolocalização (navigator.geolocation é undefined).");
+      setIsLocating(false);
+      return;
+    }
+
+    setGeoDebugLog(prev => prev + "\n[OK] Navegador suporta GPS.\nSolicitando permissão ao usuário e buscando satélites/antenas...");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy, altitude, speed } = position.coords;
+        const successMsg = `
+[SUCESSO] Localização capturada!
+-----------------------------------
+Latitude:  ${latitude}
+Longitude: ${longitude}
+Precisão:  ${accuracy} metros (Quanto menor, melhor)
+Altitude:  ${altitude ? altitude + ' m' : 'Não disponível'}
+Velocidade:${speed ? speed + ' m/s' : 'Não disponível'}
+Timestamp: ${new Date(position.timestamp).toLocaleString()}
+-----------------------------------
+Copie essas coordenadas e jogue no Google Maps para conferir se está certo.
+`;
+        setGeoDebugLog(prev => prev + successMsg);
+        setIsLocating(false);
+      },
+      (error) => {
+        let errorReason = "";
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorReason = "Usuário NEGOU a permissão de localização. Verifique o cadeadinho na barra de endereço ou as permissões do celular.";
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorReason = "Informação de localização INDISPONÍVEL. O celular/PC não conseguiu contato com o GPS ou torres de celular.";
+            break;
+          case error.TIMEOUT:
+            errorReason = "TIMEOUT. A requisição demorou demais para responder (mais de 15 segundos).";
+            break;
+          default:
+            errorReason = "Erro desconhecido.";
+            break;
+        }
+        
+        const errorMsg = `
+[ERRO] Falha ao capturar localização!
+-----------------------------------
+Código:  ${error.code}
+Motivo:  ${errorReason}
+Msg API: ${error.message}
+-----------------------------------
+`;
+        setGeoDebugLog(prev => prev + errorMsg);
+        setIsLocating(false);
+      },
+      {
+        enableHighAccuracy: true, // Força o uso do GPS real do celular (mais demorado, mais preciso)
+        timeout: 15000,           // 15 segundos de limite para achar o sinal
+        maximumAge: 0             // Não aceita localização velha em cache
+      }
+    );
+  };
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in">
@@ -75,6 +147,30 @@ export function Dashboard() {
           </Button>
         </div>
       </header>
+
+      {/* --- BLOCO DE TESTE DE GEOLOCALIZAÇÃO --- */}
+      <Card className="bg-slate-50 border-dashed border-2 border-slate-300">
+        <CardHeader className="pb-2 border-b border-slate-200/60 mb-4">
+          <CardTitle className="text-sm flex items-center gap-2 text-slate-700 uppercase">
+            <MapPin className="w-4 h-4 text-blue-600" /> Ferramenta de Debug de Geolocalização
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button 
+            onClick={handleGetLocation} 
+            disabled={isLocating}
+            className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold"
+          >
+            {isLocating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Navigation className="w-4 h-4 mr-2" />}
+            PEGAR GEOLOCALIZAÇÃO REAL
+          </Button>
+          
+          <div className="bg-black text-green-400 p-4 rounded-md font-mono text-sm whitespace-pre-wrap overflow-x-auto min-h-[150px] shadow-inner">
+            {geoDebugLog}
+          </div>
+        </CardContent>
+      </Card>
+      {/* -------------------------------------- */}
 
       {/* MÉTRICAS DE BI */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

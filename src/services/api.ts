@@ -1,3 +1,5 @@
+// src/services/api.ts
+
 export interface Visit {
   id: string;
   date: string;
@@ -28,58 +30,190 @@ export interface Rancher {
   numAnimais: number;
 }
 
+export interface ApiRancher {
+  COD_PRODUTOR: number;
+  NOME_PRODUTOR: string;
+  NOME_FAZENDA: string;
+  MUNICIPIO: string;
+  UF_FAZENDA: string;
+  INSCRICAO: string;
+  NUMERO1: string | null;
+  POSSUI_CAR: "S" | "N";
+  DISTANCIA_CADASTRADA: number;
+  QTD_COMPRADA_12M_CHINA: number;
+  QTD_COMPRADA_12M_NAO_CHINA: number;
+  JA_VENDEU: "S" | "N";
+  DATA_ULTIMA_VISITA?: string | null; 
+}
+
+export interface ApiAgendamento {
+  ID_AGENDAMENTO?: number;
+  ID_COMPRADOR?: number;
+  DATA_AGENDADA?: string;
+  STATUS_AGENDAMENTO?: string;
+  COD_PRODUTOR?: number;
+  NOME_PRODUTOR?: string;
+  NOME_FAZENDA?: string;
+  MUNICIPIO?: string;
+  UF_FAZENDA?: string;
+  INSCRICAO?: string;
+  NUMERO1?: string | null;
+  POSSUI_CAR?: "S" | "N";
+  DISTANCIA_CADASTRADA?: number;
+  QTD_COMPRADA_12M_CHINA?: number;
+  QTD_COMPRADA_12M_NAO_CHINA?: number;
+  JA_VENDEU?: "S" | "N";
+}
+
+// NOVA INTERFACE PARA A CONSULTA DE RELATÓRIO DE VISITAS
+export interface ApiVisita {
+  ID_VISITA: number;
+  ID_AGENDAMENTO: number | null;
+  ID_COMPRADOR: number;
+  DATA_REGISTRO_VISITA: string;
+  COD_PRODUTOR: number | null;
+  INSCRICAO: string | null;
+  NOME_PRODUTOR: string | null;
+  NOME_FAZENDA: string | null;
+  MUNICIPIO: string | null;
+  REGIAO: string | null;
+  TELEFONE: string | null;
+  POSSUI_CAR: string | null;
+  GPS_LATITUDE: number | null;
+  GPS_LONGITUDE: number | null;
+  DISTANCIA_PERCORRIDA_REAL: number | null;
+  MELHOR_DIA_CONTATO: string | null;
+  NATUREZA_VISITA: string | null;
+  NOME_RECEBEDOR: string | null;
+  CARGO_RECEBEDOR: string | null;
+  FRIGORIFICO_COSTUME: string | null;
+  CABECAS_ABATIDAS_ANO: number | null;
+  TIPO_VENDA: string | null;
+  TIPO_ATIVIDADE: string | null;
+  TIPO_TERMINACAO: string | null;
+  EFETIVO_TOTAL_ANIMAIS: number | null;
+  HABILITACAO: string | null;
+  ASSINATURA_DIGITAL: string | null;
+  QTD_30DIAS: number | null;
+  SEXO_30DIAS: string | null;
+  STATUS_30DIAS: string | null;
+  QTD_60DIAS: number | null;
+  SEXO_60DIAS: string | null;
+  STATUS_60DIAS: string | null;
+  QTD_90DIAS: number | null;
+  SEXO_90DIAS: string | null;
+  STATUS_90DIAS: string | null;
+}
+
 const mockStats: DashboardStats[] = [
   { region: "Norte", ranchers: 142, cities: 28 },
   { region: "Sul", ranchers: 385, cities: 42 },
-  { region: "Leste", ranchers: 98, cities: 15 },
-  { region: "Oeste", ranchers: 210, cities: 31 },
 ];
-
-const mockVisits: Visit[] = [
-  { id: "1", date: "2024-10-24", ranchName: "Fazenda Boa Vista", owner: "João Silva", city: "Rio Verde", status: "completed" },
-  { id: "2", date: "2024-10-24", ranchName: "Estrela do Sul", owner: "Maria Oliveira", city: "Jataí", status: "completed" },
-  { id: "3", date: "2024-10-23", ranchName: "Recanto Verde", owner: "Carlos Mendes", city: "Goianésia", status: "pending" },
-  { id: "4", date: "2024-10-23", ranchName: "São Jorge", owner: "Ana Souza", city: "Uruaçu", status: "completed" },
-  { id: "5", date: "2024-10-22", ranchName: "Fazenda Primavera", owner: "Pedro Costa", city: "Porangatu", status: "completed" },
-];
-
-const mockRanchers: Rancher[] = [
-  { id: "r1", nome: "João Silva", ie: "101.234.567", propriedade: "Fazenda Boa Vista", car: "sim", municipio: "Rio Verde", telefone: "(62) 99901-1234", melhorDiaContato: "Segunda-feira", proprietario: "João Silva", tipoAtividade: "cria", tipoTerminacao: "pasto", numAnimais: 350 },
-  { id: "r2", nome: "Maria Oliveira", ie: "202.345.678", propriedade: "Estrela do Sul", car: "sim", municipio: "Jataí", telefone: "(62) 99902-5678", melhorDiaContato: "Terça-feira", proprietario: "Maria Oliveira", tipoAtividade: "recria", tipoTerminacao: "semi-conf.", numAnimais: 520 },
-  { id: "r3", nome: "Carlos Mendes", ie: "303.456.789", propriedade: "Recanto Verde", car: "nao", municipio: "Goianésia", telefone: "(62) 99903-9012", melhorDiaContato: "Quarta-feira", proprietario: "Carlos Mendes", tipoAtividade: "engorda", tipoTerminacao: "confinado", numAnimais: 800 },
-  { id: "r4", nome: "Ana Souza", ie: "404.567.890", propriedade: "São Jorge", car: "sim", municipio: "Uruaçu", telefone: "(62) 99904-3456", melhorDiaContato: "Quinta-feira", proprietario: "Ana Souza", tipoAtividade: "cria", tipoTerminacao: "pasto", numAnimais: 200 },
-  { id: "r5", nome: "Pedro Costa", ie: "505.678.901", propriedade: "Fazenda Primavera", car: "sim", municipio: "Porangatu", telefone: "(62) 99905-7890", melhorDiaContato: "Sexta-feira", proprietario: "Pedro Costa", tipoAtividade: "recria", tipoTerminacao: "semi-conf.", numAnimais: 450 },
-];
+const mockVisits: Visit[] = [];
+const mockRanchers: Rancher[] = [];
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+let cachedPecuaristas: ApiRancher[] | null = null;
+let fetchPromise: Promise<ApiRancher[]> | null = null;
+
+// --- BUSCAR PECUARISTAS ---
+export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise<ApiRancher[]> => {
+  if (cachedPecuaristas && !forceRefresh) return cachedPecuaristas;
+  if (fetchPromise && !forceRefresh) return fetchPromise;
+
+  const loadFromApi = async () => {
+    const url = import.meta.env.VITE_N8N_WEBHOOK_URL_PECUARISTAS;
+    const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
+    const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
+    try {
+      const response = await fetch(url, { headers: { [headerKey]: token } });
+      const data = await response.json();
+      cachedPecuaristas = Array.isArray(data) ? data : [];
+      return cachedPecuaristas;
+    } catch (error) {
+      return [];
+    }
+  };
+
+  fetchPromise = loadFromApi();
+  return fetchPromise;
+};
+
+// --- CONSULTAR AGENDAMENTOS PENDENTES ---
+export const fetchAgendamentosPendentes = async (): Promise<ApiAgendamento[]> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO_CONSULTA;
+  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
+  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
+  try {
+    const response = await fetch(url, { headers: { [headerKey]: token } });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    return [];
+  }
+};
+
+// --- NOVA FUNÇÃO: CONSULTAR RELATÓRIO DE VISITAS ---
+export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA;
+  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
+  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
+  
+  if (!url) return [];
+
+  try {
+    const response = await fetch(url, { headers: { [headerKey]: token } });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("Falha API Consulta Relatório de Visitas:", error);
+    return [];
+  }
+};
+
+// --- SALVAR AGENDAMENTO SIMPLES ---
+export const saveAgendamento = async (dados: any): Promise<{ success: boolean }> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO; 
+  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
+  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", [headerKey]: token },
+      body: JSON.stringify(dados)
+    });
+    return { success: response.ok };
+  } catch (error) { return { success: false }; }
+};
+
+// --- SALVAR A VISITA DE CAMPO ---
+export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean }> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS; 
+  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
+  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
+  if (!url) return { success: false };
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", [headerKey]: token },
+      body: JSON.stringify(dados)
+    });
+    return { success: response.ok };
+  } catch (error) { return { success: false }; }
+};
+
 export const api = {
-  getStats: async (): Promise<DashboardStats[]> => {
-    await delay(800);
-    return mockStats;
-  },
-  getRecentVisits: async (): Promise<Visit[]> => {
-    await delay(600);
-    return mockVisits;
-  },
-  saveVisit: async (data: Record<string, unknown>): Promise<{ success: boolean }> => {
-    console.log("Syncing with Corporate ERP...", data);
-    await delay(1500);
-    return { success: true };
-  },
-  searchRanchers: async (query: string): Promise<Rancher[]> => {
-    await delay(400);
-    if (!query.trim()) return [];
+  getStats: async (): Promise<DashboardStats[]> => { await delay(800); return mockStats; },
+  getRecentVisits: async (): Promise<Visit[]> => { await delay(600); return mockVisits; },
+  saveVisit: saveVisitaCampo, 
+  searchRanchers: async (query: string): Promise<Rancher[]> => { 
+    await delay(400); 
     const q = query.toLowerCase();
-    return mockRanchers.filter(
-      (r) =>
-        r.nome.toLowerCase().includes(q) ||
-        r.propriedade.toLowerCase().includes(q) ||
-        r.municipio.toLowerCase().includes(q)
-    );
+    return mockRanchers.filter(r => r.nome.toLowerCase().includes(q) || r.propriedade.toLowerCase().includes(q)); 
   },
-  getRanchers: async (): Promise<Rancher[]> => {
-    await delay(400);
-    return mockRanchers;
-  },
+  getRanchers: async (): Promise<Rancher[]> => { await delay(400); return mockRanchers; },
+  getVisitasConsulta: fetchRelatorioVisitas, // Exportando a função nova
 };

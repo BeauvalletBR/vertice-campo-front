@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useAuth } from "@/contexts/AuthContext";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -25,10 +26,11 @@ import {
   X,
   CalendarClock,
   Plus,
-  Building2
+  Building2,
+  Calendar as CalendarIcon,
+  AlertCircle
 } from "lucide-react";
-import { api, type Rancher } from "@/services/api";
-import { toast } from "sonner";
+import { api, fetchPecuaristasAgendamento, fetchAgendamentosPendentes, type ApiRancher, type ApiAgendamento } from "@/services/api";
 
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -37,6 +39,8 @@ import "leaflet/dist/leaflet.css";
 type Step = "idle" | "routing" | "form";
 
 interface FormData {
+  id_agendamento: string;
+  cod_produtor: string;
   nome: string;
   ie: string;
   propriedade: string;
@@ -45,50 +49,78 @@ interface FormData {
   telefone: string;
   melhorDiaContato: string;
   proprietario: string;
+  tipoVisita: string;
+  nomeRecebedor: string;
+  cargoRecebedor: string;
+  frigorificoCostume: string;
+  cabecasAbatidasAno: string;
+  tipoVenda: string;
   tipoAtividade: string;
+  habilitacao: string;
   tipoTerminacao: string;
-  numAnimais: string;
-  disponibilidade: string;
+  
+  disp30Dias: boolean;
+  qtd30Dias: string;
+  sexo30Dias: string;
+  status30Dias: string;
+  
+  disp60Dias: boolean;
+  qtd60Dias: string;
+  sexo60Dias: string;
+  status60Dias: string;
+  
+  disp90Dias: boolean;
+  qtd90Dias: string;
+  sexo90Dias: string;
+  status90Dias: string;
+
+  numAnimais: string; 
   dataVisita: string;
   visitante: string;
   produtorAssinatura: string;
 }
 
-// COORDENADAS DA SEDE (INHUMAS)
 const EMPRESA_COORDS: [number, number] = [-16.3419669, -49.4708347]; 
-const LOGGED_USER_NAME = "Yuri Jube";
 
-const mockAgendamentosPendentes = [
-  {
-    id: "ag1",
-    dataAgendamento: "2026-03-20",
-    rancherInfo: {
-      id: "1", nome: "João Batista", ie: "10293847", propriedade: "Fazenda Esperança", 
-      car: "sim", municipio: "Goiânia", telefone: "62999991111", melhorDiaContato: "Segunda", 
-      proprietario: "João Batista", tipoAtividade: "cria", tipoTerminacao: "pasto", numAnimais: "450"
-    }
-  },
-  {
-    id: "ag2",
-    dataAgendamento: "2026-03-21",
-    rancherInfo: {
-      id: "4", nome: "Agropecuária Sul", ie: "47561239", propriedade: "Confinamento RS", 
-      car: "sim", municipio: "Rio Verde", telefone: "64966664444", melhorDiaContato: "Quinta", 
-      proprietario: "Grupo Sul", tipoAtividade: "engorda", tipoTerminacao: "confinado", numAnimais: "3200"
-    }
-  }
-];
+const cityToRegionMap: Record<string, string> = {
+  "GOIANIA": "RMG", "APARECIDA DE GOIANIA": "RMG", "TRINDADE": "RMG", "SENADOR CANEDO": "RMG", "INHUMAS": "RMG", "BELA VISTA DE GOIAS": "RMG", "NEROPOLIS": "RMG", "GUAPO": "RMG", "GOIANIRA": "RMG", "ABADIA DE GOIAS": "RMG", "SANTO ANTONIO DE GOIAS": "RMG", "HIDROLANDIA": "RMG", "BONFINOPOLIS": "RMG", "CALDAZINHA": "RMG", "TEREZOPOLIS DE GOIAS": "RMG", "BRAZABRANTES": "RMG", "CATURAI": "RMG", "DAMOLANDIA": "RMG", "ITAUCU": "RMG", "TAQUARAL DE GOIAS": "RMG", "NOVA VENEZA": "RMG", "GOIANAPOLIS": "RMG", "AVELINOPOLIS": "RMG", "ARAGOIANIA": "RMG",
+  "ANAPOLIS": "RCG", "JARAGUA": "RCG", "CERES": "RCG", "RIALMA": "RCG", "RUBIATABA": "RCG", "ITAPACI": "RCG", "CARMO DO RIO VERDE": "RCG", "GOIANESIA": "RCG", "PIRENOPOLIS": "RCG", "CORUMBA DE GOIAS": "RCG", "COCALZINHO DE GOIAS": "RCG", "PETROLINA DE GOIAS": "RCG", "SANTA ISABEL": "RCG", "BARRO ALTO": "RCG", "VILA PROPICIO": "RCG", "CAMPO LIMPO DE GOIAS": "RCG", "OURO VERDE DE GOIAS": "RCG", "JESUPOLIS": "RCG", "SANTA ROSA DE GOIAS": "RCG", "HEITORAI": "RCG", "ITAGUARI": "RCG", "SANTA RITA DO NOVO DESTINO": "RCG", "ITAGUARU": "RCG", "SAO FRANCISCO DE GOIAS": "RCG", "URUANA": "RCG", "SAO PATRICIO": "RCG", "NOVA AMERICA": "RCG", "MORRO AGUDO DE GOIAS": "RCG",
+  "LUZIANIA": "ENTORNO", "CRISTALINA": "ENTORNO", "FORMOSA": "ENTORNO", "SANTO ANTONIO DO DESCOBERTO": "ENTORNO", "PADRE BERNARDO": "ENTORNO", "CABECEIRAS": "ENTORNO", "ABADIANIA": "ENTORNO",
+  "ITUMBIARA": "SUL", "MORRINHOS": "SUL", "CALDAS NOVAS": "SUL", "GOIATUBA": "SUL", "PIRACANJUBA": "SUL", "BURITI ALEGRE": "SUL", "RIO QUENTE": "SUL", "MARZAGAO": "SUL", "AGUA LIMPA": "SUL", "ALOANDIA": "SUL", "CROMINIA": "SUL", "MAIRIPOTABA": "SUL", "PONTALINA": "SUL", "VICENTINOPOLIS": "SUL", "EDEIA": "SUL", "EDEALINA": "SUL", "INACIOLANDIA": "SUL", "GOUVELANDIA": "SUL", "ITARUMA": "SUL", "PROFESSOR JAMIL": "SUL",
+  "RIO VERDE": "SUDOESTE", "JATAI": "SUDOESTE", "MINEIROS": "SUDOESTE", "QUIRINOPOLIS": "SUDOESTE", "SANTA HELENA DE GOIAS": "SUDOESTE", "SAO SIMAO": "SUDOESTE", "ACREUNA": "SUDOESTE", "MONTIVIDIU": "SUDOESTE", "TURVELANDIA": "SUDOESTE", "CASTELANDIA": "SUDOESTE", "PARANAIGUARA": "SUDOESTE", "CACU": "SUDOESTE", "CACHOEIRA ALTA": "SUDOESTE", "PEROLANDIA": "SUDOESTE", "SANTA RITA DO ARAGUAIA": "SUDOESTE", "SANTO ANTONIO DA BARRA": "SUDOESTE",
+  "CATALAO": "SUDESTE", "IPAMERI": "SUDESTE", "PIRES DO RIO": "SUDESTE", "SILVANIA": "SUDESTE", "VIANOPOLIS": "SUDESTE", "ORIZONA": "SUDESTE", "OUVIDOR": "SUDESTE", "TRES RANCHOS": "SUDESTE", "GOIANDIRA": "SUDESTE", "CUMARI": "SUDESTE", "ANHANGUERA": "SUDESTE", "DAVINOPOLIS": "SUDESTE", "CORUMBAIBA": "SUDESTE", "NOVA AURORA": "SUDESTE", "CAMPO ALEGRE DE GOIAS": "SUDESTE", "LEOPOLDO DE BULHOES": "SUDESTE", "GAMELEIRA DE GOIAS": "SUDESTE", "CRISTIANOPOLIS": "SUDESTE", "URUTAI": "SUDESTE", "PALMELO": "SUDESTE", "SANTA CRUZ DE GOIAS": "SUDESTE",
+  "PORANGATU": "NORTE", "URUACU": "NORTE", "NIQUELANDIA": "NORTE", "MINACU": "NORTE", "CAMPINORTE": "NORTE", "MARA ROSA": "NORTE", "ALTO HORIZONTE": "NORTE", "NOVA IGUACU DE GOIAS": "NORTE", "CAMPINACU": "NORTE", "MUTUNOPOLIS": "NORTE", "ESTRELA DO NORTE": "NORTE", "SANTA TEREZA DE GOIAS": "NORTE", "TROMBAS": "NORTE", "FORMOSO": "NORTE", "SAO LUIZ DO NORTE": "NORTE", "GUARINOS": "NORTE", "PILAR DE GOIAS": "NORTE", "AMARALINA": "NORTE", "CAMPOS VERDES": "NORTE", "SANTA TEREZINHA DE GOIAS": "NORTE", "UIRAPURU": "NORTE", "HIDROLINA": "NORTE", "BONOPOLIS": "NORTE", "NOVO PLANALTO": "NORTE", "MONTIVIDIU DO NORTE": "NORTE",
+  "POSSE": "NORDESTE", "CAMPOS BELOS": "NORDESTE", "SAO DOMINGOS": "NORDESTE", "ALTO PARAISO DE GOIAS": "NORDESTE", "CAVALCANTE": "NORDESTE", "IACIARA": "NORDESTE", "ALVORADA DO NORTE": "NORDESTE", "SIMOLANDIA": "NORDESTE", "FLORES DE GOIAS": "NORDESTE", "GUARANI DE GOIAS": "NORDESTE", "COLINAS DO SUL": "NORDESTE", "MONTE ALEGRE DE GOIAS": "NORDESTE", "SITIO D ABADIA": "NORDESTE",
+  "IPORA": "OESTE", "SAO LUIS DE MONTES BELOS": "OESTE", "PIRANHAS": "OESTE", "CAIAPONIA": "OESTE", "ARAGARCAS": "OESTE", "JUSSARA": "OESTE", "FAZENDA NOVA": "OESTE", "ISRAELANDIA": "OESTE", "IVOLANDIA": "OESTE", "MOIPORA": "OESTE", "CACHOEIRA DE GOIAS": "OESTE", "AURILANDIA": "OESTE", "FIRMINOPOLIS": "OESTE", "TURVANIA": "OESTE", "PALMINOPOLIS": "OESTE", "CEZARINA": "OESTE", "INDIARA": "OESTE", "JANDAIA": "OESTE", "PARAUNA": "OESTE", "SAO JOAO DA PARAUNA": "OESTE", "BALIZA": "OESTE", "BOM JARDIM DE GOIAS": "OESTE", "ARENOPOLIS": "OESTE", "DIORAMA": "OESTE", "MONTES CLAROS DE GOIAS": "OESTE", "DOVERLANDIA": "OESTE", "CORREGO DO OURO": "OESTE", "PALMEIRAS DE GOIAS": "OESTE", "AMORINOPOLIS": "OESTE", "NAZARIO": "OESTE", "VARJAO": "OESTE", "PONTES E LACERDA": "OESTE", "SANTA BARBARA DE GOIAS": "OESTE", "NOVO BRASIL": "OESTE",
+  "GOIAS": "NOROESTE", "ITABERAI": "NOROESTE", "ITAPURANGA": "NOROESTE", "ARUANA": "NOROESTE", "NOVA CRIXAS": "NOROESTE", "ARAGUAPAZ": "NOROESTE", "MOZARLANDIA": "NOROESTE", "CRIXAS": "NOROESTE", "SAO MIGUEL DO ARAGUAIA": "NOROESTE", "MUNDO NOVO": "NOROESTE", "MATRINCHA": "NOROESTE", "SANTA FE DE GOIAS": "NOROESTE", "BRITANIA": "NOROESTE", "FAINA": "NOROESTE", "ITAPIRAPUA": "NOROESTE", "SANCLERLANDIA": "NOROESTE", "BURITI DE GOIAS": "NOROESTE", "MOSSAMEDES": "NOROESTE", "ADELANDIA": "NOROESTE", "AMERICANO DO BRASIL": "NOROESTE", "ANICUNS": "NOROESTE", "CAMPESTRE DE GOIAS": "NOROESTE", "GUARAITA": "NOROESTE", "COCALINHO": "NOROESTE", "ARACU": "NOROESTE"
+};
 
-const mockDatabaseRanchers: any[] = [
-  { id: "1", nome: "João Batista", ie: "10293847", propriedade: "Fazenda Esperança", car: "sim", municipio: "Goiânia", telefone: "62999991111", melhorDiaContato: "Segunda", proprietario: "João Batista", tipoAtividade: "cria", tipoTerminacao: "pasto", numAnimais: 450 },
-  { id: "2", nome: "Maria Silva", ie: "29384756", propriedade: "Sítio Vale Verde", car: "nao", municipio: "Rio Verde", telefone: "64988882222", melhorDiaContato: "Terça", proprietario: "Maria Silva", tipoAtividade: "recria", tipoTerminacao: "semi-conf", numAnimais: 120 },
-  { id: "3", nome: "Carlos Mendes", ie: "38475612", propriedade: "Fazenda Boa Vista", car: "sim", municipio: "Jussara", telefone: "62977773333", melhorDiaContato: "Quarta", proprietario: "Carlos Mendes", tipoAtividade: "engorda", tipoTerminacao: "confinado", numAnimais: 1500 },
-];
+const mapCityToRegion = (city: string): string => {
+  if (!city) return "OUTROS"; 
+  const c = city.trim().toUpperCase();
+  return cityToRegionMap[c] || "OUTROS"; 
+};
 
-const emptyForm = (today: string): FormData => ({
-  nome: "", ie: "", propriedade: "", car: "sim", municipio: "", telefone: "",
-  melhorDiaContato: "", proprietario: "", tipoAtividade: "cria", tipoTerminacao: "pasto",
-  numAnimais: "", disponibilidade: "", dataVisita: today, visitante: LOGGED_USER_NAME, produtorAssinatura: "",
+// TRADUTOR DE ID PARA NOME DO COMPRADOR
+const getNomeComprador = (id?: number) => {
+  if (id === 1) return "LEANDRO";
+  if (id === 2) return "RENATO";
+  if (id === 3) return "YURI JUBE";
+  return "COMPRADOR";
+};
+
+const emptyForm = (today: string,  userName : string): FormData => ({
+  id_agendamento: "", cod_produtor: "",
+  nome: "", ie: "", propriedade: "", car: "SIM", municipio: "", telefone: "",
+  melhorDiaContato: "", proprietario: "", tipoVisita: "PROSPECÇÃO",
+  nomeRecebedor: "", cargoRecebedor: "", frigorificoCostume: "", cabecasAbatidasAno: "", 
+  tipoVenda: "", tipoAtividade: "", habilitacao: "", tipoTerminacao: "",
+  
+  disp30Dias: false, qtd30Dias: "", sexo30Dias: "BOI", status30Dias: "DISPONIVEL",
+  disp60Dias: false, qtd60Dias: "", sexo60Dias: "BOI", status60Dias: "DISPONIVEL",
+  disp90Dias: false, qtd90Dias: "", sexo90Dias: "BOI", status90Dias: "DISPONIVEL",
+  
+  numAnimais: "", dataVisita: today, visitante: userName, produtorAssinatura: "",
 });
 
 function RouteMapController({ routePath }: { routePath: [number, number][] }) {
@@ -105,6 +137,9 @@ function RouteMapController({ routePath }: { routePath: [number, number][] }) {
 }
 
 export function FieldVisit() {
+  const {user} = useAuth();
+  const userName = user?.name || "COMPRADOR";
+  
   const [step, setStep] = useState<Step>("idle");
   const [distance, setDistance] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -113,26 +148,84 @@ export function FieldVisit() {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
-  const [form, setForm] = useState<FormData>(emptyForm(today));
+  const [form, setForm] = useState<FormData>(emptyForm(today, userName));
+
+  const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
+  const lastDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split("T")[0];
+  
+  const [dateStart, setDateStart] = useState(firstDayOfMonth);
+  const [dateEnd, setDateEnd] = useState(lastDayOfMonth);
 
   const [isManual, setIsManual] = useState(false);
   const [selectedRancher, setSelectedRancher] = useState<any | null>(null);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [modalSearchTerm, setModalSearchTerm] = useState("");
 
+  const [apiRanchers, setApiRanchers] = useState<ApiRancher[]>([]);
+  const [agendamentosPendentes, setAgendamentosPendentes] = useState<ApiAgendamento[]>([]);
+  const [isLoadingApi, setIsLoadingApi] = useState(false);
+
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
+
+  const isScheduled = !!form.id_agendamento;
+
+  useEffect(() => {
+    const loadApiData = async () => {
+      setIsLoadingApi(true);
+      try {
+        const agendamentosData = await fetchAgendamentosPendentes();
+        const pendentes = agendamentosData.filter(ag => (ag.STATUS_AGENDAMENTO || "").toLowerCase() === 'pendente');
+        setAgendamentosPendentes(pendentes);
+
+        const ranchersData = await fetchPecuaristasAgendamento();
+        setApiRanchers(ranchersData);
+
+      } catch (error) {
+        console.error("Erro ao carregar dados:", error);
+      }
+      setIsLoadingApi(false);
+    };
+    loadApiData();
+  }, []);
+
   const filteredRanchers = useMemo(() => {
     const term = modalSearchTerm.toLowerCase();
-    if (!term) return mockDatabaseRanchers.slice(0, 20);
-    return mockDatabaseRanchers.filter(
-      (r) => r.nome.toLowerCase().includes(term) || r.municipio.toLowerCase().includes(term) || r.propriedade.toLowerCase().includes(term)
+    if (!term) return apiRanchers.slice(0, 20); 
+    return apiRanchers.filter(
+      (r) => 
+        (r.NOME_PRODUTOR?.toLowerCase() || "").includes(term) || 
+        (r.MUNICIPIO?.toLowerCase() || "").includes(term) || 
+        (r.NOME_FAZENDA?.toLowerCase() || "").includes(term)
     ).slice(0, 20);
-  }, [modalSearchTerm]);
+  }, [modalSearchTerm, apiRanchers]);
 
-  // PLANO B (FALLBACK): Se o navegador bloquear o GPS, ele simula a localização de Goiânia
+  const filteredAgendamentos = useMemo(() => {
+    return agendamentosPendentes.filter(ag => {
+      if (!ag.DATA_AGENDADA) return false;
+      const dataStr = ag.DATA_AGENDADA.split("T")[0];
+      return dataStr >= dateStart && dataStr <= dateEnd;
+    });
+  }, [dateStart, dateEnd, agendamentosPendentes]);
+
+  const fetchCityName = async (lat: number, lng: number) => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      const data = await res.json();
+      const city = data.address?.city || data.address?.town || data.address?.village || data.address?.municipality;
+      if (city) setForm(prev => ({ ...prev, municipio: city.toUpperCase() }));
+    } catch (error) { }
+  };
+
   const executeFallbackLocation = async (callback: () => void) => {
-    const fallbackLat = -16.6868; // Goiânia
-    const fallbackLng = -49.2643; // Goiânia
+    const fallbackLat = -16.6868;
+    const fallbackLng = -49.2643;
     setUserLocation([fallbackLat, fallbackLng]);
+    fetchCityName(fallbackLat, fallbackLng);
 
     try {
       const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${fallbackLng},${fallbackLat}?overview=full&geometries=geojson`);
@@ -149,26 +242,20 @@ export function FieldVisit() {
     callback();
   };
 
-  // FUNÇÃO QUE PEGA O GPS E CONSULTA A ESTRADA REAL (Atualizada para PC)
   const fetchRealRouteAndLocation = (callback: () => void) => {
-    if (!navigator.geolocation) {
-      toast.warning("Navegador não suporta GPS. Usando localização simulada (Goiânia).");
-      executeFallbackLocation(callback);
-      return;
-    }
-
+    if (!navigator.geolocation) return executeFallbackLocation(callback);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
         setUserLocation([latitude, longitude]);
+        fetchCityName(latitude, longitude);
 
         try {
           const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${longitude},${latitude}?overview=full&geometries=geojson`);
           const data = await response.json();
 
           if (data.routes && data.routes.length > 0) {
-            const routeCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
-            setRoutePath(routeCoords);
+            setRoutePath(data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]));
             setDistance(`${(data.routes[0].distance / 1000).toFixed(1)} km`);
           } else {
             setRoutePath([EMPRESA_COORDS, [latitude, longitude]]);
@@ -180,379 +267,320 @@ export function FieldVisit() {
         }
         callback();
       },
-      (error) => {
-        console.warn("Erro do GPS:", error.message, "Código:", error.code);
-        toast.warning("Não foi possível obter a localização real. Usando teste (Goiânia).");
-        executeFallbackLocation(callback);
-      },
-      { 
-        enableHighAccuracy: false, // Desligado para funcionar melhor no PC
-        timeout: 15000,            // 15 segundos para o PC conseguir triangular o IP
-        maximumAge: 10000          // Usa cache de GPS recente se houver
-      } 
+      () => executeFallbackLocation(callback),
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 10000 } 
     );
   };
 
-  const startScheduledVisit = (agendamento: any) => {
+  const startScheduledVisit = (ag: ApiAgendamento) => {
     setStep("routing");
-    setSelectedRancher(agendamento.rancherInfo); 
-    setForm((prev) => ({ ...prev, ...agendamento.rancherInfo }));
+    
+    setSelectedRancher({
+      NOME_PRODUTOR: ag.NOME_PRODUTOR,
+      NOME_FAZENDA: ag.NOME_FAZENDA,
+      MUNICIPIO: ag.MUNICIPIO,
+      INSCRICAO: ag.INSCRICAO
+    }); 
+    
+    setForm({
+      ...emptyForm(today, userName),
+      id_agendamento: String(ag.ID_AGENDAMENTO || ""),
+      cod_produtor: String(ag.COD_PRODUTOR || ""),
+      nome: ag.NOME_PRODUTOR || "",
+      ie: ag.INSCRICAO || "",
+      propriedade: ag.NOME_FAZENDA || "",
+      car: ag.POSSUI_CAR === "S" ? "SIM" : "NAO",
+      municipio: ag.MUNICIPIO || "",
+      telefone: ag.NUMERO1 || "",
+      proprietario: ag.NOME_PRODUTOR || "",
+    });
+    
     fetchRealRouteAndLocation(() => setStep("form"));
   };
 
   const startNewVisit = () => {
     setIsManual(false);
     setSelectedRancher(null);
-    setForm(emptyForm(today));
+    setForm(emptyForm(today, userName));
     setStep("routing");
     fetchRealRouteAndLocation(() => setStep("form"));
   };
 
-  const selectRancher = (r: any) => {
+  const selectRancher = (r: ApiRancher) => {
     setSelectedRancher(r);
     setIsSearchModalOpen(false);
     setModalSearchTerm("");
     setIsManual(false);
     
     setForm((prev) => ({
-      ...prev, nome: r.nome, ie: r.ie || "", propriedade: r.propriedade, car: r.car || "sim",
-      municipio: r.municipio, telefone: r.telefone || "", melhorDiaContato: r.melhorDiaContato || "",
-      proprietario: r.proprietario || "", tipoAtividade: r.tipoAtividade || "cria", tipoTerminacao: r.tipoTerminacao || "pasto",
-      numAnimais: r.numAnimais ? String(r.numAnimais) : "",
+      ...prev, 
+      cod_produtor: String(r.COD_PRODUTOR || ""),
+      nome: r.NOME_PRODUTOR || "", 
+      ie: r.INSCRICAO || "", 
+      propriedade: r.NOME_FAZENDA || "", 
+      car: r.POSSUI_CAR === "S" ? "SIM" : "NAO",
+      municipio: r.MUNICIPIO || "", 
+      telefone: r.NUMERO1 || "", 
+      melhorDiaContato: "",
+      proprietario: r.NOME_PRODUTOR || "", 
+      tipoAtividade: "", 
+      tipoTerminacao: "",
+      tipoVenda: "",
+      habilitacao: "",
+      numAnimais: "",
     }));
   };
 
   const switchToManual = () => {
-    setIsManual(true); setSelectedRancher(null); setForm(emptyForm(today));
+    setIsManual(true); setSelectedRancher(null); setForm(emptyForm(today, userName));
   };
 
   const switchToSearch = () => {
-    setIsManual(false); setSelectedRancher(null); setForm(emptyForm(today));
+    setIsManual(false); setSelectedRancher(null); setForm(emptyForm(today, userName));
   };
 
-  const updateField = (key: keyof FormData, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  };
+  const updateField = (key: keyof FormData, value: any) => setForm(prev => ({ ...prev, [key]: value }));
+  const formatToUpper = (val: any) => (val === null || val === undefined) ? "" : typeof val === 'string' ? val.trim().toUpperCase() : val;
 
   const handleSave = async () => {
-    if (!form.nome || !form.propriedade) {
-      toast.error("Preencha ao menos o Nome e a Propriedade.");
+    const camposObrigatorios: { key: keyof FormData, label: string }[] = [
+      { key: "nome", label: "Nome do Produtor" }, { key: "propriedade", label: "Propriedade" },
+      { key: "telefone", label: "Telefone" }, { key: "melhorDiaContato", label: "Melhor dia de contato" },
+      { key: "nomeRecebedor", label: "Nome de quem recebeu a visita" }, { key: "cargoRecebedor", label: "Cargo do Recebedor" },
+      { key: "frigorificoCostume", label: "Frigorífico de Costume" }, { key: "cabecasAbatidasAno", label: "Qtd. cabeças abatidas/ano" },
+      { key: "tipoVenda", label: "Tipo de Venda" }, { key: "tipoAtividade", label: "Tipo de Atividade" },
+      { key: "tipoTerminacao", label: "Tipo de Terminação" }, { key: "habilitacao", label: "Habilitação" },
+      { key: "numAnimais", label: "Nº de Animais na Propriedade" }
+    ];
+
+    const camposFaltando = camposObrigatorios.filter(campo => !form[campo.key] || String(form[campo.key]).trim() === "");
+
+    if (camposFaltando.length >= 3) {
+      setAlertModal({ isOpen: true, type: "error", title: "Campos Incompletos!", message: "Atenção: Você precisa preencher todos os dados obrigatórios do formulário antes de salvar." });
+      return;
+    } else if (camposFaltando.length > 0) {
+      setAlertModal({ isOpen: true, type: "error", title: "Atenção!", message: `Falta preencher os seguintes campos: ${camposFaltando.map(c => c.label).join(" e ")}.` });
       return;
     }
+
+    const errosLotes = [];
+    if (form.disp30Dias && String(form.qtd30Dias).trim() === "") errosLotes.push("30 Dias");
+    if (form.disp60Dias && String(form.qtd60Dias).trim() === "") errosLotes.push("60 Dias");
+    if (form.disp90Dias && String(form.qtd90Dias).trim() === "") errosLotes.push("90 Dias");
+
+    if (errosLotes.length > 0) {
+      setAlertModal({ 
+        isOpen: true, 
+        type: "error", 
+        title: "Quantidade Inválida", 
+        message: `Você marcou a disponibilidade para ${errosLotes.join(", ")}, mas não informou a quantidade de cabeças. Digite um valor (mesmo que seja 0).` 
+      });
+      return;
+    }
+
     setSaving(true);
-    const coordsToSave = userLocation ? { lat: String(userLocation[0]), lng: String(userLocation[1]) } : { lat: "", lng: "" };
-    const result = await api.saveVisit({ ...form, distance, coords: coordsToSave });
-    setSaving(false);
-    
-    if (result.success) {
-      toast.success("Visita salva e sincronizada com sucesso!");
-      setStep("idle"); setDistance(null); setRoutePath([]); setUserLocation(null);
-      setForm(emptyForm(today)); setSelectedRancher(null); setIsManual(false);
+    const lotes = [];
+    if (form.disp30Dias) lotes.push({ prazo_dias: 30, quantidade_cabecas: form.qtd30Dias || 0, sexo_animal: formatToUpper(form.sexo30Dias), status_lote: formatToUpper(form.status30Dias) });
+    if (form.disp60Dias) lotes.push({ prazo_dias: 60, quantidade_cabecas: form.qtd60Dias || 0, sexo_animal: formatToUpper(form.sexo60Dias), status_lote: formatToUpper(form.status60Dias) });
+    if (form.disp90Dias) lotes.push({ prazo_dias: 90, quantidade_cabecas: form.qtd90Dias || 0, sexo_animal: formatToUpper(form.sexo90Dias), status_lote: formatToUpper(form.status90Dias) });
+
+    const payload = {
+      id_agendamento: form.id_agendamento, 
+      cod_produtor: form.cod_produtor, 
+      tipo_registro: form.cod_produtor ? "CADASTRADO" : "S_CADASTRO", 
+      nome: formatToUpper(form.nome), 
+      propriedade: formatToUpper(form.propriedade), 
+      municipio: formatToUpper(form.municipio),
+      regiao: formatToUpper(mapCityToRegion(form.municipio)), 
+      telefone: formatToUpper(form.telefone), 
+      car: formatToUpper(form.car), 
+      ie: formatToUpper(form.ie),
+      inscricao: formatToUpper(form.ie), 
+      melhorDiaContato: formatToUpper(form.melhorDiaContato), 
+      proprietario: formatToUpper(form.proprietario),
+      tipoVisita: formatToUpper(form.tipoVisita), 
+      nomeRecebedor: formatToUpper(form.nomeRecebedor), 
+      cargoRecebedor: formatToUpper(form.cargoRecebedor),
+      frigorificoCostume: formatToUpper(form.frigorificoCostume), 
+      cabecasAbatidasAno: form.cabecasAbatidasAno, 
+      tipoVenda: formatToUpper(form.tipoVenda),
+      tipoAtividade: formatToUpper(form.tipoAtividade), 
+      habilitacao: formatToUpper(form.habilitacao), 
+      tipoTerminacao: formatToUpper(form.tipoTerminacao),
+      numAnimais: form.numAnimais, 
+      dataVisita: form.dataVisita, 
+      visitante: formatToUpper(form.visitante), 
+      produtorAssinatura: formatToUpper(form.produtorAssinatura),
+      disp30Dias: form.disp30Dias, qtd30Dias: form.qtd30Dias, sexo30Dias: formatToUpper(form.sexo30Dias), status30Dias: formatToUpper(form.status30Dias),
+      disp60Dias: form.disp60Dias, qtd60Dias: form.qtd60Dias, sexo60Dias: formatToUpper(form.sexo60Dias), status60Dias: formatToUpper(form.status60Dias),
+      disp90Dias: form.disp90Dias, qtd90Dias: form.qtd90Dias, sexo90Dias: formatToUpper(form.sexo90Dias), status90Dias: formatToUpper(form.status90Dias),
+      gps_latitude: userLocation ? userLocation[0] : null, gps_longitude: userLocation ? userLocation[1] : null,
+      distancia_percorrida_real: distance ? parseFloat(distance.replace(" km", "")) : 0, id_comprador: (user as any)?.id || 1, lotes
+    };
+
+    try {
+      const result = await api.saveVisit(payload);
+      if (result.success) {
+        setAlertModal({ isOpen: true, type: "success", title: "Sucesso!", message: "A visita foi salva e sincronizada com o banco de dados." });
+        setStep("idle"); setDistance(null); setRoutePath([]); setUserLocation(null); setForm(emptyForm(today, userName)); setSelectedRancher(null); setIsManual(false);
+        setAgendamentosPendentes(prev => prev.filter(ag => String(ag.ID_AGENDAMENTO) !== String(form.id_agendamento)));
+      } else {
+        setAlertModal({ isOpen: true, type: "error", title: "Erro na Sincronização", message: "Ocorreu um problema ao enviar para o banco de dados. A visita NÃO foi salva." });
+      }
+    } catch (error) {
+      setAlertModal({ isOpen: true, type: "error", title: "Erro Crítico", message: "Falha na comunicação com o sistema. Verifique sua internet e tente novamente." });
+    } finally {
+      setSaving(false);
     }
   };
+
+  const getToggleClass = (currentValue: string, expectedValue: string) => 
+    `py-3 rounded-lg font-bold text-[11px] sm:text-xs transition-all border ${currentValue.toLowerCase() === expectedValue.toLowerCase() ? "bg-primary border-primary text-primary-foreground shadow-md" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`;
 
   return (
     <div className="min-h-screen bg-surface pb-24 relative">
       <div className="p-4 max-w-7xl mx-auto">
-        
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10">
-          
-          {/* LADO ESQUERDO: Formulários e Passos */}
           <div className="space-y-5 order-2 lg:order-1">
-            
             {step === "idle" && (
               <div className="space-y-6 animate-fade-in pt-4">
-                <div>
-                  <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-                    <Navigation className="w-6 h-6" /> Minhas Visitas
-                  </h1>
-                  <p className="text-sm text-muted-foreground mt-1">Sua agenda de prospecção para hoje.</p>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-4">
+                  <div>
+                    <h1 className="text-2xl font-bold text-primary flex items-center gap-2"><Navigation className="w-6 h-6" /> Minhas Visitas</h1>
+                    <p className="text-sm text-muted-foreground mt-1">Sua agenda de prospecção.</p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm w-full sm:w-auto">
+                    <div className="space-y-1 flex-1 sm:flex-initial"><Label className="text-[10px] font-black uppercase text-slate-400">Início</Label><Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="h-8 text-xs border-none focus-visible:ring-0 p-0" /></div>
+                    <div className="h-8 w-[1px] bg-slate-200 self-end mb-1" />
+                    <div className="space-y-1 flex-1 sm:flex-initial"><Label className="text-[10px] font-black uppercase text-slate-400">Fim</Label><Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} className="h-8 text-xs border-none focus-visible:ring-0 p-0" /></div>
+                  </div>
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b pb-2">
-                    <h2 className="font-bold text-slate-800 flex items-center gap-2">
-                      <CalendarClock className="w-5 h-5 text-amber-500" /> Agendamentos Pendentes
-                    </h2>
-                    <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-full">
-                      {mockAgendamentosPendentes.length}
-                    </span>
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-bold text-slate-800 flex items-center gap-2"><CalendarClock className="w-5 h-5 text-amber-500" /> Agendamentos do Período</h2>
+                    <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-full">{isLoadingApi ? "..." : filteredAgendamentos.length}</span>
                   </div>
 
-                  {mockAgendamentosPendentes.length === 0 ? (
-                    <div className="text-center p-6 bg-slate-50 border border-dashed rounded-lg text-slate-400">
-                      Nenhum agendamento pendente para você.
-                    </div>
+                  {isLoadingApi ? <div className="flex justify-center p-10"><Loader2 className="animate-spin text-primary w-8 h-8" /></div> : filteredAgendamentos.length === 0 ? (
+                    <div className="text-center p-10 bg-slate-50 border border-dashed rounded-xl text-slate-400"><CalendarIcon className="w-8 h-8 mx-auto mb-2 opacity-20" /><p className="text-sm font-medium">Nenhum agendamento pendente para este intervalo.</p></div>
                   ) : (
-                    mockAgendamentosPendentes.map((agendamento) => (
-                      <Card 
-                        key={agendamento.id} 
-                        className="border-2 border-slate-200 hover:border-primary/50 transition-colors cursor-pointer shadow-sm"
-                        onClick={() => startScheduledVisit(agendamento)}
-                      >
-                        <CardContent className="p-4 flex items-center justify-between">
-                          <div>
-                            <h3 className="font-bold text-primary text-base">{agendamento.rancherInfo.nome}</h3>
-                            <p className="text-sm font-medium text-slate-700">{agendamento.rancherInfo.propriedade}</p>
-                            <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {agendamento.rancherInfo.municipio}</span>
-                              <span>•</span>
-                              <span className="flex items-center gap-1"><CalendarClock className="w-3 h-3" /> {new Date(agendamento.dataAgendamento).toLocaleDateString("pt-BR")}</span>
+                    filteredAgendamentos.map((ag) => {
+                      const agDateStr = ag.DATA_AGENDADA ? ag.DATA_AGENDADA.split('T')[0] : '';
+                      const isAtrasada = agDateStr && agDateStr < today;
+                      const isHoje = agDateStr === today;
+
+                      let cardClass = "border-2 border-slate-200 hover:border-primary/50 transition-colors cursor-pointer shadow-sm group";
+                      let badge = null;
+                      let dateIconClass = "text-slate-600";
+
+                      if (isAtrasada) {
+                        cardClass = "border-2 border-red-400 bg-red-50/50 hover:border-red-500 transition-colors cursor-pointer shadow-sm group";
+                        badge = <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase ml-2">Atrasada</span>;
+                        dateIconClass = "text-red-600 font-bold";
+                      } else if (isHoje) {
+                        cardClass = "border-2 border-blue-400 bg-blue-50/50 hover:border-blue-500 transition-colors cursor-pointer shadow-sm group";
+                        badge = <span className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase ml-2">Hoje</span>;
+                        dateIconClass = "text-blue-600 font-bold";
+                      }
+
+                      return (
+                        <Card key={ag.ID_AGENDAMENTO} className={cardClass} onClick={() => startScheduledVisit(ag)}>
+                          <CardContent className="p-4 flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center mb-1">
+                                <h3 className="font-bold text-primary text-base group-hover:text-blue-700">{ag.NOME_PRODUTOR}</h3>
+                                {badge}
+                              </div>
+                              <p className="text-sm font-medium text-slate-700">{ag.NOME_FAZENDA}</p>
+                              
+                              <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground flex-wrap">
+                                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {ag.MUNICIPIO}</span>
+                                <span>•</span>
+                                <span className={`flex items-center gap-1 ${dateIconClass}`}>
+                                  <CalendarClock className="w-3 h-3" /> {ag.DATA_AGENDADA ? new Date(ag.DATA_AGENDADA.split('T')[0] + "T12:00:00").toLocaleDateString("pt-BR") : ''}
+                                </span>
+                                <span>•</span>
+                                <span className="flex items-center gap-1 font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md uppercase">
+                                  <User className="w-3 h-3" /> {getNomeComprador(ag.ID_COMPRADOR)}
+                                </span>
+                              </div>
+
                             </div>
-                          </div>
-                          <div className="text-primary bg-primary/10 p-2 rounded-full">
-                            <Navigation className="w-5 h-5" />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
+                            <div className={`p-2 rounded-full transition-colors ${isAtrasada ? 'text-red-600 bg-red-100 group-hover:bg-red-600 group-hover:text-white' : isHoje ? 'text-blue-600 bg-blue-100 group-hover:bg-blue-600 group-hover:text-white' : 'text-primary bg-primary/10 group-hover:bg-primary group-hover:text-white'}`}>
+                              <Navigation className="w-5 h-5" />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })
                   )}
                 </div>
-
-                <div className="pt-6">
-                  <Button size="xl" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold shadow-md h-14" onClick={startNewVisit}>
-                    <Plus className="w-5 h-5 mr-2" /> NOVA VISITA AVULSA
-                  </Button>
-                </div>
+                <div className="pt-6"><Button size="xl" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold shadow-md h-14" onClick={startNewVisit}><Plus className="w-5 h-5 mr-2" /> NOVA VISITA AVULSA</Button></div>
               </div>
             )}
 
-            {step === "routing" && (
-              <Card className="text-center py-32 animate-fade-in border-0 shadow-none bg-transparent">
-                <CardContent>
-                  <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Loader2 className="w-10 h-10 text-primary animate-spin" />
-                  </div>
-                  <h2 className="text-xl font-bold text-foreground">Traçando Rota Real...</h2>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Buscando sua localização e mapeando as estradas a partir de Inhumas.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            {step === "routing" && <Card className="text-center py-32 animate-fade-in border-0 shadow-none bg-transparent"><CardContent><div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6"><Loader2 className="w-10 h-10 text-primary animate-spin" /></div><h2 className="text-xl font-bold text-foreground">Traçando Rota Real...</h2><p className="text-sm text-muted-foreground mt-2">Buscando sua localização e mapeando as estradas a partir de Inhumas.</p></CardContent></Card>}
 
             {step === "form" && (
               <div className="space-y-5 animate-fade-in">
-                <div className="flex items-center justify-between pb-2">
-                  <h2 className="text-lg font-bold text-primary flex items-center gap-2">
-                    <FileText className="w-5 h-5" /> Checklist de Campo
-                  </h2>
-                  <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => {
-                    setStep("idle"); setRoutePath([]); setUserLocation(null);
-                  }}>
-                    <X className="w-4 h-4 mr-1" /> Cancelar
-                  </Button>
-                </div>
-
-                {/* Route Map Card (Resumo da Rota) */}
-                <Card className="border-2 border-primary/20 shadow-sm">
-                  <CardContent className="pt-4 pb-4">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Trajeto Calculado (GPS)</span>
-                      <span className="text-sm font-bold text-primary tabular-nums">{distance || "Calculando..."}</span>
-                    </div>
-                    <div className="h-24 bg-slate-50 rounded-lg flex items-center justify-center border border-dashed border-slate-300 relative overflow-hidden">
-                      <div className="relative w-full px-12">
-                        <div className="h-0.5 bg-primary/30 w-full" />
-                        <div className="absolute left-10 -top-2.5 flex flex-col items-center">
-                          <MapPin className="w-5 h-5 text-slate-400" />
-                          <span className="text-[9px] font-semibold text-slate-500 mt-0.5">Sede (Inhumas)</span>
-                        </div>
-                        <div className="absolute right-10 -top-2.5 flex flex-col items-center">
-                          <Navigation className="w-5 h-5 text-primary" />
-                          <span className="text-[9px] font-semibold text-primary mt-0.5">Local Atual</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex gap-4 text-[10px] text-slate-400 font-mono">
-                      <span>Lat: {userLocation?.[0]?.toFixed(5) || "..."}</span>
-                      <span>Lng: {userLocation?.[1]?.toFixed(5) || "..."}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-
+                <div className="flex items-center justify-between pb-2"><h2 className="text-lg font-bold text-primary flex items-center gap-2"><FileText className="w-5 h-5" /> Checklist de Campo</h2><Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => { setStep("idle"); setRoutePath([]); setUserLocation(null); }}><X className="w-4 h-4 mr-1" /> Cancelar</Button></div>
+                <Card className="border-2 border-primary/20 shadow-sm"><CardContent className="pt-4 pb-4"><div className="flex justify-between items-center mb-3"><span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Trajeto Calculado (GPS)</span><span className="text-sm font-bold text-primary tabular-nums">{distance || "Calculando..."}</span></div><div className="h-24 bg-slate-50 rounded-lg flex items-center justify-center border border-dashed border-slate-300 relative overflow-hidden"><div className="relative w-full px-12"><div className="h-0.5 bg-primary/30 w-full" /><div className="absolute left-10 -top-2.5 flex flex-col items-center"><MapPin className="w-5 h-5 text-slate-400" /><span className="text-[9px] font-semibold text-slate-500 mt-0.5">Sede (Inhumas)</span></div><div className="absolute right-10 -top-2.5 flex flex-col items-center"><Navigation className="w-5 h-5 text-primary" /><span className="text-[9px] font-semibold text-primary mt-0.5">Local Atual</span></div></div></div></CardContent></Card>
                 <Card className="border-2 border-slate-200 shadow-sm">
-                  <CardHeader className="pb-3 bg-slate-50 border-b flex flex-row justify-between items-center">
-                    <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                      <User className="w-4 h-4" /> Identificação do Pecuarista
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 pt-4">
-                    <div className="flex gap-2">
-                      <Button variant={!isManual ? "default" : "outline"} size="sm" onClick={switchToSearch} className={`flex-1 text-xs transition-colors ${!isManual ? "bg-primary text-primary-foreground font-semibold shadow-sm" : "text-muted-foreground"}`}>
-                        <Search className="w-3 h-3 mr-1" /> Base de Dados
-                      </Button>
-                      <Button variant={isManual ? "default" : "outline"} size="sm" onClick={switchToManual} className={`flex-1 text-xs transition-colors ${isManual ? "bg-primary text-primary-foreground font-semibold shadow-sm" : "text-muted-foreground"}`}>
-                        <UserPlus className="w-3 h-3 mr-1" /> Novo Manual
-                      </Button>
-                    </div>
-
-                    {!isManual && (
-                      <Button className={`w-full h-12 flex justify-start items-center transition-colors mt-2 shadow-sm ${selectedRancher ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-primary text-white hover:bg-primary/90"}`} onClick={() => setIsSearchModalOpen(true)}>
-                        <Search className="w-5 h-5 mr-3" />
-                        <span className="font-medium">{selectedRancher ? "Trocar pecuarista..." : "Clique para buscar na base..."}</span>
-                      </Button>
+                  <CardHeader className="pb-3 bg-slate-50 border-b flex flex-row justify-between items-center"><CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2"><User className="w-4 h-4" /> Identificação e Tipo de Visita</CardTitle></CardHeader>
+                  <CardContent className="space-y-4 pt-4">
+                    
+                    {!isScheduled && (
+                      <>
+                        <div className="flex gap-2">
+                          <Button variant={!isManual ? "default" : "outline"} size="sm" onClick={switchToSearch} className={getToggleClass(isManual ? "MANUAL" : "BASE", "BASE")}>
+                            <Search className="w-3 h-3 mr-1" /> Base de Dados
+                          </Button>
+                          <Button variant={isManual ? "default" : "outline"} size="sm" onClick={switchToManual} className={getToggleClass(isManual ? "MANUAL" : "BASE", "MANUAL")}>
+                            <UserPlus className="w-3 h-3 mr-1" /> Novo Manual
+                          </Button>
+                        </div>
+                        {!isManual && (
+                          <Button className={`w-full h-12 flex justify-start items-center transition-colors shadow-sm ${selectedRancher ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-primary text-white hover:bg-primary/90"}`} onClick={() => setIsSearchModalOpen(true)}>
+                            <Search className="w-5 h-5 mr-3" />
+                            <span className="font-medium">{selectedRancher ? "Trocar pecuarista..." : "Clique para buscar na base..."}</span>
+                          </Button>
+                        )}
+                      </>
                     )}
 
-                    {selectedRancher && !isManual && (
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex justify-between items-center mt-2 animate-in fade-in">
+                    {selectedRancher && (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex justify-between items-center animate-in fade-in">
                         <div>
                           <div className="flex items-center gap-2">
                             <CheckCircle2 className="w-4 h-4 text-green-600" />
-                            <span className="text-sm font-bold text-green-800">{selectedRancher.nome}</span>
+                            <span className="text-sm font-bold text-green-800">{selectedRancher.NOME_PRODUTOR || selectedRancher.nome}</span>
                           </div>
-                          <p className="text-xs text-green-700 mt-1 ml-6">{selectedRancher.propriedade} — {selectedRancher.municipio}</p>
+                          <p className="text-xs text-green-700 mt-1 ml-6">{selectedRancher.NOME_FAZENDA || selectedRancher.propriedade} — {selectedRancher.MUNICIPIO || selectedRancher.municipio}</p>
                         </div>
                       </div>
                     )}
-
-                    {isManual && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2 animate-in fade-in">
-                        <div className="flex items-center gap-2">
-                          <UserPlus className="w-4 h-4 text-amber-600" />
-                          <span className="text-sm font-bold text-amber-800">Inserção manual livre</span>
-                        </div>
-                        <p className="text-xs text-amber-700 mt-1 ml-6">Preencha os dados do novo cliente abaixo.</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-primary" /> A. Dados da Propriedade
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <FieldInput label="Nome" placeholder="Nome do contato" value={form.nome} onChange={(v) => updateField("nome", v)} />
-                    <FieldInput label="I.E. (Inscrição Estadual)" placeholder="000.000.000" value={form.ie} onChange={(v) => updateField("ie", v)} inputMode="numeric" />
-                    <FieldInput label="Propriedade" placeholder="Ex: Fazenda Santa Fé" value={form.propriedade} onChange={(v) => updateField("propriedade", v)} />
                     
-                    <div className="space-y-2">
-                      <Label className="text-xs font-bold text-slate-500 uppercase">Possui CAR?</Label>
-                      <div className="flex gap-4">
-                        <button type="button" onClick={() => updateField("car", "sim")} className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all border ${form.car === "sim" ? "bg-primary/10 border-primary text-primary shadow-sm" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>Sim</button>
-                        <button type="button" onClick={() => updateField("car", "nao")} className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all border ${form.car === "nao" ? "bg-red-50 border-red-500 text-red-700 shadow-sm" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>Não</button>
-                      </div>
-                    </div>
-
-                    <FieldInput label="Município" placeholder="Ex: Goiânia" value={form.municipio} onChange={(v) => updateField("municipio", v)} />
-                    <FieldInput label="Telefone" placeholder="(62) 99999-0000" type="tel" value={form.telefone} onChange={(v) => updateField("telefone", v)} icon={<Phone className="w-4 h-4" />} />
-                    <FieldInput label="Melhor dia de contato" placeholder="Ex: Segunda-feira" value={form.melhorDiaContato} onChange={(v) => updateField("melhorDiaContato", v)} />
-                    <FieldInput label="Proprietário" placeholder="Nome do proprietário" value={form.proprietario} onChange={(v) => updateField("proprietario", v)} icon={<User className="w-4 h-4" />} />
+                    <div className="border-t border-slate-100 pt-4 mt-2"><Label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Natureza da Visita</Label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{["PROSPECÇÃO", "REATIVAÇÃO", "OBRIGATÓRIA", "ACOMP. EMBARQUE", "CORTESIA"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoVisita", t)} className={getToggleClass(form.tipoVisita, t)}>{t}</button>))}</div></div>
                   </CardContent>
                 </Card>
-
-                <Card className="shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                      <Landmark className="w-4 h-4 text-primary" /> B. Detalhes da Atividade
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <div className="space-y-2">
-                      <Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Atividade</Label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {["Cria", "Recria", "Engorda"].map((t) => (
-                          <button key={t} type="button" onClick={() => updateField("tipoAtividade", t.toLowerCase())} className={`py-3 rounded-lg font-bold text-xs transition-all border ${form.tipoAtividade === t.toLowerCase() ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>{t}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Terminação</Label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {["Confinado", "Semi-conf.", "Pasto"].map((t) => (
-                          <button key={t} type="button" onClick={() => updateField("tipoTerminacao", t.toLowerCase())} className={`py-3 rounded-lg font-bold text-xs transition-all border ${form.tipoTerminacao === t.toLowerCase() ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>{t}</button>
-                        ))}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-primary" /> C. Rebanho e Fechamento
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <FieldInput label="Nº de Animais" type="number" placeholder="0" value={form.numAnimais} onChange={(v) => updateField("numAnimais", v)} />
-                      <FieldInput label="Disponibilidade" placeholder="Ex: Imediata" value={form.disponibilidade} onChange={(v) => updateField("disponibilidade", v)} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <FieldInput label="Data da Visita" type="date" value={form.dataVisita} onChange={(v) => updateField("dataVisita", v)} />
-                      <div className="space-y-1.5 opacity-70">
-                        <Label className="text-xs font-bold text-slate-500 uppercase">Visitante</Label>
-                        <Input disabled value={form.visitante} className="h-12 bg-slate-100 font-semibold" />
-                      </div>
-                    </div>
-                    <FieldInput label="Produtor (Assinatura)" placeholder="Nome completo do produtor" value={form.produtorAssinatura} onChange={(v) => updateField("produtorAssinatura", v)} className="border-b-2 border-t-0 border-x-0 border-slate-300 rounded-none focus-visible:ring-0 focus-visible:border-primary bg-transparent text-center font-serif text-lg italic mt-2" />
-                  </CardContent>
-                </Card>
-
-                <Button className="w-full h-14 text-lg font-bold bg-green-600 hover:bg-green-700 text-white shadow-lg mt-4" onClick={handleSave} disabled={saving}>
-                  {saving ? (
-                    <><Loader2 className="w-5 h-5 animate-spin mr-2" /> SINCRONIZANDO...</>
-                  ) : "SALVAR VISITA E SINCRONIZAR"}
-                </Button>
+                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><FileText className="w-4 h-4 text-primary" /> A. Dados da Propriedade e Contato</CardTitle></CardHeader><CardContent className="space-y-4"><FieldInput label="Nome do Produtor" placeholder="Nome do proprietário/empresa" value={form.nome} onChange={(v) => updateField("nome", v)} /><FieldInput label="I.E. (Inscrição Estadual)" placeholder="000.000.000" value={form.ie} onChange={(v) => updateField("ie", v)} inputMode="numeric" /><FieldInput label="Propriedade" placeholder="Ex: Fazenda Santa Fé" value={form.propriedade} onChange={(v) => updateField("propriedade", v)} /><FieldInput label="Município (Preenchido pelo GPS ou Base)" placeholder="Ex: Goiânia" value={form.municipio} onChange={(v) => updateField("municipio", v)} icon={<MapPin className="w-4 h-4 text-primary" />} /><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Possui CAR?</Label><div className="flex gap-4"><button type="button" onClick={() => updateField("car", "SIM")} className={`flex-1 py-4 rounded-xl font-bold text-base transition-all border-2 ${form.car.toUpperCase() === "SIM" ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>SIM</button><button type="button" onClick={() => updateField("car", "NAO")} className={`flex-1 py-4 rounded-xl font-bold text-base transition-all border-2 ${form.car.toUpperCase() === "NAO" ? "bg-red-600 border-red-600 text-white shadow-md" : "bg-red-50 border-red-200 text-red-500 hover:bg-red-100"}`}>NÃO</button></div></div><FieldInput label="Telefone" placeholder="(62) 99999-0000" type="tel" value={form.telefone} onChange={(v) => updateField("telefone", v)} icon={<Phone className="w-4 h-4" />} /><FieldInput label="Melhor dia de contato" placeholder="Ex: Segunda-feira" value={form.melhorDiaContato} onChange={(v) => updateField("melhorDiaContato", v)} /><div className="border-t border-slate-100 pt-4 mt-4 space-y-4"><h3 className="text-xs font-bold text-slate-400 uppercase">Informações do Contato no Local</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FieldInput label="Nome de quem recebeu a visita" placeholder="Ex: José Silva" value={form.nomeRecebedor} onChange={(v) => updateField("nomeRecebedor", v)} icon={<User className="w-4 h-4" />} /><FieldInput label="Cargo do Recebedor" placeholder="Ex: Gerente, Capataz" value={form.cargoRecebedor} onChange={(v) => updateField("cargoRecebedor", v)} /></div></div></CardContent></Card>
+                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><Landmark className="w-4 h-4 text-primary" /> B. Detalhes Comerciais e Atividade</CardTitle></CardHeader><CardContent className="space-y-6"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FieldInput label="Frigorífico que costuma abater" placeholder="Ex: JBS, Minerva..." value={form.frigorificoCostume} onChange={(v) => updateField("frigorificoCostume", v)} /><FieldInput label="Qtd. cabeças abatidas (último ano)" type="number" placeholder="Ex: 500" value={form.cabecasAbatidasAno} onChange={(v) => updateField("cabecasAbatidasAno", v)} /></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Venda</Label><div className="flex gap-2">{["DIRETO", "CONTRATO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoVenda", t)} className={getToggleClass(form.tipoVenda, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Atividade</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CRIA", "RECRIA", "ENGORDA", "CICLO COMPLETO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoAtividade", t)} className={getToggleClass(form.tipoAtividade, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Terminação</Label><div className="grid grid-cols-3 gap-2">{["CONFINADO", "SEMI-CONF.", "PASTO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoTerminacao", t)} className={getToggleClass(form.tipoTerminacao, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Habilitação</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CHINA", "EUROPA", "MI", "OUTROS"].map((t) => (<button key={t} type="button" onClick={() => updateField("habilitacao", t)} className={getToggleClass(form.habilitacao, t)}>{t}</button>))}</div></div></CardContent></Card>
+                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> C. Rebanho e Fechamento</CardTitle></CardHeader><CardContent className="space-y-6"><FieldInput label="Nº de Animais na Propriedade (Efetivo Total)" type="number" placeholder="Ex: 1500" value={form.numAnimais} onChange={(v) => updateField("numAnimais", v)} /><div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200"><Label className="text-xs font-bold text-slate-500 uppercase block mb-3">Disponibilidade p/ Abate</Label><div className="space-y-3"><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp30Dias", !form.disp30Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp30Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>30 Dias {form.disp30Dias && "✓"}</button>{form.disp30Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd30Dias} onChange={(e) => updateField("qtd30Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo30Dias} onChange={(e) => updateField("sexo30Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status30Dias} onChange={(e) => updateField("status30Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp60Dias", !form.disp60Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp60Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>60 Dias {form.disp60Dias && "✓"}</button>{form.disp60Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd60Dias} onChange={(e) => updateField("qtd60Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo60Dias} onChange={(e) => updateField("sexo60Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status60Dias} onChange={(e) => updateField("status60Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp90Dias", !form.disp90Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp90Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>90 Dias {form.disp90Dias && "✓"}</button>{form.disp90Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd90Dias} onChange={(e) => updateField("qtd90Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo90Dias} onChange={(e) => updateField("sexo90Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status90Dias} onChange={(e) => updateField("status90Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div></div></div><div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4"><FieldInput label="Data da Visita" type="date" value={form.dataVisita} onChange={(v) => updateField("dataVisita", v)} /><div className="space-y-1.5 opacity-70"><Label className="text-xs font-bold text-slate-500 uppercase">Visitante</Label><Input disabled value={form.visitante} className="h-12 bg-slate-100 font-bold uppercase" /></div></div><FieldInput label="Produtor / Recebedor (Assinatura digital)" placeholder="Digite o nome para assinar" value={form.produtorAssinatura} onChange={(v) => updateField("produtorAssinatura", v)} className="border-b-2 border-t-0 border-x-0 border-slate-300 rounded-none bg-transparent text-center font-serif text-lg italic mt-2 uppercase" /></CardContent></Card>
+                <Button className="w-full h-14 text-lg font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg mt-4" onClick={handleSave} disabled={saving}>{saving ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> SINCRONIZANDO...</> : "SALVAR VISITA E SINCRONIZAR"}</Button>
               </div>
             )}
           </div>
-
-          {/* LADO DIREITO: MAPA AO VIVO */}
-          <div className="order-1 lg:order-2 h-[400px] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-8 w-full rounded-2xl overflow-hidden border-2 border-primary/20 shadow-xl z-0">
-            {typeof window !== "undefined" && (
-              <MapContainer
-                center={EMPRESA_COORDS} 
-                zoom={7}
-                style={{ height: "100%", width: "100%", zIndex: 1 }}
-                scrollWheelZoom={true}
-              >
-                <RouteMapController routePath={routePath} />
-                <TileLayer
-                  attribution='&copy; OpenStreetMap'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-
-                <CircleMarker center={EMPRESA_COORDS} radius={8} fillColor="#dc2626" color="#7f1d1d" weight={2} fillOpacity={1}>
-                  <Tooltip direction="top" className="font-bold text-red-700" permanent={!userLocation}>Sede Beauvallet (Inhumas)</Tooltip>
-                </CircleMarker>
-
-                {userLocation && (
-                  <>
-                    <CircleMarker center={userLocation} radius={8} fillColor="#2563eb" color="#1e3a8a" weight={2} fillOpacity={1}>
-                      <Tooltip direction="top" className="font-bold text-blue-700" permanent>Sua Posição (Fazenda)</Tooltip>
-                    </CircleMarker>
-                    
-                    {routePath.length > 0 && (
-                      <Polyline positions={routePath} color="#3b82f6" weight={5} dashArray="15, 15" opacity={0.8} />
-                    )}
-                  </>
-                )}
-              </MapContainer>
-            )}
-            
-            {!userLocation && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg border border-slate-200 z-[1000] pointer-events-none">
-                <p className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-red-600" /> Sede em Inhumas-GO. Inicie uma visita para ligar o GPS.
-                </p>
-              </div>
-            )}
-          </div>
+          <div className="order-1 lg:order-2 h-[400px] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-8 w-full rounded-2xl overflow-hidden border-2 border-primary/20 shadow-xl z-0">{typeof window !== "undefined" && (<MapContainer center={EMPRESA_COORDS} zoom={7} style={{ height: "100%", width: "100%", zIndex: 1 }}><RouteMapController routePath={routePath} /><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><CircleMarker center={EMPRESA_COORDS} radius={8} fillColor="#dc2626" color="#7f1d1d" weight={2} fillOpacity={1}><Tooltip direction="top" className="font-bold text-red-700" permanent={!userLocation}>Sede Beauvallet (Inhumas)</Tooltip></CircleMarker>{userLocation && (<><CircleMarker center={userLocation} radius={8} fillColor="#2563eb" color="#1e3a8a" weight={2} fillOpacity={1}><Tooltip direction="top" className="font-bold text-blue-700" permanent>Sua Posição (Fazenda)</Tooltip></CircleMarker>{routePath.length > 0 && (<Polyline positions={routePath} color="#3b82f6" weight={5} dashArray="15, 15" opacity={0.8} />)}</>)}</MapContainer>)}{!userLocation && (<div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg border border-slate-200 z-[1000] pointer-events-none"><p className="text-xs font-bold text-slate-700 flex items-center gap-2"><Building2 className="w-4 h-4 text-red-600" /> Sede em Inhumas-GO. Inicie uma visita para ligar o GPS.</p></div>)}</div>
         </div>
 
-        {/* MODAL DE BUSCA COM A TABELA */}
         {isSearchModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">
               <CardHeader className="border-b bg-surface pb-4 shrink-0 rounded-t-lg">
                 <div className="flex justify-between items-center mb-4">
                   <CardTitle className="text-lg font-bold flex items-center gap-2 text-primary">
-                    <Search className="w-5 h-5" />
-                    Buscar Pecuarista
+                    <Search className="w-5 h-5" /> Buscar Pecuarista
                   </CardTitle>
                   <button onClick={() => setIsSearchModalOpen(false)} className="p-2 hover:bg-muted rounded-full transition-colors">
                     <X className="w-5 h-5 text-muted-foreground" />
@@ -576,27 +604,54 @@ export function FieldVisit() {
                   <TableBody>
                     {filteredRanchers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3} className="text-center py-10 text-muted-foreground">Nenhum registro encontrado para "{modalSearchTerm}".</TableCell>
+                        <TableCell colSpan={3} className="text-center py-10 text-muted-foreground">Nenhum registro encontrado.</TableCell>
                       </TableRow>
                     ) : (
-                      filteredRanchers.map((r) => (
-                        <TableRow key={r.id} className="hover:bg-accent/5">
-                          <TableCell className="py-3">
-                            <p className="font-bold text-sm text-foreground">{r.nome}</p>
-                            <p className="text-[10px] text-muted-foreground">IE: {r.ie}</p>
-                          </TableCell>
-                          <TableCell className="py-3">
-                            <p className="text-xs font-medium text-foreground">{r.propriedade}</p>
-                            <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5"><MapPin className="w-3 h-3" /> {r.municipio}</div>
-                          </TableCell>
-                          <TableCell className="text-right py-3">
-                           <Button size="sm" className="text-[10px] h-8 bg-primary text-primary-foreground hover:bg-primary/90 font-bold tracking-wider" onClick={() => selectRancher(r)}>SELECIONAR</Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      filteredRanchers.map((r, index) => {
+                        const uniqueKey = `${r.COD_PRODUTOR}-${r.INSCRICAO || 'sn'}-${r.NOME_FAZENDA}-${r.MUNICIPIO}-${index}`;
+                        
+                        return (
+                          <TableRow key={uniqueKey} className="hover:bg-accent/5 cursor-pointer" onClick={() => selectRancher(r)}>
+                            <TableCell className="py-3">
+                              <p className="font-bold text-sm text-foreground">{r.NOME_PRODUTOR}</p>
+                              <p className="text-[10px] text-muted-foreground">IE: {r.INSCRICAO}</p>
+                            </TableCell>
+                            <TableCell className="py-3">
+                              <p className="text-xs font-medium text-foreground">{r.NOME_FAZENDA}</p>
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5"><MapPin className="w-3 h-3" /> {r.MUNICIPIO}</div>
+                            </TableCell>
+                            <TableCell className="text-right py-3">
+                             <Button size="sm" className="text-[10px] h-8 bg-primary text-primary-foreground hover:bg-primary/90 font-bold tracking-wider">SELECIONAR</Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {alertModal && alertModal.isOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-0">
+              <div className={`h-2 w-full ${alertModal.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />
+              <CardHeader className="text-center pt-8 pb-2">
+                <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${alertModal.type === 'success' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                  {alertModal.type === 'success' ? <CheckCircle2 className="w-8 h-8" /> : <AlertCircle className="w-8 h-8" />}
+                </div>
+                <CardTitle className="text-2xl font-bold text-slate-800">{alertModal.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-center pb-8 px-8">
+                <p className="text-slate-600 font-medium leading-relaxed mb-8">{alertModal.message}</p>
+                <Button 
+                  className={`w-full h-14 text-lg font-bold shadow-md ${alertModal.type === 'success' ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+                  onClick={() => setAlertModal(null)}
+                >
+                  OK, ENTENDIDO
+                </Button>
               </CardContent>
             </Card>
           </div>
@@ -612,7 +667,7 @@ function FieldInput({ label, icon, className, value, onChange, ...props }: { lab
       <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">{label}</Label>
       <div className="relative">
         {icon && <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>}
-        <Input {...props} value={value} onChange={(e) => onChange?.(e.target.value)} className={`h-12 bg-white border-slate-200 focus:border-primary focus:ring-1 focus:ring-primary ${icon ? "pl-10" : ""} ${className || ""}`} />
+        <Input {...props} value={value} onChange={(e) => onChange?.(e.target.value)} className={`h-12 bg-white border-slate-200 focus:border-primary focus:ring-1 focus:ring-primary uppercase ${icon ? "pl-10" : ""} ${className || ""}`} />
       </div>
     </div>
   );
