@@ -5,12 +5,17 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+
+// Importando suas páginas
 import Index from "./pages/Index";
 import FieldPage from "./pages/FieldPage";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import Pecuaristas from "./pages/Visitas";
 import Agendamento from "./pages/Agendamento"; 
+
+// 1. IMPORTA O SEU COMPONENTE GUARDIÃO
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -30,12 +35,17 @@ function ProtectedLayout() {
           <main className="flex-1">
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              
+              {/* 🟢 ROTAS GERAIS: Tanto ADMIN quanto COMPRADOR podem acessar */}
               <Route path="/dashboard" element={<Index />} />
               <Route path="/campo" element={<FieldPage />} />
-              
-              {/* 2. ADICIONAR A NOVA ROTA AQUI: */}
               <Route path="/visitas" element={<Pecuaristas />} />
-              <Route path="/agendamento" element={<Agendamento />} />
+              
+              {/* 🔴 ROTAS RESTRITAS: O que estiver aqui dentro, SOMENTE ADMIN acessa */}
+              <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
+                {/* 👇 A mágica acontece aqui: Movemos o agendamento pra dentro deste bloco! */}
+                <Route path="/agendamento" element={<Agendamento />} />
+              </Route>
               
               <Route path="*" element={<NotFound />} />
             </Routes>

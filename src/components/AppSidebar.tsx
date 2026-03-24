@@ -16,9 +16,10 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
+// 1. Adicionamos a flag opcional "adminOnly" nas rotas restritas
 const items = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Agendamentos", url: "/agendamento", icon: CalendarPlus },
+  { title: "Agendamentos", url: "/agendamento", icon: CalendarPlus, adminOnly: true }, // <-- BLOQUEADO SÓ PARA ADMIN
   { title: "Campo", url: "/campo", icon: MapPin },
   { title: "Visitas", url: "/visitas", icon: Users },
 ];
@@ -29,6 +30,15 @@ export function AppSidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
 
+  // 2. Filtramos a lista de menus ANTES de renderizar na tela
+  // Se o menu for "adminOnly" e o cara NÃO for ADMIN, a gente esconde.
+  const filteredItems = items.filter((item) => {
+    if (item.adminOnly && user?.role !== "ADMIN") {
+      return false; 
+    }
+    return true; 
+  });
+
   return (
     <Sidebar collapsible="icon">
       <SidebarContent>
@@ -38,7 +48,8 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
+              {/* 3. Mapeamos apenas os itens filtrados */}
+              {filteredItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink
@@ -57,20 +68,27 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-2">
+      
+      <SidebarFooter className="p-2 border-t border-border/50">
         {!collapsed && user && (
-          <div className="text-xs text-sidebar-foreground/70 px-2 mb-1 truncate">
-            {user.name}
+          <div className="px-3 mb-2 mt-1">
+            <div className="text-sm font-bold text-sidebar-foreground truncate">
+              {user.name}
+            </div>
+            {/* Mostra a Role (cargo) do cara bem pequenininho */}
+            <div className="text-[10px] font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
+              Perfil: {user.role}
+            </div>
           </div>
         )}
         <Button
           variant="ghost"
           size="sm"
           onClick={logout}
-          className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+          className="w-full justify-start text-sidebar-foreground/70 hover:text-red-600 hover:bg-red-100"
         >
           <LogOut className="h-4 w-4 mr-2" />
-          {!collapsed && "Sair"}
+          {!collapsed && "Sair do Sistema"}
         </Button>
       </SidebarFooter>
     </Sidebar>

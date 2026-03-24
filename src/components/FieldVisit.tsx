@@ -28,9 +28,11 @@ import {
   Plus,
   Building2,
   Calendar as CalendarIcon,
-  AlertCircle
+  AlertCircle,
+  MapPinOff,
+  RefreshCw
 } from "lucide-react";
-import { api, fetchPecuaristasAgendamento, fetchAgendamentosPendentes, type ApiRancher, type ApiAgendamento } from "@/services/api";
+import { api, fetchPecuaristasAgendamento, fetchAgendamentosPendentes, type ApiRancher, type ApiAgendamento, type ApiUsuario } from "@/services/api";
 
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -101,14 +103,6 @@ const mapCityToRegion = (city: string): string => {
   return cityToRegionMap[c] || "OUTROS"; 
 };
 
-// TRADUTOR DE ID PARA NOME DO COMPRADOR
-const getNomeComprador = (id?: number) => {
-  if (id === 1) return "LEANDRO";
-  if (id === 2) return "RENATO";
-  if (id === 3) return "YURI JUBE";
-  return "COMPRADOR";
-};
-
 const emptyForm = (today: string,  userName : string): FormData => ({
   id_agendamento: "", cod_produtor: "",
   nome: "", ie: "", propriedade: "", car: "SIM", municipio: "", telefone: "",
@@ -146,6 +140,11 @@ export function FieldVisit() {
   
   const [routePath, setRoutePath] = useState<[number, number][]>([]);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  
+  // 👇 NOVO ESTADO: Controla se a localização obtida é a real do GPS ou a fake de Goiânia
+  const [isRealLocation, setIsRealLocation] = useState<boolean>(false);
+  // 👇 NOVO ESTADO: Modal de confirmação caso o cara tente salvar com GPS falso
+  const [confirmSaveModal, setConfirmSaveModal] = useState<boolean>(false);
 
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState<FormData>(emptyForm(today, userName));
@@ -163,6 +162,7 @@ export function FieldVisit() {
 
   const [apiRanchers, setApiRanchers] = useState<ApiRancher[]>([]);
   const [agendamentosPendentes, setAgendamentosPendentes] = useState<ApiAgendamento[]>([]);
+  const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]);
   const [isLoadingApi, setIsLoadingApi] = useState(false);
 
   const [alertModal, setAlertModal] = useState<{
@@ -178,12 +178,16 @@ export function FieldVisit() {
     const loadApiData = async () => {
       setIsLoadingApi(true);
       try {
-        const agendamentosData = await fetchAgendamentosPendentes();
+        const [agendamentosData, ranchersData, usersData] = await Promise.all([
+          fetchAgendamentosPendentes(),
+          fetchPecuaristasAgendamento(),
+          api.getUsuarios()
+        ]);
+        
         const pendentes = agendamentosData.filter(ag => (ag.STATUS_AGENDAMENTO || "").toLowerCase() === 'pendente');
         setAgendamentosPendentes(pendentes);
-
-        const ranchersData = await fetchPecuaristasAgendamento();
         setApiRanchers(ranchersData);
+        setUsuariosData(usersData);
 
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
@@ -192,6 +196,12 @@ export function FieldVisit() {
     };
     loadApiData();
   }, []);
+
+  const getNomeComprador = (id?: number) => {
+    if (!id) return "NÃO DEFINIDO";
+    const usuario = usuariosData.find(u => Number(u.SEQUSUARIO) === Number(id));
+    return usuario ? usuario.CODUSUARIO : `ID: ${id}`;
+  };
 
   const filteredRanchers = useMemo(() => {
     const term = modalSearchTerm.toLowerCase();
@@ -206,11 +216,14 @@ export function FieldVisit() {
 
   const filteredAgendamentos = useMemo(() => {
     return agendamentosPendentes.filter(ag => {
+      if (user?.role !== "ADMIN" && String(ag.ID_COMPRADOR) !== String(user?.id)) {
+        return false;
+      }
       if (!ag.DATA_AGENDADA) return false;
       const dataStr = ag.DATA_AGENDADA.split("T")[0];
       return dataStr >= dateStart && dataStr <= dateEnd;
     });
-  }, [dateStart, dateEnd, agendamentosPendentes]);
+  }, [dateStart, dateEnd, agendamentosPendentes, user?.id, user?.role]);
 
   const fetchCityName = async (lat: number, lng: number) => {
     try {
@@ -221,7 +234,9 @@ export function FieldVisit() {
     } catch (error) { }
   };
 
+  // 👇 FALLBACK AGORA SETA isRealLocation = FALSE
   const executeFallbackLocation = async (callback: () => void) => {
+    setIsRealLocation(false); // <--- MÁGICA 1
     const fallbackLat = -16.6868;
     const fallbackLng = -49.2643;
     setUserLocation([fallbackLat, fallbackLng]);
@@ -242,10 +257,12 @@ export function FieldVisit() {
     callback();
   };
 
+  // 👇 SUCESSO AGORA SETA isRealLocation = TRUE
   const fetchRealRouteAndLocation = (callback: () => void) => {
     if (!navigator.geolocation) return executeFallbackLocation(callback);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
+        setIsRealLocation(true); // <--- MÁGICA 2
         const { latitude, longitude } = position.coords;
         setUserLocation([latitude, longitude]);
         fetchCityName(latitude, longitude);
@@ -270,6 +287,12 @@ export function FieldVisit() {
       () => executeFallbackLocation(callback),
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 10000 } 
     );
+  };
+
+  // 👇 FUNÇÃO PARA O BOTÃO "TENTAR NOVAMENTE"
+  const retryLocation = () => {
+    setStep("routing");
+    fetchRealRouteAndLocation(() => setStep("form"));
   };
 
   const startScheduledVisit = (ag: ApiAgendamento) => {
@@ -342,7 +365,7 @@ export function FieldVisit() {
   const updateField = (key: keyof FormData, value: any) => setForm(prev => ({ ...prev, [key]: value }));
   const formatToUpper = (val: any) => (val === null || val === undefined) ? "" : typeof val === 'string' ? val.trim().toUpperCase() : val;
 
-  const handleSave = async () => {
+  const validateAndProceed = () => {
     const camposObrigatorios: { key: keyof FormData, label: string }[] = [
       { key: "nome", label: "Nome do Produtor" }, { key: "propriedade", label: "Propriedade" },
       { key: "telefone", label: "Telefone" }, { key: "melhorDiaContato", label: "Melhor dia de contato" },
@@ -378,6 +401,18 @@ export function FieldVisit() {
       return;
     }
 
+    // 👇 SE CHEGOU AQUI E O GPS É FALSO, MOSTRA O MODAL DE CONFIRMAÇÃO
+    if (!isRealLocation) {
+      setConfirmSaveModal(true);
+      return;
+    }
+
+    // SE O GPS É REAL, SALVA DIRETO
+    executeSavePayload();
+  };
+
+  const executeSavePayload = async () => {
+    setConfirmSaveModal(false);
     setSaving(true);
     const lotes = [];
     if (form.disp30Dias) lotes.push({ prazo_dias: 30, quantidade_cabecas: form.qtd30Dias || 0, sexo_animal: formatToUpper(form.sexo30Dias), status_lote: formatToUpper(form.status30Dias) });
@@ -414,8 +449,14 @@ export function FieldVisit() {
       disp30Dias: form.disp30Dias, qtd30Dias: form.qtd30Dias, sexo30Dias: formatToUpper(form.sexo30Dias), status30Dias: formatToUpper(form.status30Dias),
       disp60Dias: form.disp60Dias, qtd60Dias: form.qtd60Dias, sexo60Dias: formatToUpper(form.sexo60Dias), status60Dias: formatToUpper(form.status60Dias),
       disp90Dias: form.disp90Dias, qtd90Dias: form.qtd90Dias, sexo90Dias: formatToUpper(form.sexo90Dias), status90Dias: formatToUpper(form.status90Dias),
-      gps_latitude: userLocation ? userLocation[0] : null, gps_longitude: userLocation ? userLocation[1] : null,
-      distancia_percorrida_real: distance ? parseFloat(distance.replace(" km", "")) : 0, id_comprador: (user as any)?.id || 1, lotes
+      
+      // Manda a Latitude/Longitude (seja a real ou a simulada)
+      gps_latitude: userLocation ? userLocation[0] : null, 
+      gps_longitude: userLocation ? userLocation[1] : null,
+      distancia_percorrida_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 
+      distancia_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 
+      id_comprador: (user as any)?.id || 1, 
+      lotes
     };
 
     try {
@@ -423,6 +464,7 @@ export function FieldVisit() {
       if (result.success) {
         setAlertModal({ isOpen: true, type: "success", title: "Sucesso!", message: "A visita foi salva e sincronizada com o banco de dados." });
         setStep("idle"); setDistance(null); setRoutePath([]); setUserLocation(null); setForm(emptyForm(today, userName)); setSelectedRancher(null); setIsManual(false);
+        setIsRealLocation(false);
         setAgendamentosPendentes(prev => prev.filter(ag => String(ag.ID_AGENDAMENTO) !== String(form.id_agendamento)));
       } else {
         setAlertModal({ isOpen: true, type: "error", title: "Erro na Sincronização", message: "Ocorreu um problema ao enviar para o banco de dados. A visita NÃO foi salva." });
@@ -524,7 +566,33 @@ export function FieldVisit() {
 
             {step === "form" && (
               <div className="space-y-5 animate-fade-in">
-                <div className="flex items-center justify-between pb-2"><h2 className="text-lg font-bold text-primary flex items-center gap-2"><FileText className="w-5 h-5" /> Checklist de Campo</h2><Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => { setStep("idle"); setRoutePath([]); setUserLocation(null); }}><X className="w-4 h-4 mr-1" /> Cancelar</Button></div>
+                
+                {/* 👇 AVISO DE GPS AQUI NO TOPO */}
+                {isRealLocation ? (
+                  <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center gap-3 shadow-sm animate-in fade-in">
+                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                    <div>
+                      <p className="text-sm font-bold">Localização Coletada com Sucesso!</p>
+                      <p className="text-xs opacity-80">Sua posição GPS real está sendo usada no relatório.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-red-50 border border-red-200 px-4 py-3 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-in fade-in">
+                    <div className="flex items-center gap-3 text-red-700">
+                      <MapPinOff className="w-5 h-5 text-red-600" />
+                      <div>
+                        <p className="text-sm font-bold">GPS Não Coletado</p>
+                        <p className="text-[11px] opacity-80 leading-tight mt-0.5">O navegador bloqueou ou não achou o sinal. O mapa está usando uma simulação (Goiânia).</p>
+                      </div>
+                    </div>
+                    <Button size="sm" variant="destructive" className="shrink-0 h-8 font-bold shadow-sm" onClick={retryLocation}>
+                      <RefreshCw className="w-3.5 h-3.5 mr-2" /> TENTAR GPS DE NOVO
+                    </Button>
+                  </div>
+                )}
+                {/* 👆 FIM DO AVISO */}
+
+                <div className="flex items-center justify-between pb-2"><h2 className="text-lg font-bold text-primary flex items-center gap-2"><FileText className="w-5 h-5" /> Checklist de Campo</h2><Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => { setStep("idle"); setRoutePath([]); setUserLocation(null); setIsRealLocation(false); }}><X className="w-4 h-4 mr-1" /> Cancelar</Button></div>
                 <Card className="border-2 border-primary/20 shadow-sm"><CardContent className="pt-4 pb-4"><div className="flex justify-between items-center mb-3"><span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Trajeto Calculado (GPS)</span><span className="text-sm font-bold text-primary tabular-nums">{distance || "Calculando..."}</span></div><div className="h-24 bg-slate-50 rounded-lg flex items-center justify-center border border-dashed border-slate-300 relative overflow-hidden"><div className="relative w-full px-12"><div className="h-0.5 bg-primary/30 w-full" /><div className="absolute left-10 -top-2.5 flex flex-col items-center"><MapPin className="w-5 h-5 text-slate-400" /><span className="text-[9px] font-semibold text-slate-500 mt-0.5">Sede (Inhumas)</span></div><div className="absolute right-10 -top-2.5 flex flex-col items-center"><Navigation className="w-5 h-5 text-primary" /><span className="text-[9px] font-semibold text-primary mt-0.5">Local Atual</span></div></div></div></CardContent></Card>
                 <Card className="border-2 border-slate-200 shadow-sm">
                   <CardHeader className="pb-3 bg-slate-50 border-b flex flex-row justify-between items-center"><CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2"><User className="w-4 h-4" /> Identificação e Tipo de Visita</CardTitle></CardHeader>
@@ -567,11 +635,11 @@ export function FieldVisit() {
                 <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><FileText className="w-4 h-4 text-primary" /> A. Dados da Propriedade e Contato</CardTitle></CardHeader><CardContent className="space-y-4"><FieldInput label="Nome do Produtor" placeholder="Nome do proprietário/empresa" value={form.nome} onChange={(v) => updateField("nome", v)} /><FieldInput label="I.E. (Inscrição Estadual)" placeholder="000.000.000" value={form.ie} onChange={(v) => updateField("ie", v)} inputMode="numeric" /><FieldInput label="Propriedade" placeholder="Ex: Fazenda Santa Fé" value={form.propriedade} onChange={(v) => updateField("propriedade", v)} /><FieldInput label="Município (Preenchido pelo GPS ou Base)" placeholder="Ex: Goiânia" value={form.municipio} onChange={(v) => updateField("municipio", v)} icon={<MapPin className="w-4 h-4 text-primary" />} /><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Possui CAR?</Label><div className="flex gap-4"><button type="button" onClick={() => updateField("car", "SIM")} className={`flex-1 py-4 rounded-xl font-bold text-base transition-all border-2 ${form.car.toUpperCase() === "SIM" ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>SIM</button><button type="button" onClick={() => updateField("car", "NAO")} className={`flex-1 py-4 rounded-xl font-bold text-base transition-all border-2 ${form.car.toUpperCase() === "NAO" ? "bg-red-600 border-red-600 text-white shadow-md" : "bg-red-50 border-red-200 text-red-500 hover:bg-red-100"}`}>NÃO</button></div></div><FieldInput label="Telefone" placeholder="(62) 99999-0000" type="tel" value={form.telefone} onChange={(v) => updateField("telefone", v)} icon={<Phone className="w-4 h-4" />} /><FieldInput label="Melhor dia de contato" placeholder="Ex: Segunda-feira" value={form.melhorDiaContato} onChange={(v) => updateField("melhorDiaContato", v)} /><div className="border-t border-slate-100 pt-4 mt-4 space-y-4"><h3 className="text-xs font-bold text-slate-400 uppercase">Informações do Contato no Local</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FieldInput label="Nome de quem recebeu a visita" placeholder="Ex: José Silva" value={form.nomeRecebedor} onChange={(v) => updateField("nomeRecebedor", v)} icon={<User className="w-4 h-4" />} /><FieldInput label="Cargo do Recebedor" placeholder="Ex: Gerente, Capataz" value={form.cargoRecebedor} onChange={(v) => updateField("cargoRecebedor", v)} /></div></div></CardContent></Card>
                 <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><Landmark className="w-4 h-4 text-primary" /> B. Detalhes Comerciais e Atividade</CardTitle></CardHeader><CardContent className="space-y-6"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FieldInput label="Frigorífico que costuma abater" placeholder="Ex: JBS, Minerva..." value={form.frigorificoCostume} onChange={(v) => updateField("frigorificoCostume", v)} /><FieldInput label="Qtd. cabeças abatidas (último ano)" type="number" placeholder="Ex: 500" value={form.cabecasAbatidasAno} onChange={(v) => updateField("cabecasAbatidasAno", v)} /></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Venda</Label><div className="flex gap-2">{["DIRETO", "CONTRATO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoVenda", t)} className={getToggleClass(form.tipoVenda, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Atividade</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CRIA", "RECRIA", "ENGORDA", "CICLO COMPLETO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoAtividade", t)} className={getToggleClass(form.tipoAtividade, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Terminação</Label><div className="grid grid-cols-3 gap-2">{["CONFINADO", "SEMI-CONF.", "PASTO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoTerminacao", t)} className={getToggleClass(form.tipoTerminacao, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Habilitação</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CHINA", "EUROPA", "MI", "OUTROS"].map((t) => (<button key={t} type="button" onClick={() => updateField("habilitacao", t)} className={getToggleClass(form.habilitacao, t)}>{t}</button>))}</div></div></CardContent></Card>
                 <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> C. Rebanho e Fechamento</CardTitle></CardHeader><CardContent className="space-y-6"><FieldInput label="Nº de Animais na Propriedade (Efetivo Total)" type="number" placeholder="Ex: 1500" value={form.numAnimais} onChange={(v) => updateField("numAnimais", v)} /><div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200"><Label className="text-xs font-bold text-slate-500 uppercase block mb-3">Disponibilidade p/ Abate</Label><div className="space-y-3"><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp30Dias", !form.disp30Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp30Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>30 Dias {form.disp30Dias && "✓"}</button>{form.disp30Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd30Dias} onChange={(e) => updateField("qtd30Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo30Dias} onChange={(e) => updateField("sexo30Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status30Dias} onChange={(e) => updateField("status30Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp60Dias", !form.disp60Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp60Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>60 Dias {form.disp60Dias && "✓"}</button>{form.disp60Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd60Dias} onChange={(e) => updateField("qtd60Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo60Dias} onChange={(e) => updateField("sexo60Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status60Dias} onChange={(e) => updateField("status60Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp90Dias", !form.disp90Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp90Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>90 Dias {form.disp90Dias && "✓"}</button>{form.disp90Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd90Dias} onChange={(e) => updateField("qtd90Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo90Dias} onChange={(e) => updateField("sexo90Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status90Dias} onChange={(e) => updateField("status90Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div></div></div><div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4"><FieldInput label="Data da Visita" type="date" value={form.dataVisita} onChange={(v) => updateField("dataVisita", v)} /><div className="space-y-1.5 opacity-70"><Label className="text-xs font-bold text-slate-500 uppercase">Visitante</Label><Input disabled value={form.visitante} className="h-12 bg-slate-100 font-bold uppercase" /></div></div><FieldInput label="Produtor / Recebedor (Assinatura digital)" placeholder="Digite o nome para assinar" value={form.produtorAssinatura} onChange={(v) => updateField("produtorAssinatura", v)} className="border-b-2 border-t-0 border-x-0 border-slate-300 rounded-none bg-transparent text-center font-serif text-lg italic mt-2 uppercase" /></CardContent></Card>
-                <Button className="w-full h-14 text-lg font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg mt-4" onClick={handleSave} disabled={saving}>{saving ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> SINCRONIZANDO...</> : "SALVAR VISITA E SINCRONIZAR"}</Button>
+                <Button className="w-full h-14 text-lg font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg mt-4" onClick={validateAndProceed} disabled={saving}>{saving ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> SINCRONIZANDO...</> : "SALVAR VISITA E SINCRONIZAR"}</Button>
               </div>
             )}
           </div>
-          <div className="order-1 lg:order-2 h-[400px] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-8 w-full rounded-2xl overflow-hidden border-2 border-primary/20 shadow-xl z-0">{typeof window !== "undefined" && (<MapContainer center={EMPRESA_COORDS} zoom={7} style={{ height: "100%", width: "100%", zIndex: 1 }}><RouteMapController routePath={routePath} /><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><CircleMarker center={EMPRESA_COORDS} radius={8} fillColor="#dc2626" color="#7f1d1d" weight={2} fillOpacity={1}><Tooltip direction="top" className="font-bold text-red-700" permanent={!userLocation}>Sede Beauvallet (Inhumas)</Tooltip></CircleMarker>{userLocation && (<><CircleMarker center={userLocation} radius={8} fillColor="#2563eb" color="#1e3a8a" weight={2} fillOpacity={1}><Tooltip direction="top" className="font-bold text-blue-700" permanent>Sua Posição (Fazenda)</Tooltip></CircleMarker>{routePath.length > 0 && (<Polyline positions={routePath} color="#3b82f6" weight={5} dashArray="15, 15" opacity={0.8} />)}</>)}</MapContainer>)}{!userLocation && (<div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg border border-slate-200 z-[1000] pointer-events-none"><p className="text-xs font-bold text-slate-700 flex items-center gap-2"><Building2 className="w-4 h-4 text-red-600" /> Sede em Inhumas-GO. Inicie uma visita para ligar o GPS.</p></div>)}</div>
+          <div className="order-1 lg:order-2 h-[400px] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-8 w-full rounded-2xl overflow-hidden border-2 border-primary/20 shadow-xl z-0">{typeof window !== "undefined" && (<MapContainer center={EMPRESA_COORDS} zoom={7} style={{ height: "100%", width: "100%", zIndex: 1 }}><RouteMapController routePath={routePath} /><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><CircleMarker center={EMPRESA_COORDS} radius={8} fillColor="#dc2626" color="#7f1d1d" weight={2} fillOpacity={1}><Tooltip direction="top" className="font-bold text-red-700" permanent={!userLocation}>Sede Beauvallet (Inhumas)</Tooltip></CircleMarker>{userLocation && (<><CircleMarker center={userLocation} radius={8} fillColor={isRealLocation ? "#2563eb" : "#94a3b8"} color={isRealLocation ? "#1e3a8a" : "#475569"} weight={2} fillOpacity={1}><Tooltip direction="top" className={`font-bold ${isRealLocation ? 'text-blue-700' : 'text-slate-600'}`} permanent>{isRealLocation ? "Sua Posição (Fazenda)" : "Simulação (Goiânia)"}</Tooltip></CircleMarker>{routePath.length > 0 && (<Polyline positions={routePath} color={isRealLocation ? "#3b82f6" : "#94a3b8"} weight={5} dashArray="15, 15" opacity={0.8} />)}</>)}</MapContainer>)}{!userLocation && (<div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg border border-slate-200 z-[1000] pointer-events-none"><p className="text-xs font-bold text-slate-700 flex items-center gap-2"><Building2 className="w-4 h-4 text-red-600" /> Sede em Inhumas-GO. Inicie uma visita para ligar o GPS.</p></div>)}</div>
         </div>
 
         {isSearchModalOpen && (
@@ -634,6 +702,29 @@ export function FieldVisit() {
           </div>
         )}
 
+        {/* 👇 MODAL DE CONFIRMAÇÃO PARA SALVAR SEM GPS */}
+        {confirmSaveModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-0">
+              <div className="h-2 w-full bg-amber-500" />
+              <CardHeader className="text-center pt-8 pb-2">
+                <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-amber-100 text-amber-600">
+                  <MapPinOff className="w-8 h-8" />
+                </div>
+                <CardTitle className="text-2xl font-bold text-slate-800">Atenção!</CardTitle>
+              </CardHeader>
+              <CardContent className="text-center pb-8 px-8">
+                <p className="text-slate-600 font-medium leading-relaxed mb-8">A localização real do seu dispositivo não foi coletada. Se você salvar agora, o relatório ficará registrado com a localização de simulação (Goiânia). Tem certeza que deseja continuar?</p>
+                <div className="flex gap-3">
+                  <Button variant="outline" className="flex-1 font-bold h-12" onClick={() => setConfirmSaveModal(false)}>VOLTAR</Button>
+                  <Button className="flex-1 font-bold h-12 bg-amber-500 hover:bg-amber-600 text-white" onClick={executeSavePayload}>SIM, SALVAR ASSIM</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* MODAL DE ALERTAS GERAIS */}
         {alertModal && alertModal.isOpen && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-md shadow-2xl overflow-hidden border-0">

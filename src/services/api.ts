@@ -65,7 +65,7 @@ export interface ApiAgendamento {
   JA_VENDEU?: "S" | "N";
 }
 
-// NOVA INTERFACE PARA A CONSULTA DE RELATÓRIO DE VISITAS
+// INTERFACE PARA A CONSULTA DE RELATÓRIO DE VISITAS
 export interface ApiVisita {
   ID_VISITA: number;
   ID_AGENDAMENTO: number | null;
@@ -103,6 +103,12 @@ export interface ApiVisita {
   QTD_90DIAS: number | null;
   SEXO_90DIAS: string | null;
   STATUS_90DIAS: string | null;
+}
+
+// --- NOVA INTERFACE: USUÁRIOS ERP ---
+export interface ApiUsuario {
+  SEQUSUARIO: number;
+  CODUSUARIO: string;
 }
 
 const mockStats: DashboardStats[] = [
@@ -155,7 +161,7 @@ export const fetchAgendamentosPendentes = async (): Promise<ApiAgendamento[]> =>
   }
 };
 
-// --- NOVA FUNÇÃO: CONSULTAR RELATÓRIO DE VISITAS ---
+// --- CONSULTAR RELATÓRIO DE VISITAS ---
 export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA;
   const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
@@ -170,6 +176,23 @@ export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error("Falha API Consulta Relatório de Visitas:", error);
+    return [];
+  }
+};
+
+// --- NOVA FUNÇÃO: CONSULTAR USUÁRIOS ERP ---
+export const fetchUsuarios = async (): Promise<ApiUsuario[]> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_USUARIOS;
+  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
+  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
+  if (!url) return [];
+  try {
+    const response = await fetch(url, { headers: { [headerKey]: token } });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("Falha ao buscar usuários:", error);
     return [];
   }
 };
@@ -205,6 +228,43 @@ export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean }>
   } catch (error) { return { success: false }; }
 };
 
+
+// --- INTERFACE E FUNÇÃO DE LOGIN ---
+export interface LoginResponse {
+  success: boolean;
+  message?: string;
+  user?: {
+    id: string | number;
+    login: string;
+    name: string;
+    role: "ADMIN" | "COMPRADOR";
+  };
+}
+
+export const realizarLogin = async (login: string, senha: string): Promise<LoginResponse> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_LOGIN; 
+  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
+  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
+
+  if (!url) return { success: false, message: "URL de login não configurada no .env" };
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", [headerKey]: token },
+      body: JSON.stringify({ login, senha })
+    });
+    
+    if (!response.ok) {
+      return { success: false, message: "Erro de comunicação com o servidor de autenticação." };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    return { success: false, message: "Sistema indisponível no momento." };
+  }
+};
 export const api = {
   getStats: async (): Promise<DashboardStats[]> => { await delay(800); return mockStats; },
   getRecentVisits: async (): Promise<Visit[]> => { await delay(600); return mockVisits; },
@@ -215,5 +275,7 @@ export const api = {
     return mockRanchers.filter(r => r.nome.toLowerCase().includes(q) || r.propriedade.toLowerCase().includes(q)); 
   },
   getRanchers: async (): Promise<Rancher[]> => { await delay(400); return mockRanchers; },
-  getVisitasConsulta: fetchRelatorioVisitas, // Exportando a função nova
+  getVisitasConsulta: fetchRelatorioVisitas,
+  realizarLogin, 
+  getUsuarios: fetchUsuarios, 
 };

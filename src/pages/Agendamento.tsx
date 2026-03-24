@@ -19,7 +19,7 @@ import {
   Loader2, Sparkles, Trophy, Target, Truck
 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchPecuaristasAgendamento, saveAgendamento, type ApiRancher } from "@/services/api";
+import { api, fetchPecuaristasAgendamento, saveAgendamento, type ApiRancher, type ApiUsuario } from "@/services/api";
 import { calculateScoreVolume, calculateScoreProspeccao, calculateScoreLogistica } from "@/services/pecuaristas";
 
 const formatNumber = (num: number | string) => {
@@ -50,6 +50,7 @@ const getUniqueId = (r: ApiRancher) => `${r.COD_PRODUTOR}-${r.INSCRICAO || 'sn'}
 
 export default function Agendamento() {
   const [apiData, setApiData] = useState<ApiRancher[]>([]);
+  const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]); // <-- NOVO ESTADO
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -70,15 +71,20 @@ export default function Agendamento() {
   const [showAiMenu, setShowAiMenu] = useState<boolean>(false); 
   
   const [scheduleDate, setScheduleDate] = useState("");
-  const [selectedUser, setSelectedUser] = useState("");
+  const [searchUser, setSearchUser] = useState(""); // <-- NOVO ESTADO PARA BUSCA DE USUÁRIO
 
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
-      const data = await fetchPecuaristasAgendamento();
+      
+      // Carrega Pecuaristas E Usuários em paralelo para otimizar tempo
+      const [dataPecuaristas, dataUsuarios] = await Promise.all([
+        fetchPecuaristasAgendamento(),
+        api.getUsuarios()
+      ]);
       
       const uniqueDataMap = new Map();
-      data.forEach(item => {
+      dataPecuaristas.forEach(item => {
         const uid = getUniqueId(item);
         if (!uniqueDataMap.has(uid)) {
           uniqueDataMap.set(uid, item);
@@ -86,6 +92,7 @@ export default function Agendamento() {
       });
       
       setApiData(Array.from(uniqueDataMap.values()));
+      setUsuariosData(dataUsuarios);
       setIsLoading(false);
     };
     loadData();
@@ -164,27 +171,33 @@ export default function Agendamento() {
 
   const selectedRanchersData = useMemo(() => apiData.filter(r => selectedRanchers.includes(getUniqueId(r))), [selectedRanchers, apiData]);
 
-  // LOGICA REAL DE SALVAMENTO COM A NOVA API
+  // LOGICA REAL DE SALVAMENTO
   const handleConfirmSchedule = async () => {
-    if (!scheduleDate || !selectedUser) {
+    if (!scheduleDate || !searchUser) {
       toast.error("Por favor, selecione a data e o comprador responsável.");
       return;
     }
 
-    setIsSaving(true);
+    // Busca o objeto do usuário na lista usando o CODUSUARIO digitado
+    const userObj = usuariosData.find(u => u.CODUSUARIO.toUpperCase() === searchUser.toUpperCase());
     
-    // Mapeamento fictício de ID de comprador. Ajuste conforme os IDs reais do seu banco
-    const compradorId = selectedUser === "Leandro" ? 1 : selectedUser === "Renato" ? 2 : 3;
+    if (!userObj) {
+      toast.error("Usuário não encontrado! Escolha uma opção válida da lista.");
+      return;
+    }
+
+    setIsSaving(true);
+    const compradorId = userObj.SEQUSUARIO; // O ID REAL DO BANCO
+    let salvos = 0;
 
     try {
-      let salvos = 0;
       for (const r of selectedRanchersData) {
         const resultado = await saveAgendamento({
           cod_produtor: r.COD_PRODUTOR,
-          id_comprador: compradorId,
+          id_comprador: compradorId, // <--- ENVIA O SEQUSUARIO
           data_agendada: scheduleDate,
           status_agendamento: "Pendente",
-          inscricao: r.INSCRICAO // <--- ADICIONADO A INSCRIÇÃO AQUI
+          inscricao: r.INSCRICAO
         });
         
         if(!resultado.success) {
@@ -198,7 +211,7 @@ export default function Agendamento() {
       toast.success(`${salvos} visita(s) agendada(s) e gravada(s) no banco com sucesso!`);
       setSelectedRanchers([]);
       setScheduleDate("");
-      setSelectedUser("");
+      setSearchUser("");
       setIsSchedulingMode(false);
       
     } catch (error) {
@@ -224,7 +237,6 @@ export default function Agendamento() {
     return china + naoChina; 
   };
 
-  // --- NOVA FUNÇÃO PARA RENDERIZAR PERCENTUAL DE CHINA/NÃO-CHINA ---
   const renderCompradosDetalhes = (r: ApiRancher) => {
     if (filterHab !== "Todos") return null;
 
@@ -248,7 +260,7 @@ export default function Agendamento() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-surface">
         <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-        <h2 className="text-xl font-bold text-slate-700">Carregando base de pecuaristas...</h2>
+        <h2 className="text-xl font-bold text-slate-700">Carregando base de dados...</h2>
         <p className="text-slate-500">Por favor aguarde um momento.</p>
       </div>
     );
@@ -279,22 +291,30 @@ export default function Agendamento() {
                 <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Data da Visita</Label>
                 <div className="relative">
                   <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input type="date" className="pl-9 h-11" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} disabled={isSaving} />
+                  <Input type="date" className="pl-9 h-11 bg-white" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} disabled={isSaving} />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Comprador Responsável</Label>
                 <div className="relative">
                   <UserSquare2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <select 
-                    className="flex h-11 w-full items-center justify-between rounded-md border border-input bg-transparent px-9 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                    value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}
+                  
+                  {/* NOVO CAMPO NATIVO COM BUSCA E AUTOCOMPLETAR */}
+                  <Input 
+                    list="usuarios-list"
+                    className="pl-9 h-11 bg-white uppercase"
+                    placeholder="Digite para buscar usuário..."
+                    value={searchUser}
+                    onChange={(e) => setSearchUser(e.target.value.toUpperCase())}
                     disabled={isSaving}
-                  >
-                    <option value="" disabled>Selecione um usuário...</option>
-                    <option value="Leandro">Leandro</option>
-                    <option value="Renato">Renato</option>
-                  </select>
+                    autoComplete="off"
+                  />
+                  <datalist id="usuarios-list">
+                    {usuariosData.map(u => (
+                      <option key={u.SEQUSUARIO} value={u.CODUSUARIO} />
+                    ))}
+                  </datalist>
+
                 </div>
               </div>
             </CardContent>
@@ -331,7 +351,10 @@ export default function Agendamento() {
                         </TableCell>
                         <TableCell className="text-sm font-medium">{r.MUNICIPIO}</TableCell>
                         <TableCell className="text-right tabular-nums text-sm font-bold text-blue-700">
-                          {formatNumber(getDisplayQuantidade(r))}
+                          <div className="flex flex-col items-end">
+                            <span className="font-bold text-blue-700 text-base">{formatNumber(getDisplayQuantidade(r))}</span>
+                            {renderCompradosDetalhes(r)}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
