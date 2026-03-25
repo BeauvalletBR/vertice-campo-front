@@ -1,32 +1,33 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
   Users, 
   Building2, 
-  MapPin, 
-  X, 
-  Clock, 
   Maximize2, 
-  Map as MapIcon, 
   Navigation, 
   TrendingUp,
-  Loader2
+  Loader2,
+  X,
+  Clock,
+  MapPin,
+  User
 } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Tipagens
+import { api, type ApiVisita, type ApiUsuario } from "@/services/api";
+
 type Rancher = { id: string; name: string; farm: string; headCount: number };
 type CityData = { city: string; lat: number; lng: number; ranchersCount: number; ranchersList: Rancher[] };
-
-const mapData: CityData[] = [
-  { city: "Goiânia", lat: -16.6868, lng: -49.2643, ranchersCount: 15, ranchersList: [{ id: "1", name: "João Batista", farm: "Fazenda Esperança", headCount: 450 }] },
-  { city: "Rio Verde", lat: -17.7892, lng: -50.9258, ranchersCount: 120, ranchersList: [{ id: "3", name: "Carlos Mendes", farm: "Fazenda Boa Vista", headCount: 1500 }] },
-  { city: "Jussara", lat: -15.8653, lng: -50.8669, ranchersCount: 85, ranchersList: [{ id: "7", name: "Paulo Lima", farm: "Confinamento Jussara", headCount: 2100 }] },
-  { city: "Porangatu", lat: -13.4411, lng: -49.1489, ranchersCount: 85, ranchersList: [{ id: "5", name: "Pedro Henrique", farm: "Estância Norte", headCount: 800 }] },
-  { city: "Cristalina", lat: -16.7686, lng: -47.6136, ranchersCount: 40, ranchersList: [{ id: "6", name: "Lucas Fernandes", farm: "Fazenda Cristal", headCount: 600 }] },
-];
 
 function MapController({ selectedCity }: { selectedCity: CityData | null }) {
   const map = useMap();
@@ -37,13 +38,12 @@ function MapController({ selectedCity }: { selectedCity: CityData | null }) {
   return null;
 }
 
-function MetricCard({ title, value, icon, sub }: { title: string, value: string, icon: React.ReactNode, sub: string }) {
+function MetricCard({ title, value, icon, sub }: { title: string, value: string | number, icon: React.ReactNode, sub: string }) {
   return (
     <Card className="border-none shadow-sm bg-white">
       <CardContent className="p-6">
         <div className="flex items-center justify-between">
           <div className="p-3 bg-slate-50 rounded-xl">{icon}</div>
-          <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-1 rounded">+12%</span>
         </div>
         <div className="mt-4">
           <p className="text-sm text-muted-foreground font-medium">{title}</p>
@@ -58,159 +58,262 @@ function MetricCard({ title, value, icon, sub }: { title: string, value: string,
 export function Dashboard() {
   const [selectedCity, setSelectedCity] = useState<CityData | null>(null);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  
+  const [visitas, setVisitas] = useState<ApiVisita[]>([]);
+  const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // --- ESTADOS PARA DEBUG DE GEOLOCALIZAÇÃO ---
-  const [geoDebugLog, setGeoDebugLog] = useState<string>("Aguardando ação...\nClique no botão acima para iniciar o teste de GPS.");
-  const [isLocating, setIsLocating] = useState<boolean>(false);
+  useEffect(() => {
+    const carregarDados = async () => {
+      setIsLoading(true);
+      try {
+        const [dadosVisitas, dadosUsuarios] = await Promise.all([
+          api.getVisitasConsulta(),
+          api.getUsuarios()
+        ]);
+        setVisitas(dadosVisitas);
+        setUsuariosData(dadosUsuarios);
+      } catch (error) {
+        console.error("Erro ao carregar visitas para o Dashboard:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    carregarDados();
+  }, []);
 
-  const totalRanchers = mapData.reduce((a, s) => a + s.ranchersCount, 0);
-  const totalHeads = mapData.reduce((a, s) => a + s.ranchersList.reduce((sum, r) => sum + r.headCount, 0), 0);
+  const getNomeComprador = (id?: number) => {
+    if (!id) return "NÃO DEFINIDO";
+    const usuario = usuariosData.find(u => Number(u.SEQUSUARIO) === Number(id));
+    return usuario ? usuario.CODUSUARIO : `ID: ${id}`;
+  };
 
-  // --- FUNÇÃO DE DEBUG DO GPS ---
-  const handleGetLocation = () => {
-    setIsLocating(true);
-    setGeoDebugLog("Iniciando requisição de GPS...\nVerificando suporte do navegador...");
+  const { mapData, kpis } = useMemo(() => {
+    let totalHeads = 0;
+    let novosPecuaristas = 0;
+    const cidadesSet = new Set<string>();
+    const citiesMap = new Map<string, CityData>();
 
-    if (!navigator.geolocation) {
-      setGeoDebugLog(prev => prev + "\n[ERRO FATAL] O seu navegador NÃO suporta a API de Geolocalização (navigator.geolocation é undefined).");
-      setIsLocating(false);
-      return;
-    }
+    visitas.forEach(v => {
+    
+      const cabecas = Number(v.EFETIVO_TOTAL_ANIMAIS) || 0;
+      totalHeads += cabecas;
+      
+      if (!v.COD_PRODUTOR) {
+        novosPecuaristas += 1;
+      }
 
-    setGeoDebugLog(prev => prev + "\n[OK] Navegador suporta GPS.\nSolicitando permissão ao usuário e buscando satélites/antenas...");
+      if (v.MUNICIPIO) {
+        cidadesSet.add(v.MUNICIPIO.toUpperCase());
+      }
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude, accuracy, altitude, speed } = position.coords;
-        const successMsg = `
-[SUCESSO] Localização capturada!
------------------------------------
-Latitude:  ${latitude}
-Longitude: ${longitude}
-Precisão:  ${accuracy} metros (Quanto menor, melhor)
-Altitude:  ${altitude ? altitude + ' m' : 'Não disponível'}
-Velocidade:${speed ? speed + ' m/s' : 'Não disponível'}
-Timestamp: ${new Date(position.timestamp).toLocaleString()}
------------------------------------
-Copie essas coordenadas e jogue no Google Maps para conferir se está certo.
-`;
-        setGeoDebugLog(prev => prev + successMsg);
-        setIsLocating(false);
-      },
-      (error) => {
-        let errorReason = "";
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorReason = "Usuário NEGOU a permissão de localização. Verifique o cadeadinho na barra de endereço ou as permissões do celular.";
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorReason = "Informação de localização INDISPONÍVEL. O celular/PC não conseguiu contato com o GPS ou torres de celular.";
-            break;
-          case error.TIMEOUT:
-            errorReason = "TIMEOUT. A requisição demorou demais para responder (mais de 15 segundos).";
-            break;
-          default:
-            errorReason = "Erro desconhecido.";
-            break;
+      if (v.GPS_LATITUDE && v.GPS_LONGITUDE) {
+        const city = (v.MUNICIPIO || "Não Informado").toUpperCase();
+        
+        if (!citiesMap.has(city)) {
+          citiesMap.set(city, { 
+            city, 
+            lat: v.GPS_LATITUDE, 
+            lng: v.GPS_LONGITUDE, 
+            ranchersCount: 0, 
+            ranchersList: [] 
+          });
         }
         
-        const errorMsg = `
-[ERRO] Falha ao capturar localização!
------------------------------------
-Código:  ${error.code}
-Motivo:  ${errorReason}
-Msg API: ${error.message}
------------------------------------
-`;
-        setGeoDebugLog(prev => prev + errorMsg);
-        setIsLocating(false);
-      },
-      {
-        enableHighAccuracy: true, // Força o uso do GPS real do celular (mais demorado, mais preciso)
-        timeout: 15000,           // 15 segundos de limite para achar o sinal
-        maximumAge: 0             // Não aceita localização velha em cache
+        const cityData = citiesMap.get(city)!;
+        cityData.ranchersCount += 1;
+        cityData.ranchersList.push({
+          id: String(v.ID_VISITA),
+          name: v.NOME_PRODUTOR || "Sem Nome",
+          farm: v.NOME_FAZENDA || "Sem Fazenda",
+          headCount: cabecas
+        });
       }
-    );
-  };
+    });
+
+    return {
+      mapData: Array.from(citiesMap.values()),
+      kpis: {
+        totalHeads,
+        totalVisitas: visitas.length,
+        novosPecuaristas,
+        cidadesCobertas: cidadesSet.size
+      }
+    };
+  }, [visitas]);
+
+  const ultimasVisitas = useMemo(() => {
+    return [...visitas]
+      .sort((a, b) => b.ID_VISITA - a.ID_VISITA) // Maior ID = Mais recente
+      .slice(0, 5);
+  }, [visitas]);
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in">
       <header className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Dashboard Estratégico</h1>
-          <p className="text-muted-foreground text-sm">Visão geral de originação e mercado em Goiás</p>
+          <p className="text-muted-foreground text-sm">Visão geral de originação baseada em dados em tempo real</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setSelectedCity(null)}>Resetar Mapa</Button>
-          <Button size="sm" className="bg-primary shadow-md" onClick={() => setIsMapExpanded(true)}>
-            <Maximize2 className="w-4 h-4 mr-2" /> Tela Cheia
+          <Button size="sm" className="bg-primary shadow-md" onClick={() => setIsMapExpanded(!isMapExpanded)}>
+            <Maximize2 className="w-4 h-4 mr-2" /> {isMapExpanded ? "Reduzir" : "Tela Cheia"}
           </Button>
         </div>
       </header>
 
-      {/* --- BLOCO DE TESTE DE GEOLOCALIZAÇÃO --- */}
-      <Card className="bg-slate-50 border-dashed border-2 border-slate-300">
-        <CardHeader className="pb-2 border-b border-slate-200/60 mb-4">
-          <CardTitle className="text-sm flex items-center gap-2 text-slate-700 uppercase">
-            <MapPin className="w-4 h-4 text-blue-600" /> Ferramenta de Debug de Geolocalização
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button 
-            onClick={handleGetLocation} 
-            disabled={isLocating}
-            className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold"
-          >
-            {isLocating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Navigation className="w-4 h-4 mr-2" />}
-            PEGAR GEOLOCALIZAÇÃO REAL
-          </Button>
-          
-          <div className="bg-black text-green-400 p-4 rounded-md font-mono text-sm whitespace-pre-wrap overflow-x-auto min-h-[150px] shadow-inner">
-            {geoDebugLog}
-          </div>
-        </CardContent>
-      </Card>
-      {/* -------------------------------------- */}
-
-      {/* MÉTRICAS DE BI */}
+      {/* MÉTRICAS DE BI (Com loading) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title="Gado Prospectado" value={totalHeads.toLocaleString()} icon={<TrendingUp className="text-blue-600" />} sub="Cabeças nos últimos 30 dias" />
-        <MetricCard title="Visitas Realizadas" value="48" icon={<Navigation className="text-indigo-600" />} sub="Média de 1.6 visitas/dia" />
-        <MetricCard title="Novos Pecuaristas" value="14" icon={<Users className="text-emerald-600" />} sub="Cadastros pendentes Datavale" />
-        <MetricCard title="Cidades Cobertas" value={mapData.length.toString()} icon={<Building2 className="text-amber-600" />} sub="Presença em 12 microrregiões" />
+        {isLoading ? (
+          Array(4).fill(0).map((_, i) => (
+             <Card key={i} className="h-[140px] flex items-center justify-center border-none shadow-sm"><Loader2 className="w-6 h-6 text-slate-300 animate-spin" /></Card>
+          ))
+        ) : (
+          <>
+            <MetricCard title="Gado Prospectado" value={kpis.totalHeads.toLocaleString('pt-BR')} icon={<TrendingUp className="text-blue-600" />} sub="Efetivo total registrado em visitas" />
+            <MetricCard title="Visitas Realizadas" value={kpis.totalVisitas} icon={<Navigation className="text-indigo-600" />} sub="Total de registros no banco" />
+            <MetricCard title="Novos Pecuaristas" value={kpis.novosPecuaristas} icon={<Users className="text-emerald-600" />} sub="Visitas sem cadastro prévio no ERP" />
+            <MetricCard title="Cidades Cobertas" value={kpis.cidadesCobertas} icon={<Building2 className="text-amber-600" />} sub="Abrangência geográfica real" />
+          </>
+        )}
       </div>
 
-      {/* MAPA PRINCIPAL */}
-      <Card className="overflow-hidden border-none shadow-md">
-        <CardHeader className="bg-white border-b pb-4">
-          <CardTitle className="text-lg">Mapa de Densidade de Compra</CardTitle>
-          <CardDescription>Distribuição geográfica e potencial de abate por região</CardDescription>
+      {/* MAPA PRINCIPAL COM DADOS REAIS */}
+      <Card className={`overflow-hidden border-none shadow-md transition-all duration-300 ${isMapExpanded ? 'fixed inset-4 z-[200] flex flex-col' : ''}`}>
+        <CardHeader className="bg-white border-b pb-4 shrink-0">
+          <div className="flex justify-between items-start">
+            <div>
+              <CardTitle className="text-lg">Mapa de Densidade de Compra</CardTitle>
+              <CardDescription>Distribuição geográfica e potencial baseados no GPS das visitas</CardDescription>
+            </div>
+            {isMapExpanded && (
+              <Button variant="ghost" size="icon" onClick={() => setIsMapExpanded(false)}>
+                <X className="w-5 h-5 text-slate-500" />
+              </Button>
+            )}
+          </div>
         </CardHeader>
-        <CardContent className="p-0 relative">
-          <div className="h-[500px] w-full z-0">
-            <MapContainer center={[-15.933, -50.14]} zoom={6} className="h-full w-full">
-              <MapController selectedCity={selectedCity} />
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              {mapData.map((city, idx) => (
-                <CircleMarker key={idx} center={[city.lat, city.lng]} radius={12} fillColor="#1d4ed8" color="#1e3a8a" fillOpacity={0.6} eventHandlers={{ click: () => setSelectedCity(city) }}>
-                  <Tooltip>{city.city}: {city.ranchersCount} pecuaristas</Tooltip>
-                  <Popup>
-                    <div className="p-2 min-w-[180px]">
-                      <h4 className="font-bold border-b mb-2">{city.city}</h4>
-                      {city.ranchersList.map(r => (
-                        <div key={r.id} className="text-xs mb-1">
-                          <p className="font-semibold">{r.name}</p>
-                          <p className="text-slate-500">{r.farm} • {r.headCount} cab.</p>
-                        </div>
-                      ))}
-                    </div>
-                  </Popup>
-                </CircleMarker>
-              ))}
-            </MapContainer>
+        <CardContent className="p-0 relative flex-1">
+          {isLoading ? (
+             <div className="h-[500px] flex flex-col items-center justify-center bg-slate-50">
+               <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+               <p className="text-slate-500 font-medium">Buscando geolocalizações reais no servidor...</p>
+             </div>
+          ) : (
+            <div className={`w-full z-0 ${isMapExpanded ? 'h-full min-h-[600px]' : 'h-[500px]'}`}>
+              <MapContainer center={[-15.933, -50.14]} zoom={6} className="h-full w-full">
+                <MapController selectedCity={selectedCity} />
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                {mapData.map((city, idx) => (
+                  <CircleMarker 
+                    key={idx} 
+                    center={[city.lat, city.lng]} 
+                    radius={Math.min(25, 8 + (city.ranchersCount * 2))} 
+                    fillColor="#1d4ed8" 
+                    color="#1e3a8a" 
+                    fillOpacity={0.6} 
+                    eventHandlers={{ click: () => setSelectedCity(city) }}
+                  >
+                    <Tooltip>{city.city}: {city.ranchersCount} pecuarista(s)</Tooltip>
+                    <Popup>
+                      <div className="p-2 min-w-[200px] max-h-[250px] overflow-y-auto">
+                        <h4 className="font-bold border-b mb-2 sticky top-0 bg-white text-slate-800">{city.city}</h4>
+                        {city.ranchersList.map(r => (
+                          <div key={r.id} className="text-xs mb-2 border-b border-slate-100 pb-2 last:border-0">
+                            <p className="font-bold text-slate-800 uppercase">{r.name}</p>
+                            <p className="text-slate-500">{r.farm}</p>
+                            <p className="text-blue-600 font-bold mt-0.5">{r.headCount} cabeças de efetivo</p>
+                          </div>
+                        ))}
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                ))}
+              </MapContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 👇 NOVA TABELA: AS ÚLTIMAS 5 VISITAS 👇 */}
+      <Card className="border-none shadow-md overflow-hidden">
+        <CardHeader className="bg-white border-b pb-4">
+          <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
+            <Clock className="w-5 h-5 text-primary" />
+            Últimas 5 Visitas Realizadas
+          </CardTitle>
+          <CardDescription>Monitoramento em tempo real da equipe de campo</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-slate-50">
+                <TableRow>
+                  <TableHead className="font-semibold text-xs whitespace-nowrap text-slate-500 uppercase">Data</TableHead>
+                  <TableHead className="font-semibold text-xs whitespace-nowrap text-slate-500 uppercase">Pecuarista / Fazenda</TableHead>
+                  <TableHead className="font-semibold text-xs whitespace-nowrap text-slate-500 uppercase">Local</TableHead>
+                  <TableHead className="font-semibold text-xs whitespace-nowrap text-slate-500 uppercase">Comprador</TableHead>
+                  <TableHead className="font-semibold text-xs text-right whitespace-nowrap text-slate-500 uppercase">Distância (GPS vs ERP)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
+                    </TableCell>
+                  </TableRow>
+                ) : ultimasVisitas.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-slate-500 font-medium">Nenhuma visita registrada ainda.</TableCell>
+                  </TableRow>
+                ) : (
+                  ultimasVisitas.map((v) => {
+                    const distReal = v.DISTANCIA_PERCORRIDA_REAL ? Number(v.DISTANCIA_PERCORRIDA_REAL).toFixed(1) + ' km' : '--';
+                    // Tratando a distância cadastrada (usamos "any" caso a tipagem do TypeScript reclame da nova coluna da View)
+                    const distCad = (v as any).DISTANCIA_CADASTRADA ? Number((v as any).DISTANCIA_CADASTRADA).toFixed(1) + ' km' : '--';
+                    
+                    return (
+                      <TableRow key={v.ID_VISITA} className="hover:bg-slate-50 transition-colors">
+                        <TableCell className="font-medium text-xs text-slate-600 whitespace-nowrap">
+                          {v.DATA_REGISTRO_VISITA ? new Date(v.DATA_REGISTRO_VISITA.split('T')[0] + 'T12:00:00').toLocaleDateString('pt-BR') : '--'}
+                        </TableCell>
+                        <TableCell>
+                          <p className="font-bold text-sm text-slate-800 uppercase">{v.NOME_PRODUTOR || 'NÃO CADASTRADO'}</p>
+                          <p className="text-xs text-slate-500 uppercase">{v.NOME_FAZENDA || 'Fazenda não informada'}</p>
+                        </TableCell>
+                        <TableCell>
+                          <span className="flex items-center gap-1 text-xs text-slate-600 font-bold uppercase">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400" /> {v.MUNICIPIO || 'N/A'}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-[11px] font-black text-slate-700 uppercase tracking-wider">
+                            <User className="w-3.5 h-3.5 text-slate-400" />
+                            {getNomeComprador(v.ID_COMPRADOR)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded shadow-sm" title="Distância coletada pelo GPS do celular">
+                              GPS: {distReal}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase" title="Distância cadastrada na Datavale">
+                              ERP: {distCad}
+                            </span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
+
     </div>
   );
 }
