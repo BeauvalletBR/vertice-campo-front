@@ -4,7 +4,7 @@
 
 ## 1. Visão geral
 
-A camada de dados do Bovino Pro está concentrada em `src/services/api.ts`, com apoio de `src/services/pecuaristas.ts` para regras de priorização.
+A camada de dados do vertice campo está concentrada em `src/services/api.ts`, com apoio de `src/services/pecuaristas.ts` para regras de priorização.
 
 O padrão atual é simples e direto:
 - leitura das configurações por `import.meta.env`;

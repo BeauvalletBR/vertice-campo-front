@@ -6,7 +6,6 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
-// Importando suas páginas
 import Index from "./pages/Index";
 import FieldPage from "./pages/FieldPage";
 import NotFound from "./pages/NotFound";
@@ -14,7 +13,6 @@ import LoginPage from "./pages/LoginPage";
 import Pecuaristas from "./pages/Visitas";
 import Agendamento from "./pages/Agendamento"; 
 
-// 1. IMPORTA O SEU COMPONENTE GUARDIÃO
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 const queryClient = new QueryClient();

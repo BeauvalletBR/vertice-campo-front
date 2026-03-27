@@ -1,4 +1,4 @@
-# Bovino Pro
+# Vertice Campo
 
 Aplicação web em **React + TypeScript** para apoiar a operação de **originação/comercial**, com foco em três jornadas principais do negócio:
 
