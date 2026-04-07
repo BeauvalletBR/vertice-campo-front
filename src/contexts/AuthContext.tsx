@@ -2,16 +2,18 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '@/services/api';
 import { toast } from 'sonner';
 
-interface User {
+export interface User {
   id: string | number;
   name: string;
   login: string;
   role: "ADMIN" | "COMPRADOR";
+  empresa?: string;
+  modulos?: string[]; // <-- ADICIONADO: Agora o React sabe que existe uma lista de módulos
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (loginInput: string, senhaInput: string) => Promise<boolean>;
+  login: (loginInput: string, senhaInput: string, empresa: string) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -28,17 +30,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const login = async (loginInput: string, senhaInput: string): Promise<boolean> => {
+  const login = async (loginInput: string, senhaInput: string, empresa: string): Promise<boolean> => {
     try {
-      const response = await api.realizarLogin(loginInput, senhaInput);
+      const response = await api.realizarLogin(loginInput, senhaInput, empresa);
       
       if (response.success && response.user) {
-        // Salva os dados do usuário com a ROLE que o n8n mandou
+        // 👇 AGORA SALVAMOS OS MÓDULOS QUE VIERAM DO N8N/PYTHON
         const loggedUser: User = {
           id: response.user.id,
           name: response.user.name || response.user.login,
           login: response.user.login,
-          role: response.user.role || "COMPRADOR"
+          role: response.user.role || "COMPRADOR",
+          empresa: empresa, 
+          modulos: response.user.modulos || [] // <-- ADICIONADO: Salvando os módulos no Crachá
         };
 
         setUser(loggedUser);
@@ -46,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         toast.success(`Bem-vindo(a), ${loggedUser.name}!`);
         return true;
       } else {
-        toast.error(response.message || "Login ou senha incorretos.");
+        toast.error(response.message || "Login, senha ou empresa incorretos.");
         return false;
       }
     } catch (error) {
@@ -58,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('@OriginaGoias:user');
+    api.realizarLogout(); 
     toast.info("Você saiu do sistema.");
   };
 

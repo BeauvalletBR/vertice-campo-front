@@ -50,7 +50,7 @@ const getUniqueId = (r: ApiRancher) => `${r.COD_PRODUTOR}-${r.INSCRICAO || 'sn'}
 
 export default function Agendamento() {
   const [apiData, setApiData] = useState<ApiRancher[]>([]);
-  const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]); // <-- NOVO ESTADO
+  const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]); 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -63,6 +63,7 @@ export default function Agendamento() {
   const [filterCar, setFilterCar] = useState("Todos");
   const [filterHab, setFilterHab] = useState("Todos"); 
   const [filterJaVendeu, setFilterJaVendeu] = useState("Todos"); 
+  const [filterRep, setFilterRep] = useState("Todos"); // <-- NOVO FILTRO DE REPRESENTAÇÃO
   
   const [sortColumn, setSortColumn] = useState<string | null>("quantidade");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
@@ -71,13 +72,12 @@ export default function Agendamento() {
   const [showAiMenu, setShowAiMenu] = useState<boolean>(false); 
   
   const [scheduleDate, setScheduleDate] = useState("");
-  const [searchUser, setSearchUser] = useState(""); // <-- NOVO ESTADO PARA BUSCA DE USUÁRIO
+  const [searchUser, setSearchUser] = useState("");
 
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
       
-      // Carrega Pecuaristas E Usuários em paralelo para otimizar tempo
       const [dataPecuaristas, dataUsuarios] = await Promise.all([
         fetchPecuaristasAgendamento(),
         api.getUsuarios()
@@ -130,6 +130,7 @@ export default function Agendamento() {
       setFilterCar("Todos"); 
       setFilterHab("Todos");
       setFilterJaVendeu("Todos"); 
+      setFilterRep("Todos"); // <-- RESET DO FILTRO
       setSortColumn("quantidade"); 
       setSortDirection("desc");
       setVisibleCount(15); 
@@ -171,14 +172,12 @@ export default function Agendamento() {
 
   const selectedRanchersData = useMemo(() => apiData.filter(r => selectedRanchers.includes(getUniqueId(r))), [selectedRanchers, apiData]);
 
-  // LOGICA REAL DE SALVAMENTO
   const handleConfirmSchedule = async () => {
     if (!scheduleDate || !searchUser) {
       toast.error("Por favor, selecione a data e o comprador responsável.");
       return;
     }
 
-    // Busca o objeto do usuário na lista usando o CODUSUARIO digitado
     const userObj = usuariosData.find(u => u.CODUSUARIO.toUpperCase() === searchUser.toUpperCase());
     
     if (!userObj) {
@@ -187,14 +186,14 @@ export default function Agendamento() {
     }
 
     setIsSaving(true);
-    const compradorId = userObj.SEQUSUARIO; // O ID REAL DO BANCO
+    const compradorId = userObj.SEQUSUARIO; 
     let salvos = 0;
 
     try {
       for (const r of selectedRanchersData) {
         const resultado = await saveAgendamento({
           cod_produtor: r.COD_PRODUTOR,
-          id_comprador: compradorId, // <--- ENVIA O SEQUSUARIO
+          id_comprador: compradorId, 
           data_agendada: scheduleDate,
           status_agendamento: "Pendente",
           inscricao: r.INSCRICAO
@@ -298,8 +297,6 @@ export default function Agendamento() {
                 <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Comprador Responsável</Label>
                 <div className="relative">
                   <UserSquare2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  
-                  {/* NOVO CAMPO NATIVO COM BUSCA E AUTOCOMPLETAR */}
                   <Input 
                     list="usuarios-list"
                     className="pl-9 h-11 bg-white uppercase"
@@ -314,7 +311,6 @@ export default function Agendamento() {
                       <option key={u.SEQUSUARIO} value={u.CODUSUARIO} />
                     ))}
                   </datalist>
-
                 </div>
               </div>
             </CardContent>
@@ -402,8 +398,11 @@ export default function Agendamento() {
                 (filterHab === "Não China" && Number(r.QTD_COMPRADA_12M_NAO_CHINA) > 0);
               
               const matchJaVendeu = filterJaVendeu === "Todos" || r.JA_VENDEU === filterJaVendeu;
+              
+              // <-- NOVA REGRA DO FILTRO DE REPRESENTAÇÃO
+              const matchRep = filterRep === "Todos" || r.VENDAREPRESENTANTE === filterRep;
 
-              return matchText && matchCar && matchHab && matchJaVendeu; 
+              return matchText && matchCar && matchHab && matchJaVendeu && matchRep; 
             });
 
             if (aiMode) {
@@ -558,7 +557,7 @@ export default function Agendamento() {
                     </div>
                   ) : (
                     <>
-                      <div className={`bg-slate-50/50 p-4 border-b border-slate-200 flex flex-col md:flex-row gap-3 items-end transition-opacity`}>
+                      <div className={`bg-slate-50/50 p-4 border-b border-slate-200 flex flex-col md:flex-row flex-wrap gap-3 items-end transition-opacity`}>
                         <div className="space-y-1.5 flex-1 w-full min-w-[200px]">
                           <Label className="text-[10px] font-bold text-slate-500 uppercase">Buscar Cidade, Produtor ou Fazenda</Label>
                           <Input 
@@ -568,7 +567,7 @@ export default function Agendamento() {
                             onChange={(e) => setFilterText(e.target.value)}
                           />
                         </div>
-                        <div className="space-y-1.5 w-full md:w-32">
+                        <div className="space-y-1.5 w-full md:w-28">
                           <Label className="text-[10px] font-bold text-slate-500 uppercase">CAR</Label>
                           <select 
                             className="flex h-9 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -594,7 +593,7 @@ export default function Agendamento() {
                           </div>
                         )}
 
-                        <div className="space-y-1.5 w-full md:w-32">
+                        <div className="space-y-1.5 w-full md:w-28">
                           <Label className="text-[10px] font-bold text-slate-500 uppercase">Já Vendeu?</Label>
                           <select 
                             className="flex h-9 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -602,8 +601,10 @@ export default function Agendamento() {
                             onChange={(e) => {
                               const val = e.target.value;
                               setFilterJaVendeu(val);
+                              // Se ele nunca vendeu, também resetamos China e Representação
                               if (val === "N") {
                                 setFilterHab("Todos");
+                                setFilterRep("Todos");
                               }
                             }}
                           >
@@ -613,6 +614,21 @@ export default function Agendamento() {
                           </select>
                         </div>
 
+                        {/* NOVO CAMPO: FILTRO DE REPRESENTAÇÃO */}
+                        {filterJaVendeu !== "N" && (
+                          <div className="space-y-1.5 w-full md:w-32">
+                            <Label className="text-[10px] font-bold text-slate-500 uppercase">Representação?</Label>
+                            <select 
+                              className="flex h-9 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                              value={filterRep} onChange={(e) => setFilterRep(e.target.value)}
+                            >
+                              <option value="Todos">Todos</option>
+                              <option value="S">Sim</option>
+                              <option value="N">Não</option>
+                            </select>
+                          </div>
+                        )}
+
                         <Button 
                           variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-slate-700 shrink-0"
                           title="Limpar todos os filtros"
@@ -621,6 +637,7 @@ export default function Agendamento() {
                             setFilterCar("Todos"); 
                             setFilterHab("Todos"); 
                             setFilterJaVendeu("Todos"); 
+                            setFilterRep("Todos"); // LIMPA O FILTRO NOVO TAMBÉM
                             setSortColumn("quantidade"); 
                             setSortDirection("desc"); 
                             setVisibleCount(15); 

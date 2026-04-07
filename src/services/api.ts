@@ -44,6 +44,7 @@ export interface ApiRancher {
   QTD_COMPRADA_12M_NAO_CHINA: number;
   JA_VENDEU: "S" | "N";
   DATA_ULTIMA_VISITA?: string | null; 
+  VENDAREPRESENTANTE: "S" | "N";
 }
 
 export interface ApiAgendamento {
@@ -63,6 +64,7 @@ export interface ApiAgendamento {
   QTD_COMPRADA_12M_CHINA?: number;
   QTD_COMPRADA_12M_NAO_CHINA?: number;
   JA_VENDEU?: "S" | "N";
+  VENDAREPRESENTANTE?: "S" | "N";
 }
 
 // INTERFACE PARA A CONSULTA DE RELATÓRIO DE VISITAS
@@ -123,21 +125,58 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let cachedPecuaristas: ApiRancher[] | null = null;
 let fetchPromise: Promise<ApiRancher[]> | null = null;
 
-// --- BUSCAR PECUARISTAS ---
+// --- FUNÇÃO AJUDANTE PARA MONTAR OS HEADERS (Porteiro + Crachá) ---
+const getAuthHeaders = (isJson = false) => {
+  const tokenAPI = import.meta.env.VITE_N8N_SECRET_TOKEN;
+  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key";
+  const jwtToken = localStorage.getItem("jwt_token"); // Pega o crachá do bolso
+
+  const headers: Record<string, string> = {
+    [headerKey]: tokenAPI,
+  };
+
+  if (isJson) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  if (jwtToken) {
+    headers["Authorization"] = `Bearer ${jwtToken}`; // Mostra o crachá
+  }
+
+  return headers;
+};
+
+// --- MÓDULO ADMIN: Buscar Pecuaristas ---
 export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise<ApiRancher[]> => {
-  if (cachedPecuaristas && !forceRefresh) return cachedPecuaristas;
-  if (fetchPromise && !forceRefresh) return fetchPromise;
+  if (cachedPecuaristas && cachedPecuaristas.length > 0 && !forceRefresh) {
+    return cachedPecuaristas;
+  }
 
   const loadFromApi = async () => {
     const url = import.meta.env.VITE_N8N_WEBHOOK_URL_PECUARISTAS;
-    const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
-    const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
     try {
-      const response = await fetch(url, { headers: { [headerKey]: token } });
+      const response = await fetch(url, { headers: getAuthHeaders() });
+      
+      // 👇 TRATAMENTO DA TRAVA DO N8N (Erro 401 ou 403)
+      if (response.status === 401 || response.status === 403) {
+         console.warn("Acesso Negado: Você não tem permissão no módulo ADMIN.");
+         fetchPromise = null; 
+         return [];
+      }
+      
       const data = await response.json();
-      cachedPecuaristas = Array.isArray(data) ? data : [];
-      return cachedPecuaristas;
+      
+      // Se o N8N retornar success: false, devolve vazio e não quebra o sistema.
+      if (data.success === false) {
+          return [];
+      }
+
+      if (Array.isArray(data) && data.length > 0) {
+          cachedPecuaristas = data;
+      }
+      return Array.isArray(data) ? data : [];
     } catch (error) {
+      fetchPromise = null;
       return [];
     }
   };
@@ -146,33 +185,42 @@ export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise
   return fetchPromise;
 };
 
-// --- CONSULTAR AGENDAMENTOS PENDENTES ---
+// --- MÓDULO OPERACIONAL: Buscar Agendamentos ---
 export const fetchAgendamentosPendentes = async (): Promise<ApiAgendamento[]> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO_CONSULTA;
-  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
-  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
   try {
-    const response = await fetch(url, { headers: { [headerKey]: token } });
+    const response = await fetch(url, { headers: getAuthHeaders() });
+    
+    // 👇 TRATAMENTO DA TRAVA
+    if (response.status === 401 || response.status === 403) {
+        console.warn("Acesso Negado: Módulo OPERACIONAL.");
+        return [];
+    }
+    
     if (!response.ok) return [];
     const data = await response.json();
+    if (data.success === false) return [];
+    
     return Array.isArray(data) ? data : [];
   } catch (error) {
     return [];
   }
 };
 
-// --- CONSULTAR RELATÓRIO DE VISITAS ---
+// --- MÓDULO RELATORIOS: Consultar Relatório de Visitas ---
 export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA;
-  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
-  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
-  
   if (!url) return [];
 
   try {
-    const response = await fetch(url, { headers: { [headerKey]: token } });
+    const response = await fetch(url, { headers: getAuthHeaders() });
+    
+    if (response.status === 401 || response.status === 403) return [];
     if (!response.ok) return [];
+    
     const data = await response.json();
+    if (data.success === false) return [];
+    
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error("Falha API Consulta Relatório de Visitas:", error);
@@ -180,16 +228,16 @@ export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
   }
 };
 
-// --- NOVA FUNÇÃO: CONSULTAR USUÁRIOS ERP ---
+// --- MÓDULO RELATORIOS: Consultar Usuários ERP ---
 export const fetchUsuarios = async (): Promise<ApiUsuario[]> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_USUARIOS;
-  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
-  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
   if (!url) return [];
   try {
-    const response = await fetch(url, { headers: { [headerKey]: token } });
+    const response = await fetch(url, { headers: getAuthHeaders() });
+    if (response.status === 401 || response.status === 403) return [];
     if (!response.ok) return [];
     const data = await response.json();
+    if (data.success === false) return [];
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error("Falha ao buscar usuários:", error);
@@ -197,39 +245,38 @@ export const fetchUsuarios = async (): Promise<ApiUsuario[]> => {
   }
 };
 
-// --- SALVAR AGENDAMENTO SIMPLES ---
-export const saveAgendamento = async (dados: any): Promise<{ success: boolean }> => {
+// --- MÓDULO ADMIN: Salvar Agendamento Simples ---
+export const saveAgendamento = async (dados: any): Promise<{ success: boolean; message?: string }> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO; 
-  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
-  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", [headerKey]: token },
+      headers: getAuthHeaders(true),
       body: JSON.stringify(dados)
     });
+    
+    if (response.status === 403) return { success: false, message: "Acesso Negado (ADMIN)." };
     return { success: response.ok };
-  } catch (error) { return { success: false }; }
+  } catch (error) { return { success: false, message: "Erro de rede" }; }
 };
 
-// --- SALVAR A VISITA DE CAMPO ---
-export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean }> => {
+// --- MÓDULO OPERACIONAL: Salvar A Visita De Campo ---
+export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean; message?: string }> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS; 
-  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
-  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
   if (!url) return { success: false };
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", [headerKey]: token },
+      headers: getAuthHeaders(true),
       body: JSON.stringify(dados)
     });
+    
+    if (response.status === 403) return { success: false, message: "Acesso Negado (OPERACIONAL)." };
     return { success: response.ok };
-  } catch (error) { return { success: false }; }
+  } catch (error) { return { success: false, message: "Erro de rede" }; }
 };
 
 
-// --- INTERFACE E FUNÇÃO DE LOGIN ---
 export interface LoginResponse {
   success: boolean;
   message?: string;
@@ -238,33 +285,52 @@ export interface LoginResponse {
     login: string;
     name: string;
     role: "ADMIN" | "COMPRADOR";
+    modulos?: string[]; // Para podermos usar na Sidebar
   };
+  access_token?: string; 
 }
 
-export const realizarLogin = async (login: string, senha: string): Promise<LoginResponse> => {
+// --- ROTA PÚBLICA DE LOGIN ---
+export const realizarLogin = async (login: string, senha: string, empresa: string): Promise<LoginResponse> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_LOGIN; 
-  const token = import.meta.env.VITE_N8N_SECRET_TOKEN;
-  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY;
+  const tokenAPI = import.meta.env.VITE_N8N_SECRET_TOKEN;
+  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key";
 
   if (!url) return { success: false, message: "URL de login não configurada no .env" };
 
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", [headerKey]: token },
-      body: JSON.stringify({ login, senha })
+      headers: { "Content-Type": "application/json", [headerKey]: tokenAPI },
+      body: JSON.stringify({ login, senha, empresa: Number(empresa) }) 
     });
     
+    if (response.status === 403) return { success: false, message: "Acesso Negado. Token de API inválido." };
+
     if (!response.ok) {
       return { success: false, message: "Erro de comunicação com o servidor de autenticação." };
     }
 
     const data = await response.json();
+    
+    if (data.success && data.access_token) {
+      localStorage.setItem("jwt_token", data.access_token);
+      localStorage.setItem("user_data", JSON.stringify(data.user));
+      localStorage.setItem("empresa_logada", empresa); 
+    }
+
     return data;
   } catch (error) {
     return { success: false, message: "Sistema indisponível no momento." };
   }
 };
+
+export const realizarLogout = () => {
+  localStorage.removeItem("jwt_token");
+  localStorage.removeItem("user_data");
+  localStorage.removeItem("empresa_logada");
+};
+
 export const api = {
   getStats: async (): Promise<DashboardStats[]> => { await delay(800); return mockStats; },
   getRecentVisits: async (): Promise<Visit[]> => { await delay(600); return mockVisits; },
@@ -276,6 +342,7 @@ export const api = {
   },
   getRanchers: async (): Promise<Rancher[]> => { await delay(400); return mockRanchers; },
   getVisitasConsulta: fetchRelatorioVisitas,
-  realizarLogin, 
+  realizarLogin,
+  realizarLogout, 
   getUsuarios: fetchUsuarios, 
 };

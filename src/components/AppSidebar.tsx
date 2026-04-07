@@ -16,12 +16,12 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
-// 1. Adicionamos a flag opcional "adminOnly" nas rotas restritas
+// 👇 DEFININDO QUAIS MÓDULOS SÃO EXIGIDOS PARA CADA ROTA
 const items = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Agendamentos", url: "/agendamento", icon: CalendarPlus, adminOnly: true }, // <-- BLOQUEADO SÓ PARA ADMIN
-  { title: "Campo", url: "/campo", icon: MapPin },
-  { title: "Visitas", url: "/visitas", icon: Users },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, reqModule: "GERENCIAL" },
+  { title: "Agendamentos", url: "/agendamento", icon: CalendarPlus, reqModule: "ADMIN" },
+  { title: "Campo", url: "/campo", icon: MapPin, reqModule: "OPERACIONAL" },
+  { title: "Visitas", url: "/visitas", icon: Users, reqModule: "RELATORIOS" },
 ];
 
 export function AppSidebar() {
@@ -30,10 +30,13 @@ export function AppSidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
 
-  // 2. Filtramos a lista de menus ANTES de renderizar na tela
-  // Se o menu for "adminOnly" e o cara NÃO for ADMIN, a gente esconde.
+  // Garante que modulos é sempre um array seguro de ler
+  const userModules = (user as any)?.modulos || [];
+
+  // 👇 A MÁGICA VISUAL: Filtrar as rotas da Sidebar baseado no crachá do usuário
   const filteredItems = items.filter((item) => {
-    if (item.adminOnly && user?.role !== "ADMIN") {
+    // Se o item tem um módulo obrigatório (reqModule), e o usuário NÃO o possui, esconde.
+    if (item.reqModule && !userModules.includes(item.reqModule)) {
       return false; 
     }
     return true; 
@@ -44,11 +47,10 @@ export function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>
-            {!collapsed && "Originação Goiás"}
+            {!collapsed && "Vértice Campo"}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {/* 3. Mapeamos apenas os itens filtrados */}
               {filteredItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
@@ -75,9 +77,9 @@ export function AppSidebar() {
             <div className="text-sm font-bold text-sidebar-foreground truncate">
               {user.name}
             </div>
-            {/* Mostra a Role (cargo) do cara bem pequenininho */}
+            {/* Opcional: Mostrar também o nome da empresa ou os acessos que ele tem */}
             <div className="text-[10px] font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
-              Perfil: {user.role}
+              {user.role}
             </div>
           </div>
         )}

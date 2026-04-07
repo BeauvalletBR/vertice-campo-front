@@ -141,9 +141,8 @@ export function FieldVisit() {
   const [routePath, setRoutePath] = useState<[number, number][]>([]);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   
-  // 👇 NOVO ESTADO: Controla se a localização obtida é a real do GPS ou a fake de Goiânia
   const [isRealLocation, setIsRealLocation] = useState<boolean>(false);
-  // 👇 NOVO ESTADO: Modal de confirmação caso o cara tente salvar com GPS falso
+
   const [confirmSaveModal, setConfirmSaveModal] = useState<boolean>(false);
 
   const today = new Date().toISOString().split("T")[0];
@@ -234,62 +233,71 @@ export function FieldVisit() {
     } catch (error) { }
   };
 
-  // 👇 FALLBACK AGORA SETA isRealLocation = FALSE
-  const executeFallbackLocation = async (callback: () => void) => {
-    setIsRealLocation(false); // <--- MÁGICA 1
+  // 👇 FALLBACK ASSÍNCRONO: SETA isRealLocation = FALSE E LIBERA A TELA NA HORA
+  const executeFallbackLocation = (callback: () => void) => {
+    setIsRealLocation(false); 
     const fallbackLat = -16.6868;
     const fallbackLng = -49.2643;
     setUserLocation([fallbackLat, fallbackLng]);
-    fetchCityName(fallbackLat, fallbackLng);
-
-    try {
-      const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${fallbackLng},${fallbackLat}?overview=full&geometries=geojson`);
-      const data = await response.json();
-      if (data.routes && data.routes.length > 0) {
-        const routeCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
-        setRoutePath(routeCoords);
-        setDistance(`${(data.routes[0].distance / 1000).toFixed(1)} km`);
-      }
-    } catch (error) {
-      setRoutePath([EMPRESA_COORDS, [fallbackLat, fallbackLng]]);
-      setDistance("Aprox. 42 km");
-    }
+    
+    // Libera a tela do formulário imediatamente!
     callback();
+
+    // Roda as buscas pesadas em background (sem travar a tela)
+    fetchCityName(fallbackLat, fallbackLng);
+    
+    fetch(`https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${fallbackLng},${fallbackLat}?overview=full&geometries=geojson`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.routes && data.routes.length > 0) {
+          const routeCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
+          setRoutePath(routeCoords);
+          setDistance(`${(data.routes[0].distance / 1000).toFixed(1)} km`);
+        }
+      })
+      .catch(() => {
+        setRoutePath([EMPRESA_COORDS, [fallbackLat, fallbackLng]]);
+        setDistance("Aprox. 42 km");
+      });
   };
 
-  // 👇 SUCESSO AGORA SETA isRealLocation = TRUE
+  // 👇 SUCESSO ASSÍNCRONO: SETA isRealLocation = TRUE E LIBERA A TELA NA HORA
   const fetchRealRouteAndLocation = (callback: () => void) => {
     if (!navigator.geolocation) return executeFallbackLocation(callback);
+    
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        setIsRealLocation(true); // <--- MÁGICA 2
+      (position) => {
+        setIsRealLocation(true); 
         const { latitude, longitude } = position.coords;
         setUserLocation([latitude, longitude]);
+        
+        // Libera a tela do formulário imediatamente após pegar a coordenada!
+        callback();
+
+        // Deixa a busca de nome de cidade e cálculo de rota rodando de fundo
         fetchCityName(latitude, longitude);
 
-        try {
-          const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${longitude},${latitude}?overview=full&geometries=geojson`);
-          const data = await response.json();
-
-          if (data.routes && data.routes.length > 0) {
-            setRoutePath(data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]));
-            setDistance(`${(data.routes[0].distance / 1000).toFixed(1)} km`);
-          } else {
+        fetch(`https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${longitude},${latitude}?overview=full&geometries=geojson`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.routes && data.routes.length > 0) {
+              setRoutePath(data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]));
+              setDistance(`${(data.routes[0].distance / 1000).toFixed(1)} km`);
+            } else {
+              setRoutePath([EMPRESA_COORDS, [latitude, longitude]]);
+              setDistance("Distância aproximada");
+            }
+          })
+          .catch(() => {
             setRoutePath([EMPRESA_COORDS, [latitude, longitude]]);
-            setDistance("Distância aproximada");
-          }
-        } catch (error) {
-          setRoutePath([EMPRESA_COORDS, [latitude, longitude]]);
-          setDistance("Sem conexão p/ rotas");
-        }
-        callback();
+            setDistance("Sem conexão p/ rotas");
+          });
       },
       () => executeFallbackLocation(callback),
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 10000 } 
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 10000 } 
     );
   };
 
-  // 👇 FUNÇÃO PARA O BOTÃO "TENTAR NOVAMENTE"
   const retryLocation = () => {
     setStep("routing");
     fetchRealRouteAndLocation(() => setStep("form"));
@@ -401,13 +409,11 @@ export function FieldVisit() {
       return;
     }
 
-    // 👇 SE CHEGOU AQUI E O GPS É FALSO, MOSTRA O MODAL DE CONFIRMAÇÃO
     if (!isRealLocation) {
       setConfirmSaveModal(true);
       return;
     }
 
-    // SE O GPS É REAL, SALVA DIRETO
     executeSavePayload();
   };
 
@@ -450,7 +456,6 @@ export function FieldVisit() {
       disp60Dias: form.disp60Dias, qtd60Dias: form.qtd60Dias, sexo60Dias: formatToUpper(form.sexo60Dias), status60Dias: formatToUpper(form.status60Dias),
       disp90Dias: form.disp90Dias, qtd90Dias: form.qtd90Dias, sexo90Dias: formatToUpper(form.sexo90Dias), status90Dias: formatToUpper(form.status90Dias),
       
-      // Manda a Latitude/Longitude (seja a real ou a simulada)
       gps_latitude: userLocation ? userLocation[0] : null, 
       gps_longitude: userLocation ? userLocation[1] : null,
       distancia_percorrida_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 

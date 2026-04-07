@@ -9,7 +9,7 @@ export function AppNav() {
     <nav className="bg-primary text-primary-foreground shadow-md">
       <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
         <span className="font-bold text-sm tracking-tight">
-          Originação Goiás
+          Vértice - Campo
         </span>
         <div className="flex gap-1">
           <NavItem to="/" active={location.pathname === "/"} icon={<LayoutDashboard className="w-4 h-4" />} label="Dashboard" />

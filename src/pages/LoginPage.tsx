@@ -4,28 +4,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
-import { LogIn, Loader2, UserSquare2, LockKeyhole, AlertCircle } from "lucide-react";
+import { LogIn, Loader2, UserSquare2, LockKeyhole, AlertCircle, Building2 } from "lucide-react";
 
 export default function LoginPage() {
   const [loginInput, setLoginInput] = useState("");
   const [password, setPassword] = useState("");
+  const [empresa, setEmpresa] = useState("1"); 
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(""); // <-- Novo estado para controlar o erro
+  const [errorMsg, setErrorMsg] = useState("");
   const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg(""); // Limpa o erro antes de tentar novamente
+    setErrorMsg("");
 
-    if (loginInput.trim() && password.trim()) {
+    if (loginInput.trim() && password.trim() && empresa) {
       setIsLoading(true);
       
       try {
-        const success = await login(loginInput.trim(), password.trim());
+        const success = await login(loginInput.trim(), password.trim(), empresa);
         
-        // Se a função login retornar false, disparamos a mensagem clássica de erro
         if (!success) {
-          setErrorMsg("Usuário ou senha incorretos.");
+          setErrorMsg("Usuário, senha ou empresa incorretos.");
         }
       } finally {
         setIsLoading(false);
@@ -33,7 +33,6 @@ export default function LoginPage() {
     }
   };
 
-  // Função para limpar o vermelho da tela assim que o usuário voltar a digitar
   const handleInputChange = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
     setter(value);
     if (errorMsg) setErrorMsg("");
@@ -42,7 +41,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
       
-      {/* Detalhe visual de fundo */}
       <div className="absolute top-0 w-full h-[40vh] bg-primary/5 rounded-b-[100%] pointer-events-none" />
 
       <Card className="w-full max-w-md shadow-2xl border-t-4 border-t-primary relative z-10 border-x-0 border-b-0 sm:border-x sm:border-b sm:rounded-xl">
@@ -63,6 +61,25 @@ export default function LoginPage() {
         <CardContent className="pb-8 px-6 sm:px-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             
+            {/* 👇 CAMPO: SELETOR DE EMPRESA NO TOPO 👇 */}
+            <div className="space-y-2">
+              <Label htmlFor="empresa" className="text-xs font-bold text-slate-500 uppercase tracking-wider">Empresa</Label>
+              <div className="relative">
+                <Building2 className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${errorMsg ? 'text-red-400' : 'text-slate-400'}`} />
+                <select
+                  id="empresa"
+                  value={empresa}
+                  onChange={(e) => handleInputChange(setEmpresa, e.target.value)}
+                  className={`flex w-full rounded-md border pl-10 h-12 bg-slate-50/50 font-bold text-slate-700 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 ${errorMsg ? 'border-red-400 focus-visible:ring-red-400 bg-red-50/30' : 'border-slate-200 focus-visible:ring-primary'}`}
+                  required
+                  disabled={isLoading}
+                >
+                  <option value="1">EMPRESA 1</option>
+                  <option value="2">EMPRESA 2</option>
+                </select>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="login" className="text-xs font-bold text-slate-500 uppercase tracking-wider">Login</Label>
               <div className="relative">
@@ -96,15 +113,14 @@ export default function LoginPage() {
                   autoComplete="current-password"
                 />
               </div>
-              
-              {/* ALERTA CLÁSSICO DE ERRO VERMELHINHO AQUI */}
-              {errorMsg && (
-                <div className="flex items-center gap-1.5 mt-2 animate-in fade-in slide-in-from-top-1">
-                  <AlertCircle className="w-3.5 h-3.5 text-red-500" />
-                  <p className="text-xs font-bold text-red-500">{errorMsg}</p>
-                </div>
-              )}
             </div>
+
+            {errorMsg && (
+              <div className="flex items-center gap-1.5 mt-2 animate-in fade-in slide-in-from-top-1">
+                <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                <p className="text-xs font-bold text-red-500">{errorMsg}</p>
+              </div>
+            )}
 
             <Button 
               type="submit" 
