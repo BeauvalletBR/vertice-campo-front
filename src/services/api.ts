@@ -146,6 +146,13 @@ const getAuthHeaders = (isJson = false) => {
   return headers;
 };
 
+// 👇 FUNÇÃO PARA AVISAR O SISTEMA QUE O TOKEN CAIU 👇
+const checkSessionExpired = (response: Response) => {
+  if (response.status === 401) {
+    window.dispatchEvent(new Event('sessao-expirada'));
+  }
+};
+
 // --- MÓDULO ADMIN: Buscar Pecuaristas ---
 export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise<ApiRancher[]> => {
   if (cachedPecuaristas && cachedPecuaristas.length > 0 && !forceRefresh) {
@@ -156,8 +163,9 @@ export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise
     const url = import.meta.env.VITE_N8N_WEBHOOK_URL_PECUARISTAS;
     try {
       const response = await fetch(url, { headers: getAuthHeaders() });
+      checkSessionExpired(response); // <-- Checa 401
       
-      // 👇 TRATAMENTO DA TRAVA DO N8N (Erro 401 ou 403)
+      // TRATAMENTO DA TRAVA DO N8N (Erro 401 ou 403)
       if (response.status === 401 || response.status === 403) {
          console.warn("Acesso Negado: Você não tem permissão no módulo ADMIN.");
          fetchPromise = null; 
@@ -166,7 +174,6 @@ export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise
       
       const data = await response.json();
       
-      // Se o N8N retornar success: false, devolve vazio e não quebra o sistema.
       if (data.success === false) {
           return [];
       }
@@ -190,8 +197,8 @@ export const fetchAgendamentosPendentes = async (): Promise<ApiAgendamento[]> =>
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO_CONSULTA;
   try {
     const response = await fetch(url, { headers: getAuthHeaders() });
+    checkSessionExpired(response); // <-- Checa 401
     
-    // 👇 TRATAMENTO DA TRAVA
     if (response.status === 401 || response.status === 403) {
         console.warn("Acesso Negado: Módulo OPERACIONAL.");
         return [];
@@ -214,6 +221,7 @@ export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
 
   try {
     const response = await fetch(url, { headers: getAuthHeaders() });
+    checkSessionExpired(response); // <-- Checa 401
     
     if (response.status === 401 || response.status === 403) return [];
     if (!response.ok) return [];
@@ -234,6 +242,8 @@ export const fetchUsuarios = async (): Promise<ApiUsuario[]> => {
   if (!url) return [];
   try {
     const response = await fetch(url, { headers: getAuthHeaders() });
+    checkSessionExpired(response); // <-- Checa 401
+
     if (response.status === 401 || response.status === 403) return [];
     if (!response.ok) return [];
     const data = await response.json();
@@ -254,6 +264,7 @@ export const saveAgendamento = async (dados: any): Promise<{ success: boolean; m
       headers: getAuthHeaders(true),
       body: JSON.stringify(dados)
     });
+    checkSessionExpired(response); // <-- Checa 401
     
     if (response.status === 403) return { success: false, message: "Acesso Negado (ADMIN)." };
     return { success: response.ok };
@@ -270,10 +281,32 @@ export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean; m
       headers: getAuthHeaders(true),
       body: JSON.stringify(dados)
     });
+    checkSessionExpired(response); // <-- Checa 401
     
     if (response.status === 403) return { success: false, message: "Acesso Negado (OPERACIONAL)." };
     return { success: response.ok };
   } catch (error) { return { success: false, message: "Erro de rede" }; }
+};
+
+// --- NOVA FUNÇÃO: VINCULAR PECUARISTA NA VISITA PENDENTE ---
+export const vincularVisitaPecuarista = async (dados: any): Promise<{ success: boolean; message?: string }> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_VINCULAR;
+  if (!url) return { success: false, message: "URL de vínculo não configurada no .env" };
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(dados)
+    });
+    checkSessionExpired(response); // <-- Checa 401
+    
+    if (response.status === 403) return { success: false, message: "Acesso Negado (OPERACIONAL)." };
+    
+    const data = await response.json();
+    return { success: response.ok && data.success !== false, message: data.message };
+  } catch (error) { 
+    return { success: false, message: "Erro de rede" }; 
+  }
 };
 
 
@@ -285,7 +318,7 @@ export interface LoginResponse {
     login: string;
     name: string;
     role: "ADMIN" | "COMPRADOR";
-    modulos?: string[]; // Para podermos usar na Sidebar
+    modulos?: string[]; 
   };
   access_token?: string; 
 }
@@ -345,4 +378,5 @@ export const api = {
   realizarLogin,
   realizarLogout, 
   getUsuarios: fetchUsuarios, 
+  vincularVisita: vincularVisitaPecuarista 
 };

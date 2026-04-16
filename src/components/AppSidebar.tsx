@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
-// 👇 DEFININDO QUAIS MÓDULOS SÃO EXIGIDOS PARA CADA ROTA
 const items = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, reqModule: "GERENCIAL" },
   { title: "Agendamentos", url: "/agendamento", icon: CalendarPlus, reqModule: "ADMIN" },
@@ -30,12 +29,9 @@ export function AppSidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
 
-  // Garante que modulos é sempre um array seguro de ler
   const userModules = (user as any)?.modulos || [];
 
-  // 👇 A MÁGICA VISUAL: Filtrar as rotas da Sidebar baseado no crachá do usuário
   const filteredItems = items.filter((item) => {
-    // Se o item tem um módulo obrigatório (reqModule), e o usuário NÃO o possui, esconde.
     if (item.reqModule && !userModules.includes(item.reqModule)) {
       return false; 
     }

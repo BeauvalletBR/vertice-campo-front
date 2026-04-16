@@ -1,6 +1,9 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { 
   Users, 
   Building2, 
@@ -9,9 +12,15 @@ import {
   TrendingUp,
   Loader2,
   X,
-  Clock,
-  MapPin,
-  User
+  AlertTriangle,
+  CalendarDays,
+  Route,
+  FileText,
+  Download,
+  ChevronDown,
+  ChevronUp,
+  ArrowUpDown,
+  Filter
 } from "lucide-react";
 import {
   Table,
@@ -23,11 +32,58 @@ import {
 } from "@/components/ui/table";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import { toast } from "sonner";
 
-import { api, type ApiVisita, type ApiUsuario } from "@/services/api";
+import { api, fetchPecuaristasAgendamento, type ApiVisita, type ApiUsuario, type ApiRancher } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Rancher = { id: string; name: string; farm: string; headCount: number };
 type CityData = { city: string; lat: number; lng: number; ranchersCount: number; ranchersList: Rancher[] };
+
+interface CheckinReport {
+  id: string;
+  nome: string;
+  ie: string;
+  propriedade: string;
+  car: string;
+  municipio: string;
+  telefone: string;
+  melhorDiaContato: string;
+  proprietario: string;
+  tipoVisita: string;
+  nomeRecebedor: string;
+  cargoRecebedor: string;
+  frigorificoCostume: string;
+  cabecasAbatidasAno: string;
+  tipoVenda: string;
+  atividade: string; 
+  habilitacao: string;
+  terminacao: string; 
+  
+  disp30Dias: boolean;
+  qtd30Dias: string;
+  sexo30Dias: string;
+  status30Dias: string;
+  
+  disp60Dias: boolean;
+  qtd60Dias: string;
+  sexo60Dias: string;
+  status60Dias: string;
+  
+  disp90Dias: boolean;
+  qtd90Dias: string;
+  sexo90Dias: string;
+  status90Dias: string;
+
+  numAnimais: string; 
+  data: string; 
+  visitante: string;
+  produtorAssinatura: string;
+  distancia: string;
+  statusDatavale: "pendente" | "cadastrado";
+}
 
 function MapController({ selectedCity }: { selectedCity: CityData | null }) {
   const map = useMap();
@@ -55,32 +111,88 @@ function MetricCard({ title, value, icon, sub }: { title: string, value: string 
   );
 }
 
+const getDiffEmDias = (dataVisita: string, periodoOriginal: string | number) => {
+  if (!dataVisita) return 0;
+  const visitDate = new Date(dataVisita.split('T')[0] + 'T12:00:00');
+  const diasSomar = Number(periodoOriginal);
+  const dataAlvo = new Date(visitDate);
+  dataAlvo.setDate(dataAlvo.getDate() + diasSomar);
+  
+  const hoje = new Date();
+  hoje.setHours(12, 0, 0, 0); 
+  
+  const diffEmTempo = dataAlvo.getTime() - hoje.getTime();
+  return Math.ceil(diffEmTempo / (1000 * 60 * 60 * 24));
+};
+
 export function Dashboard() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const temPermissaoAdmin = user?.modulos?.includes('ADMIN') || false;
+
+  // 👇 CONTROLES DO FILTRO DE TEMPO GLOBAL 👇
+  // Padrão: Últimos 30 dias
+  const [dateStart, setDateStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [dateEnd, setDateEnd] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+
   const [selectedCity, setSelectedCity] = useState<CityData | null>(null);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   
-  const [visitas, setVisitas] = useState<ApiVisita[]>([]);
+  const [visitasBrutas, setVisitasBrutas] = useState<ApiVisita[]>([]);
   const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]);
+  const [pecuaristas, setPecuaristas] = useState<ApiRancher[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const [forecastModal, setForecastModal] = useState<{
+    isOpen: boolean;
+    periodo: 30 | 60 | 90;
+    titulo: string;
+  } | null>(null);
+  
+  const [forecastSortBy, setForecastSortBy] = useState<'qtd' | 'vencimento'>('vencimento');
+  const [forecastSortOrder, setForecastSortOrder] = useState<'asc' | 'desc'>('asc'); 
+
+  const [selectedReport, setSelectedReport] = useState<CheckinReport | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const carregarDados = async () => {
       setIsLoading(true);
       try {
-        const [dadosVisitas, dadosUsuarios] = await Promise.all([
+        const [dadosVisitas, dadosUsuarios, dadosPecuaristas] = await Promise.all([
           api.getVisitasConsulta(),
-          api.getUsuarios()
+          api.getUsuarios(),
+          temPermissaoAdmin ? fetchPecuaristasAgendamento() : Promise.resolve([])
         ]);
-        setVisitas(dadosVisitas);
+        
+        setVisitasBrutas(dadosVisitas);
         setUsuariosData(dadosUsuarios);
+        setPecuaristas(dadosPecuaristas);
       } catch (error) {
-        console.error("Erro ao carregar visitas para o Dashboard:", error);
+        console.error("Erro ao carregar dados:", error);
       } finally {
         setIsLoading(false);
       }
     };
     carregarDados();
-  }, []);
+  }, [temPermissaoAdmin]);
+
+  // 👇 FILTRO GLOBAL APLICADO: Apenas as visitas no intervalo selecionado 👇
+  const visitas = useMemo(() => {
+    if (!dateStart || !dateEnd) return visitasBrutas;
+    return visitasBrutas.filter(v => {
+      if (!v.DATA_REGISTRO_VISITA) return false;
+      const vDate = v.DATA_REGISTRO_VISITA.split('T')[0];
+      return vDate >= dateStart && vDate <= dateEnd;
+    });
+  }, [visitasBrutas, dateStart, dateEnd]);
 
   const getNomeComprador = (id?: number) => {
     if (!id) return "NÃO DEFINIDO";
@@ -88,82 +200,196 @@ export function Dashboard() {
     return usuario ? usuario.CODUSUARIO : `ID: ${id}`;
   };
 
+  const mapVisitaToReport = (v: ApiVisita): CheckinReport => ({
+    id: String(v.ID_VISITA),
+    nome: v.NOME_PRODUTOR || "N/A", ie: v.INSCRICAO || "", propriedade: v.NOME_FAZENDA || "N/A",
+    car: v.POSSUI_CAR || "N/A", municipio: v.MUNICIPIO || "N/A", telefone: v.TELEFONE || "",
+    melhorDiaContato: v.MELHOR_DIA_CONTATO || "", proprietario: v.NOME_PRODUTOR || "N/A",
+    tipoVisita: v.NATUREZA_VISITA || "", nomeRecebedor: v.NOME_RECEBEDOR || "", cargoRecebedor: v.CARGO_RECEBEDOR || "",
+    frigorificoCostume: v.FRIGORIFICO_COSTUME || "", cabecasAbatidasAno: v.CABECAS_ABATIDAS_ANO ? String(v.CABECAS_ABATIDAS_ANO) : "",
+    tipoVenda: v.TIPO_VENDA || "", atividade: v.TIPO_ATIVIDADE || "", habilitacao: v.HABILITACAO || "", terminacao: v.TIPO_TERMINACAO || "",
+    disp30Dias: v.QTD_30DIAS !== null, qtd30Dias: v.QTD_30DIAS ? String(v.QTD_30DIAS) : "", sexo30Dias: v.SEXO_30DIAS || "", status30Dias: v.STATUS_30DIAS || "",
+    disp60Dias: v.QTD_60DIAS !== null, qtd60Dias: v.QTD_60DIAS ? String(v.QTD_60DIAS) : "", sexo60Dias: v.SEXO_60DIAS || "", status60Dias: v.STATUS_60DIAS || "",
+    disp90Dias: v.QTD_90DIAS !== null, qtd90Dias: v.QTD_90DIAS ? String(v.QTD_90DIAS) : "", sexo90Dias: v.SEXO_90DIAS || "", status90Dias: v.STATUS_90DIAS || "",
+    numAnimais: v.EFETIVO_TOTAL_ANIMAIS ? String(v.EFETIVO_TOTAL_ANIMAIS) : "",
+    data: v.DATA_REGISTRO_VISITA ? v.DATA_REGISTRO_VISITA.split('T')[0] : "",
+    visitante: getNomeComprador(v.ID_COMPRADOR), produtorAssinatura: v.ASSINATURA_DIGITAL || "",
+    distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${v.DISTANCIA_PERCORRIDA_REAL} km` : "N/A",
+    statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente"
+  });
+
+  const handleDownloadPDF = async () => {
+    if (!reportRef.current || !selectedReport) return;
+    try {
+      setIsGeneratingPDF(true);
+      const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`Checkin_${selectedReport.nome.replace(/\s+/g, '_')}_${selectedReport.data}.pdf`);
+      toast.success("PDF gerado com sucesso!");
+    } catch (error) {
+      toast.error("Erro ao gerar o PDF.");
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
   const { mapData, kpis } = useMemo(() => {
-    let totalHeads = 0;
-    let novosPecuaristas = 0;
-    const cidadesSet = new Set<string>();
-    const citiesMap = new Map<string, CityData>();
+    let totalHeads = 0; let novosPecuaristas = 0;
+    const cidadesSet = new Set<string>(); const citiesMap = new Map<string, CityData>();
 
     visitas.forEach(v => {
-    
       const cabecas = Number(v.EFETIVO_TOTAL_ANIMAIS) || 0;
       totalHeads += cabecas;
       
-      if (!v.COD_PRODUTOR) {
-        novosPecuaristas += 1;
-      }
-
-      if (v.MUNICIPIO) {
-        cidadesSet.add(v.MUNICIPIO.toUpperCase());
-      }
+      if (!v.COD_PRODUTOR) novosPecuaristas += 1;
+      if (v.MUNICIPIO) cidadesSet.add(v.MUNICIPIO.toUpperCase());
 
       if (v.GPS_LATITUDE && v.GPS_LONGITUDE) {
         const city = (v.MUNICIPIO || "Não Informado").toUpperCase();
-        
-        if (!citiesMap.has(city)) {
-          citiesMap.set(city, { 
-            city, 
-            lat: v.GPS_LATITUDE, 
-            lng: v.GPS_LONGITUDE, 
-            ranchersCount: 0, 
-            ranchersList: [] 
-          });
-        }
+        if (!citiesMap.has(city)) citiesMap.set(city, { city, lat: v.GPS_LATITUDE, lng: v.GPS_LONGITUDE, ranchersCount: 0, ranchersList: [] });
         
         const cityData = citiesMap.get(city)!;
         cityData.ranchersCount += 1;
-        cityData.ranchersList.push({
-          id: String(v.ID_VISITA),
-          name: v.NOME_PRODUTOR || "Sem Nome",
-          farm: v.NOME_FAZENDA || "Sem Fazenda",
-          headCount: cabecas
-        });
+        cityData.ranchersList.push({ id: String(v.ID_VISITA), name: v.NOME_PRODUTOR || "Sem Nome", farm: v.NOME_FAZENDA || "Sem Fazenda", headCount: cabecas });
       }
     });
 
-    return {
-      mapData: Array.from(citiesMap.values()),
-      kpis: {
-        totalHeads,
-        totalVisitas: visitas.length,
-        novosPecuaristas,
-        cidadesCobertas: cidadesSet.size
-      }
-    };
+    return { mapData: Array.from(citiesMap.values()), kpis: { totalHeads, totalVisitas: visitas.length, novosPecuaristas, cidadesCobertas: cidadesSet.size } };
   }, [visitas]);
 
-  const ultimasVisitas = useMemo(() => {
-    return [...visitas]
-      .sort((a, b) => b.ID_VISITA - a.ID_VISITA) // Maior ID = Mais recente
-      .slice(0, 5);
-  }, [visitas]);
+  const { forecast, auditoriaFrete } = useMemo(() => {
+    let f30 = 0, f60 = 0, f90 = 0;
+    const alertasFrete: any[] = [];
+
+    visitas.forEach(v => {
+      // 👇 TRAVA DO STATUS DISPONÍVEL 👇
+      const checkLot = (qtdOriginal: number | null, status: string | null, diasIniciais: number) => {
+        if (status !== 'DISPONIVEL' || !qtdOriginal) return; // Se não for disponível, ignora!
+        const diff = getDiffEmDias(v.DATA_REGISTRO_VISITA, diasIniciais);
+        
+        if (diff >= -7 && diff <= 30) f30 += Number(qtdOriginal); 
+        else if (diff > 30 && diff <= 60) f60 += Number(qtdOriginal); 
+        else if (diff > 60) f90 += Number(qtdOriginal); 
+      };
+
+      checkLot(v.QTD_30DIAS, v.STATUS_30DIAS, 30);
+      checkLot(v.QTD_60DIAS, v.STATUS_60DIAS, 60);
+      checkLot(v.QTD_90DIAS, v.STATUS_90DIAS, 90);
+
+      if (v.DISTANCIA_PERCORRIDA_REAL && v.COD_PRODUTOR) {
+        const pecuaristaERP = pecuaristas.find(p => p.COD_PRODUTOR === v.COD_PRODUTOR);
+        if (pecuaristaERP && pecuaristaERP.DISTANCIA_CADASTRADA) {
+           const distErp = Number(pecuaristaERP.DISTANCIA_CADASTRADA);
+           const distGps = Number(v.DISTANCIA_PERCORRIDA_REAL);
+           const divergencia = distErp - distGps;
+           if (divergencia > 3) { 
+              alertasFrete.push({ id: v.ID_VISITA, data: v.DATA_REGISTRO_VISITA, produtor: v.NOME_PRODUTOR, fazenda: v.NOME_FAZENDA, erp: distErp, gps: distGps, diff: divergencia });
+           }
+        }
+      }
+    });
+
+    return { forecast: { f30, f60, f90 }, auditoriaFrete: alertasFrete.sort((a,b) => b.diff - a.diff).slice(0, 15) };
+  }, [visitas, pecuaristas]);
+
+  const formatDiasFaltantes = (diffEmDias: number) => {
+    if (diffEmDias < 0) return { text: `${diffEmDias} dias`, style: 'text-red-700 bg-red-100' };
+    if (diffEmDias === 0) return { text: `Vence Hoje`, style: 'text-amber-700 bg-amber-100' };
+    if (diffEmDias <= 7) return { text: `Em ${diffEmDias} dias`, style: 'text-amber-700 bg-amber-100' };
+    return { text: `Faltam ${diffEmDias} dias`, style: 'text-emerald-700 bg-emerald-100' };
+  };
+
+  const getDetalhesForecast = () => {
+    if (!forecastModal) return [];
+    
+    const targetBucket = forecastModal.periodo; 
+    
+    const filtrados = visitas.map(v => {
+       let totalQtd = 0;
+       let minDiff = Infinity;
+
+       const checkLotForModal = (qtdOriginal: number | null, status: string | null, diasIniciais: number) => {
+          // 👇 TRAVA DO STATUS DISPONÍVEL NO MODAL 👇
+          if (status !== 'DISPONIVEL' || !qtdOriginal) return;
+          const diff = getDiffEmDias(v.DATA_REGISTRO_VISITA, diasIniciais);
+          
+          let belongsToThisBucket = false;
+          if (targetBucket === 30 && diff >= -7 && diff <= 30) belongsToThisBucket = true;
+          else if (targetBucket === 60 && diff > 30 && diff <= 60) belongsToThisBucket = true;
+          else if (targetBucket === 90 && diff > 60) belongsToThisBucket = true;
+
+          if (belongsToThisBucket) {
+             totalQtd += Number(qtdOriginal);
+             if (diff < minDiff) minDiff = diff;
+          }
+       };
+
+       checkLotForModal(v.QTD_30DIAS, v.STATUS_30DIAS, 30);
+       checkLotForModal(v.QTD_60DIAS, v.STATUS_60DIAS, 60);
+       checkLotForModal(v.QTD_90DIAS, v.STATUS_90DIAS, 90);
+
+       return { ...v, _computedQtd: totalQtd, _computedMinDiff: minDiff };
+    }).filter(v => v._computedQtd > 0); 
+
+    filtrados.sort((a, b) => {
+      if (forecastSortBy === 'qtd') {
+         return forecastSortOrder === 'desc' ? b._computedQtd - a._computedQtd : a._computedQtd - b._computedQtd;
+      } else {
+         return forecastSortOrder === 'desc' ? b._computedMinDiff - a._computedMinDiff : a._computedMinDiff - b._computedMinDiff;
+      }
+    });
+
+    return filtrados;
+  };
+
+  const handleSort = (column: 'qtd' | 'vencimento') => {
+    if (forecastSortBy === column) {
+      setForecastSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    } else {
+      setForecastSortBy(column);
+      setForecastSortOrder(column === 'vencimento' ? 'asc' : 'desc'); 
+    }
+  };
+
+  const openForecastModal = (periodo: 30 | 60 | 90, titulo: string) => {
+    setIsMapExpanded(false); 
+    setForecastSortBy('vencimento'); 
+    setForecastSortOrder('asc'); 
+    setForecastModal({ isOpen: true, periodo, titulo });
+  };
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in">
-      <header className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in relative pb-24">
+      <header className="flex flex-col md:flex-row justify-between md:items-start gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Dashboard Estratégico</h1>
           <p className="text-muted-foreground text-sm">Visão geral de originação baseada em dados em tempo real</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setSelectedCity(null)}>Resetar Mapa</Button>
-          <Button size="sm" className="bg-primary shadow-md" onClick={() => setIsMapExpanded(!isMapExpanded)}>
-            <Maximize2 className="w-4 h-4 mr-2" /> {isMapExpanded ? "Reduzir" : "Tela Cheia"}
-          </Button>
+        
+        {/* 👇 FILTRO DE DATA GLOBAL 👇 */}
+        <div className="flex flex-col sm:flex-row items-end gap-3 bg-white p-3 rounded-lg shadow-sm border border-slate-100">
+          <div className="flex items-center gap-2 text-slate-500 font-medium">
+            <Filter className="w-4 h-4" />
+            <span className="text-xs uppercase">Filtro Temporal:</span>
+          </div>
+          <div className="flex gap-2 items-center">
+            <div className="flex flex-col">
+              <Label className="text-[9px] uppercase font-bold text-slate-400 mb-1">Início</Label>
+              <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="h-8 text-xs font-semibold" />
+            </div>
+            <div className="flex flex-col">
+              <Label className="text-[9px] uppercase font-bold text-slate-400 mb-1">Fim</Label>
+              <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} className="h-8 text-xs font-semibold" />
+            </div>
+          </div>
         </div>
       </header>
 
-      {/* MÉTRICAS DE BI (Com loading) */}
+      {/* MÉTRICAS DE BI */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {isLoading ? (
           Array(4).fill(0).map((_, i) => (
@@ -179,29 +405,27 @@ export function Dashboard() {
         )}
       </div>
 
-      {/* MAPA PRINCIPAL COM DADOS REAIS */}
+      {/* MAPA PRINCIPAL */}
       <Card className={`overflow-hidden border-none shadow-md transition-all duration-300 ${isMapExpanded ? 'fixed inset-4 z-[200] flex flex-col' : ''}`}>
-        <CardHeader className="bg-white border-b pb-4 shrink-0">
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle className="text-lg">Mapa de Densidade de Compra</CardTitle>
-              <CardDescription>Distribuição geográfica e potencial baseados no GPS das visitas</CardDescription>
-            </div>
-            {isMapExpanded && (
-              <Button variant="ghost" size="icon" onClick={() => setIsMapExpanded(false)}>
-                <X className="w-5 h-5 text-slate-500" />
-              </Button>
-            )}
+        <CardHeader className="bg-white border-b pb-4 shrink-0 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-lg">Mapa de Densidade de Compra</CardTitle>
+            <CardDescription>Distribuição geográfica e potencial baseados no GPS das visitas</CardDescription>
+          </div>
+          <div className="flex gap-2">
+            {!isMapExpanded && <Button variant="outline" size="sm" onClick={() => setSelectedCity(null)}>Resetar Mapa</Button>}
+            <Button size="sm" variant={isMapExpanded ? "ghost" : "default"} onClick={() => setIsMapExpanded(!isMapExpanded)}>
+              {isMapExpanded ? <X className="w-5 h-5 text-slate-500" /> : <><Maximize2 className="w-4 h-4 mr-2" /> Expandir</>}
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="p-0 relative flex-1">
           {isLoading ? (
-             <div className="h-[500px] flex flex-col items-center justify-center bg-slate-50">
+             <div className="h-[400px] flex flex-col items-center justify-center bg-slate-50">
                <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-               <p className="text-slate-500 font-medium">Buscando geolocalizações reais no servidor...</p>
              </div>
           ) : (
-            <div className={`w-full z-0 ${isMapExpanded ? 'h-full min-h-[600px]' : 'h-[500px]'}`}>
+            <div className={`w-full z-0 ${isMapExpanded ? 'h-full min-h-[600px]' : 'h-[400px]'}`}>
               <MapContainer center={[-15.933, -50.14]} zoom={6} className="h-full w-full">
                 <MapController selectedCity={selectedCity} />
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -236,83 +460,356 @@ export function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* 👇 NOVA TABELA: AS ÚLTIMAS 5 VISITAS 👇 */}
-      <Card className="border-none shadow-md overflow-hidden">
-        <CardHeader className="bg-white border-b pb-4">
-          <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
-            <Clock className="w-5 h-5 text-primary" />
-            Últimas 5 Visitas Realizadas
-          </CardTitle>
-          <CardDescription>Monitoramento em tempo real da equipe de campo</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader className="bg-slate-50">
-                <TableRow>
-                  <TableHead className="font-semibold text-xs whitespace-nowrap text-slate-500 uppercase">Data</TableHead>
-                  <TableHead className="font-semibold text-xs whitespace-nowrap text-slate-500 uppercase">Pecuarista / Fazenda</TableHead>
-                  <TableHead className="font-semibold text-xs whitespace-nowrap text-slate-500 uppercase">Local</TableHead>
-                  <TableHead className="font-semibold text-xs whitespace-nowrap text-slate-500 uppercase">Comprador</TableHead>
-                  <TableHead className="font-semibold text-xs text-right whitespace-nowrap text-slate-500 uppercase">Distância (GPS vs ERP)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
+      {/* PAINÉIS DE INTELIGÊNCIA */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* PAINEL 1: FORECAST DE ABATE */}
+        <Card className="border-none shadow-md overflow-hidden">
+          <CardHeader className="bg-white border-b pb-4">
+            <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
+              <CalendarDays className="w-5 h-5 text-indigo-500" />
+              Forecast de Abate (Fluxo Real)
+            </CardTitle>
+            <CardDescription>O gado move de janela automaticamente pelo tempo restante</CardDescription>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="space-y-4">
+              <div 
+                className="bg-slate-50 p-4 rounded-xl border flex items-center justify-between cursor-pointer hover:border-indigo-400 hover:shadow-sm transition-all group"
+                onClick={() => openForecastModal(30, 'Previsão para 30 Dias')}
+              >
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase group-hover:text-indigo-600 transition-colors">Em 30 Dias</p>
+                  <p className="text-3xl font-black text-indigo-600 mt-1">{forecast.f30}</p>
+                </div>
+                <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500 font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">1M</div>
+              </div>
+              
+              <div 
+                className="bg-slate-50 p-4 rounded-xl border flex items-center justify-between cursor-pointer hover:border-indigo-400 hover:shadow-sm transition-all group"
+                onClick={() => openForecastModal(60, 'Previsão para 60 Dias')}
+              >
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase group-hover:text-indigo-600 transition-colors">Em 60 Dias</p>
+                  <p className="text-3xl font-black text-indigo-500 mt-1">{forecast.f60}</p>
+                </div>
+                <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500 font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">2M</div>
+              </div>
+              
+              <div 
+                className="bg-slate-50 p-4 rounded-xl border flex items-center justify-between cursor-pointer hover:border-slate-400 hover:shadow-sm transition-all group"
+                onClick={() => openForecastModal(90, 'Previsão para 90 Dias')}
+              >
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase group-hover:text-slate-700 transition-colors">Em 90 Dias</p>
+                  <p className="text-3xl font-black text-slate-700 mt-1">{forecast.f90}</p>
+                </div>
+                <div className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-slate-600 font-bold group-hover:bg-slate-600 group-hover:text-white transition-colors">3M</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* PAINEL 2: AUDITORIA DE FRETE */}
+        <Card className="border-none shadow-md overflow-hidden flex flex-col">
+          <CardHeader className="bg-white border-b pb-4">
+            <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
+              <Route className="w-5 h-5 text-red-500" />
+              Auditoria de Rota (Gargalo de Frete)
+            </CardTitle>
+            <CardDescription>Fazendas onde a empresa paga mais frete do que o real rodado (&gt; 3km)</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0 flex-1 overflow-x-auto">
+            {temPermissaoAdmin ? (
+              <Table>
+                <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
-                      <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" />
-                    </TableCell>
+                    <TableHead className="font-semibold text-xs text-slate-500 uppercase">Pecuarista</TableHead>
+                    <TableHead className="font-semibold text-xs text-right text-slate-500 uppercase">GPS</TableHead>
+                    <TableHead className="font-semibold text-xs text-right text-slate-500 uppercase">ERP</TableHead>
+                    <TableHead className="font-semibold text-xs text-right text-slate-500 uppercase">Divergência</TableHead>
                   </TableRow>
-                ) : ultimasVisitas.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-slate-500 font-medium">Nenhuma visita registrada ainda.</TableCell>
-                  </TableRow>
-                ) : (
-                  ultimasVisitas.map((v) => {
-                    const distReal = v.DISTANCIA_PERCORRIDA_REAL ? Number(v.DISTANCIA_PERCORRIDA_REAL).toFixed(1) + ' km' : '--';
-                    // Tratando a distância cadastrada (usamos "any" caso a tipagem do TypeScript reclame da nova coluna da View)
-                    const distCad = (v as any).DISTANCIA_CADASTRADA ? Number((v as any).DISTANCIA_CADASTRADA).toFixed(1) + ' km' : '--';
-                    
-                    return (
-                      <TableRow key={v.ID_VISITA} className="hover:bg-slate-50 transition-colors">
-                        <TableCell className="font-medium text-xs text-slate-600 whitespace-nowrap">
-                          {v.DATA_REGISTRO_VISITA ? new Date(v.DATA_REGISTRO_VISITA.split('T')[0] + 'T12:00:00').toLocaleDateString('pt-BR') : '--'}
-                        </TableCell>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow><TableCell colSpan={4} className="text-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" /></TableCell></TableRow>
+                  ) : auditoriaFrete.length === 0 ? (
+                    <TableRow><TableCell colSpan={4} className="text-center py-8 text-slate-500 font-medium">Nenhuma divergência de custo encontrada no período.</TableCell></TableRow>
+                  ) : (
+                    auditoriaFrete.map((alerta) => (
+                      <TableRow key={alerta.id} className="hover:bg-red-50/30 transition-colors">
                         <TableCell>
-                          <p className="font-bold text-sm text-slate-800 uppercase">{v.NOME_PRODUTOR || 'NÃO CADASTRADO'}</p>
-                          <p className="text-xs text-slate-500 uppercase">{v.NOME_FAZENDA || 'Fazenda não informada'}</p>
+                          <p className="font-bold text-[11px] sm:text-xs text-slate-800 uppercase line-clamp-1">{alerta.produtor}</p>
                         </TableCell>
-                        <TableCell>
-                          <span className="flex items-center gap-1 text-xs text-slate-600 font-bold uppercase">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400" /> {v.MUNICIPIO || 'N/A'}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-[11px] font-black text-slate-700 uppercase tracking-wider">
-                            <User className="w-3.5 h-3.5 text-slate-400" />
-                            {getNomeComprador(v.ID_COMPRADOR)}
-                          </span>
-                        </TableCell>
+                        <TableCell className="text-right text-slate-700 font-bold whitespace-nowrap">{alerta.gps.toFixed(1)} km</TableCell>
+                        <TableCell className="text-right text-slate-500 font-medium whitespace-nowrap">{alerta.erp.toFixed(1)} km</TableCell>
                         <TableCell className="text-right">
-                          <div className="flex flex-col items-end gap-1">
-                            <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded shadow-sm" title="Distância coletada pelo GPS do celular">
-                              GPS: {distReal}
-                            </span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase" title="Distância cadastrada na Datavale">
-                              ERP: {distCad}
-                            </span>
-                          </div>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold text-[10px] sm:text-[11px] bg-red-100 text-red-700 whitespace-nowrap">
+                            + {alerta.diff.toFixed(1)} km pagos
+                            <AlertTriangle className="w-3 h-3" />
+                          </span>
                         </TableCell>
                       </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            ) : (
+               <div className="flex flex-col items-center justify-center h-full min-h-[300px] p-6 text-center text-slate-400">
+                  <AlertTriangle className="w-10 h-10 mb-2 opacity-20" />
+                  <p className="font-medium text-sm">O Módulo de Auditoria é restrito para usuários Administradores.</p>
+               </div>
+            )}
+          </CardContent>
+        </Card>
+
+      </div>
+
+      {/* 👇 MODAL FLUTUANTE (TABELA) DO FORECAST 👇 */}
+      {forecastModal && forecastModal.isOpen && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <Card className="w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl border-none">
+            <CardHeader className="bg-white border-b shrink-0 flex flex-row items-center justify-between py-4">
+              <div>
+                <CardTitle className="text-xl text-slate-800">{forecastModal.titulo}</CardTitle>
+                <CardDescription>Detalhamento de pecuaristas com gado <span className="font-bold">DISPONÍVEL</span> neste período</CardDescription>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setForecastModal(null)}>
+                <X className="w-5 h-5 text-slate-500" />
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0 overflow-y-auto flex-1 bg-slate-50">
+              <Table>
+                <TableHeader className="bg-white sticky top-0 z-10 shadow-sm">
+                  <TableRow>
+                    <TableHead className="font-bold text-xs uppercase text-slate-500">Pecuarista</TableHead>
+                    <TableHead className="font-bold text-xs uppercase text-slate-500">Município / Contato</TableHead>
+                    
+                    {/* CABEÇALHO ORDENÁVEL: CABEÇAS */}
+                    <TableHead 
+                      className={`font-bold text-xs uppercase text-center cursor-pointer transition-colors select-none ${forecastSortBy === 'qtd' ? 'text-primary bg-primary/5' : 'text-slate-500 hover:bg-slate-100'}`}
+                      onClick={() => handleSort('qtd')}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        Cabeças
+                        <ArrowUpDown className={`w-3.5 h-3.5 ${forecastSortBy === 'qtd' ? 'opacity-100' : 'opacity-30'}`} />
+                      </div>
+                    </TableHead>
+                    
+                    {/* CABEÇALHO ORDENÁVEL: VENCIMENTO */}
+                    <TableHead 
+                      className={`font-bold text-xs uppercase text-center cursor-pointer transition-colors select-none ${forecastSortBy === 'vencimento' ? 'text-primary bg-primary/5' : 'text-slate-500 hover:bg-slate-100'}`}
+                      onClick={() => handleSort('vencimento')}
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        Vencimento
+                        <ArrowUpDown className={`w-3.5 h-3.5 ${forecastSortBy === 'vencimento' ? 'opacity-100' : 'opacity-30'}`} />
+                      </div>
+                    </TableHead>
+                    
+                    <TableHead className="font-bold text-xs uppercase text-slate-500 text-right">Ação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {getDetalhesForecast().length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-10 text-slate-500 font-medium">Nenhum gado disponível para este período.</TableCell>
+                    </TableRow>
+                  ) : (
+                    getDetalhesForecast().map((v: any) => {
+                      const faltantes = formatDiasFaltantes(v._computedMinDiff);
+                      
+                      return (
+                        <TableRow key={v.ID_VISITA} className="bg-white hover:bg-slate-50 transition-colors">
+                          <TableCell>
+                            <p className="font-bold text-sm text-slate-800 uppercase line-clamp-1">{v.NOME_PRODUTOR}</p>
+                            <p className="text-[10px] text-slate-500 uppercase">{v.NOME_FAZENDA}</p>
+                          </TableCell>
+                          
+                          <TableCell>
+                            <p className="text-xs text-slate-600 uppercase font-bold">{v.MUNICIPIO}</p>
+                            <p className="text-[10px] text-slate-500 font-medium">{v.TELEFONE || '--'}</p>
+                          </TableCell>
+                          
+                          <TableCell className="text-center font-black text-indigo-600 text-sm bg-indigo-50/50">
+                            {v._computedQtd}
+                          </TableCell>
+                          
+                          <TableCell className="text-center">
+                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${faltantes.style}`}>
+                              {faltantes.text}
+                            </span>
+                          </TableCell>
+                          
+                          <TableCell className="text-right">
+                            {/* BOTÃO AZUL QUE ABRE O RELATÓRIO */}
+                            <Button 
+                              size="sm" 
+                              className="text-[11px] font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+                              onClick={() => setSelectedReport(mapVisitaToReport(v))}
+                            >
+                              <FileText className="w-3.5 h-3.5 mr-1.5" />
+                              Ver Relatório
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* =======================================================
+          MODAL: RELATÓRIO DO CHECK-IN (COMPLETO) z-[10000]
+          ======================================================= */}
+      {selectedReport && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <Card className="w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl border-t-4 border-t-primary">
+            
+            <CardHeader className="border-b bg-slate-50 pb-4 shrink-0 rounded-t-lg">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <CardTitle className="text-xl font-bold flex items-center gap-2 text-primary">
+                    <FileText className="w-5 h-5" /> Relatório de Check-in (Visita)
+                  </CardTitle>
+                </div>
+                <button onClick={() => setSelectedReport(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+            </CardHeader>
+            
+            <CardContent className="overflow-y-auto p-0 bg-slate-50/50">
+              <div ref={reportRef} className="p-8 space-y-6 bg-white">
+                
+                {/* Cabeçalho do Relatório de PDF */}
+                <div className="border-b-2 border-primary pb-4 mb-6 flex justify-between items-end">
+                  <div>
+                    <h2 className="text-2xl font-black text-primary uppercase tracking-tight">Ficha de Visita</h2>
+                    <p className="text-sm text-slate-500 mt-1">Originação de Gado - Beauvallet</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-slate-500 font-bold uppercase">Data da Visita</p>
+                    <p className="text-sm font-bold text-slate-800">{new Date(selectedReport.data).toLocaleDateString("pt-BR")}</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 shadow-sm">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Navigation className="w-4 h-4 text-primary" /> Rota Calculada
+                  </h3>
+                  <div className="grid grid-cols-2 gap-y-4 gap-x-6">
+                    <div>
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase">Distância (Kilometragem)</p>
+                      <p className="font-bold text-primary text-lg">{selectedReport.distancia}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* BLOCO A */}
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b pb-2">A. Dados da Propriedade e Contato</h3>
+                  <div className="grid grid-cols-2 gap-y-4 gap-x-6">
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Pecuarista (Nome)</p><p className="font-bold text-slate-800 uppercase">{selectedReport.nome}</p></div>
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Natureza da Visita</p><p className="font-bold text-primary uppercase">{selectedReport.tipoVisita}</p></div>
+                    
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Inscrição Estadual (I.E.)</p><p className="font-bold text-slate-800 font-mono uppercase">{selectedReport.ie || "Não informada"}</p></div>
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Possui CAR?</p><p className="font-bold text-slate-800 uppercase">{selectedReport.car}</p></div>
+
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Propriedade</p><p className="font-bold text-slate-800 uppercase">{selectedReport.propriedade}</p></div>
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Município</p><p className="font-bold text-slate-800 uppercase">{selectedReport.municipio}</p></div>
+                    
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Telefone</p><p className="font-bold text-slate-800 uppercase">{selectedReport.telefone || "N/A"}</p></div>
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Melhor dia de contato</p><p className="font-bold text-slate-800 uppercase">{selectedReport.melhorDiaContato || "N/A"}</p></div>
+                    
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Contato no Local (Nome)</p><p className="font-bold text-slate-800 uppercase">{selectedReport.nomeRecebedor || selectedReport.proprietario}</p></div>
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Cargo (Contato)</p><p className="font-bold text-slate-800 uppercase">{selectedReport.cargoRecebedor || "Proprietário"}</p></div>
+                  </div>
+                </div>
+
+                {/* BLOCO B */}
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b pb-2">B. Detalhes Comerciais e Atividade</h3>
+                  <div className="grid grid-cols-2 gap-y-4 gap-x-4">
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Frigorífico Costumaz</p><p className="font-bold text-slate-800 uppercase">{selectedReport.frigorificoCostume || "Não informado"}</p></div>
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Abates (Último Ano)</p><p className="font-bold text-slate-800">{selectedReport.cabecasAbatidasAno || "Não informado"}</p></div>
+                    
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Tipo de Venda</p><p className="font-bold text-slate-800 uppercase">{selectedReport.tipoVenda}</p></div>
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Habilitação</p><p className="font-bold text-slate-800 uppercase">{selectedReport.habilitacao}</p></div>
+
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Tipo de Atividade</p><p className="font-bold text-primary uppercase">{selectedReport.atividade}</p></div>
+                    <div><p className="text-[10px] text-slate-500 font-semibold uppercase">Tipo de Terminação</p><p className="font-bold text-primary uppercase">{selectedReport.terminacao}</p></div>
+                  </div>
+                </div>
+
+                {/* BLOCO C */}
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b pb-2">C. Rebanho e Lotes para Abate</h3>
+                  
+                  <div className="mb-6">
+                    <p className="text-[10px] text-slate-500 font-semibold uppercase">Efetivo Total (Propriedade)</p>
+                    <p className="font-bold text-blue-700 text-lg tabular-nums">{selectedReport.numAnimais || "Não informado"} cabeças</p>
+                  </div>
+
+                  <h4 className="text-[10px] font-bold text-slate-500 uppercase mb-2">Previsão de Abate (Lotes)</h4>
+                  <div className="space-y-2">
+                    {selectedReport.disp30Dias && (
+                      <div className="grid grid-cols-4 gap-2 bg-slate-50 p-2 rounded border border-slate-100 items-center">
+                        <span className="font-bold text-sm text-slate-800">30 Dias</span>
+                        <span className="text-xs text-slate-600 font-medium">{selectedReport.qtd30Dias || 0} cabeças</span>
+                        <span className="text-xs text-slate-600 font-medium uppercase">{selectedReport.sexo30Dias}</span>
+                        <span className={`text-xs font-bold uppercase text-right ${selectedReport.status30Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status30Dias}</span>
+                      </div>
+                    )}
+                    {selectedReport.disp60Dias && (
+                      <div className="grid grid-cols-4 gap-2 bg-slate-50 p-2 rounded border border-slate-100 items-center">
+                        <span className="font-bold text-sm text-slate-800">60 Dias</span>
+                        <span className="text-xs text-slate-600 font-medium">{selectedReport.qtd60Dias || 0} cabeças</span>
+                        <span className="text-xs text-slate-600 font-medium uppercase">{selectedReport.sexo60Dias}</span>
+                        <span className={`text-xs font-bold uppercase text-right ${selectedReport.status60Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status60Dias}</span>
+                      </div>
+                    )}
+                    {selectedReport.disp90Dias && (
+                      <div className="grid grid-cols-4 gap-2 bg-slate-50 p-2 rounded border border-slate-100 items-center">
+                        <span className="font-bold text-sm text-slate-800">90 Dias</span>
+                        <span className="text-xs text-slate-600 font-medium">{selectedReport.qtd90Dias || 0} cabeças</span>
+                        <span className="text-xs text-slate-600 font-medium uppercase">{selectedReport.sexo90Dias}</span>
+                        <span className={`text-xs font-bold uppercase text-right ${selectedReport.status90Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status90Dias}</span>
+                      </div>
+                    )}
+                    {!selectedReport.disp30Dias && !selectedReport.disp60Dias && !selectedReport.disp90Dias && (
+                      <p className="text-xs text-slate-400 italic">Nenhum lote com previsão de abate a curto prazo.</p>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-8 mt-10">
+                    <div className="border-t border-slate-300 pt-2 text-center">
+                      <p className="font-bold text-sm text-slate-800 uppercase">{selectedReport.visitante}</p>
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase">Comprador (Visitante)</p>
+                    </div>
+                    <div className="border-t border-slate-300 pt-2 text-center">
+                      <p className="font-bold text-sm text-slate-800 font-serif italic uppercase">{selectedReport.produtorAssinatura || "Assinatura Digital Ausente"}</p>
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase">Produtor</p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </CardContent>
+            
+            <div className="border-t bg-slate-50 p-4 rounded-b-lg flex justify-between items-center">
+              <Button variant="outline" className="font-bold text-primary border-primary hover:bg-primary/10 bg-white" onClick={handleDownloadPDF} disabled={isGeneratingPDF}>
+                {isGeneratingPDF ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} BAIXAR PDF
+              </Button>
+              <Button onClick={() => setSelectedReport(null)} className="font-bold">FECHAR RELATÓRIO</Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
     </div>
   );

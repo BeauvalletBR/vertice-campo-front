@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -37,6 +38,8 @@ import { api, fetchPecuaristasAgendamento, fetchAgendamentosPendentes, type ApiR
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+
+import SignatureCanvas from 'react-signature-canvas';
 
 type Step = "idle" | "routing" | "form";
 
@@ -148,6 +151,8 @@ export function FieldVisit() {
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState<FormData>(emptyForm(today, userName));
 
+  const sigCanvas = useRef<SignatureCanvas>(null);
+
   const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
   const lastDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split("T")[0];
   
@@ -233,17 +238,14 @@ export function FieldVisit() {
     } catch (error) { }
   };
 
-  // 👇 FALLBACK ASSÍNCRONO: SETA isRealLocation = FALSE E LIBERA A TELA NA HORA
   const executeFallbackLocation = (callback: () => void) => {
     setIsRealLocation(false); 
     const fallbackLat = -16.6868;
     const fallbackLng = -49.2643;
     setUserLocation([fallbackLat, fallbackLng]);
     
-    // Libera a tela do formulário imediatamente!
     callback();
 
-    // Roda as buscas pesadas em background (sem travar a tela)
     fetchCityName(fallbackLat, fallbackLng);
     
     fetch(`https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${fallbackLng},${fallbackLat}?overview=full&geometries=geojson`)
@@ -261,7 +263,6 @@ export function FieldVisit() {
       });
   };
 
-  // 👇 SUCESSO ASSÍNCRONO: SETA isRealLocation = TRUE E LIBERA A TELA NA HORA
   const fetchRealRouteAndLocation = (callback: () => void) => {
     if (!navigator.geolocation) return executeFallbackLocation(callback);
     
@@ -271,10 +272,8 @@ export function FieldVisit() {
         const { latitude, longitude } = position.coords;
         setUserLocation([latitude, longitude]);
         
-        // Libera a tela do formulário imediatamente após pegar a coordenada!
         callback();
 
-        // Deixa a busca de nome de cidade e cálculo de rota rodando de fundo
         fetchCityName(latitude, longitude);
 
         fetch(`https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${longitude},${latitude}?overview=full&geometries=geojson`)
@@ -373,6 +372,11 @@ export function FieldVisit() {
   const updateField = (key: keyof FormData, value: any) => setForm(prev => ({ ...prev, [key]: value }));
   const formatToUpper = (val: any) => (val === null || val === undefined) ? "" : typeof val === 'string' ? val.trim().toUpperCase() : val;
 
+  const limparAssinatura = () => {
+    sigCanvas.current?.clear();
+    updateField("produtorAssinatura", "");
+  };
+
   const validateAndProceed = () => {
     const camposObrigatorios: { key: keyof FormData, label: string }[] = [
       { key: "nome", label: "Nome do Produtor" }, { key: "propriedade", label: "Propriedade" },
@@ -409,17 +413,33 @@ export function FieldVisit() {
       return;
     }
 
+    // 👇 CAPTURA A ASSINATURA USANDO getCanvas() PARA NÃO QUEBRAR O VITE 👇
+    let assinaturaPronta = form.produtorAssinatura;
+    
+    if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
+       assinaturaPronta = sigCanvas.current.getCanvas().toDataURL('image/png');
+       updateField("produtorAssinatura", assinaturaPronta);
+    }
+
+    if (!assinaturaPronta) {
+      setAlertModal({ isOpen: true, type: "error", title: "Assinatura Pendente!", message: "O produtor ou recebedor precisa assinar no quadro no final do formulário." });
+      return;
+    }
+
     if (!isRealLocation) {
       setConfirmSaveModal(true);
       return;
     }
 
-    executeSavePayload();
+    executeSavePayload(assinaturaPronta);
   };
 
-  const executeSavePayload = async () => {
+  const executeSavePayload = async (assinaturaForcada?: string) => {
     setConfirmSaveModal(false);
     setSaving(true);
+    
+    const base64Assinatura = assinaturaForcada || form.produtorAssinatura;
+
     const lotes = [];
     if (form.disp30Dias) lotes.push({ prazo_dias: 30, quantidade_cabecas: form.qtd30Dias || 0, sexo_animal: formatToUpper(form.sexo30Dias), status_lote: formatToUpper(form.status30Dias) });
     if (form.disp60Dias) lotes.push({ prazo_dias: 60, quantidade_cabecas: form.qtd60Dias || 0, sexo_animal: formatToUpper(form.sexo60Dias), status_lote: formatToUpper(form.status60Dias) });
@@ -451,7 +471,9 @@ export function FieldVisit() {
       numAnimais: form.numAnimais, 
       dataVisita: form.dataVisita, 
       visitante: formatToUpper(form.visitante), 
-      produtorAssinatura: formatToUpper(form.produtorAssinatura),
+      
+      produtorAssinatura: base64Assinatura, 
+      
       disp30Dias: form.disp30Dias, qtd30Dias: form.qtd30Dias, sexo30Dias: formatToUpper(form.sexo30Dias), status30Dias: formatToUpper(form.status30Dias),
       disp60Dias: form.disp60Dias, qtd60Dias: form.qtd60Dias, sexo60Dias: formatToUpper(form.sexo60Dias), status60Dias: formatToUpper(form.status60Dias),
       disp90Dias: form.disp90Dias, qtd90Dias: form.qtd90Dias, sexo90Dias: formatToUpper(form.sexo90Dias), status90Dias: formatToUpper(form.status90Dias),
@@ -460,7 +482,8 @@ export function FieldVisit() {
       gps_longitude: userLocation ? userLocation[1] : null,
       distancia_percorrida_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 
       distancia_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 
-      id_comprador: (user as any)?.id || 1, 
+      
+      id_comprador: (user as any)?.id, 
       lotes
     };
 
@@ -572,7 +595,7 @@ export function FieldVisit() {
             {step === "form" && (
               <div className="space-y-5 animate-fade-in">
                 
-                {/* 👇 AVISO DE GPS AQUI NO TOPO */}
+                {/* AVISO DE GPS */}
                 {isRealLocation ? (
                   <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center gap-3 shadow-sm animate-in fade-in">
                     <CheckCircle2 className="w-5 h-5 text-green-600" />
@@ -595,7 +618,6 @@ export function FieldVisit() {
                     </Button>
                   </div>
                 )}
-                {/* 👆 FIM DO AVISO */}
 
                 <div className="flex items-center justify-between pb-2"><h2 className="text-lg font-bold text-primary flex items-center gap-2"><FileText className="w-5 h-5" /> Checklist de Campo</h2><Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => { setStep("idle"); setRoutePath([]); setUserLocation(null); setIsRealLocation(false); }}><X className="w-4 h-4 mr-1" /> Cancelar</Button></div>
                 <Card className="border-2 border-primary/20 shadow-sm"><CardContent className="pt-4 pb-4"><div className="flex justify-between items-center mb-3"><span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Trajeto Calculado (GPS)</span><span className="text-sm font-bold text-primary tabular-nums">{distance || "Calculando..."}</span></div><div className="h-24 bg-slate-50 rounded-lg flex items-center justify-center border border-dashed border-slate-300 relative overflow-hidden"><div className="relative w-full px-12"><div className="h-0.5 bg-primary/30 w-full" /><div className="absolute left-10 -top-2.5 flex flex-col items-center"><MapPin className="w-5 h-5 text-slate-400" /><span className="text-[9px] font-semibold text-slate-500 mt-0.5">Sede (Inhumas)</span></div><div className="absolute right-10 -top-2.5 flex flex-col items-center"><Navigation className="w-5 h-5 text-primary" /><span className="text-[9px] font-semibold text-primary mt-0.5">Local Atual</span></div></div></div></CardContent></Card>
@@ -637,9 +659,71 @@ export function FieldVisit() {
                     <div className="border-t border-slate-100 pt-4 mt-2"><Label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Natureza da Visita</Label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{["PROSPECÇÃO", "REATIVAÇÃO", "OBRIGATÓRIA", "ACOMP. EMBARQUE", "CORTESIA"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoVisita", t)} className={getToggleClass(form.tipoVisita, t)}>{t}</button>))}</div></div>
                   </CardContent>
                 </Card>
-                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><FileText className="w-4 h-4 text-primary" /> A. Dados da Propriedade e Contato</CardTitle></CardHeader><CardContent className="space-y-4"><FieldInput label="Nome do Produtor" placeholder="Nome do proprietário/empresa" value={form.nome} onChange={(v) => updateField("nome", v)} /><FieldInput label="I.E. (Inscrição Estadual)" placeholder="000.000.000" value={form.ie} onChange={(v) => updateField("ie", v)} inputMode="numeric" /><FieldInput label="Propriedade" placeholder="Ex: Fazenda Santa Fé" value={form.propriedade} onChange={(v) => updateField("propriedade", v)} /><FieldInput label="Município (Preenchido pelo GPS ou Base)" placeholder="Ex: Goiânia" value={form.municipio} onChange={(v) => updateField("municipio", v)} icon={<MapPin className="w-4 h-4 text-primary" />} /><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Possui CAR?</Label><div className="flex gap-4"><button type="button" onClick={() => updateField("car", "SIM")} className={`flex-1 py-4 rounded-xl font-bold text-base transition-all border-2 ${form.car.toUpperCase() === "SIM" ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>SIM</button><button type="button" onClick={() => updateField("car", "NAO")} className={`flex-1 py-4 rounded-xl font-bold text-base transition-all border-2 ${form.car.toUpperCase() === "NAO" ? "bg-red-600 border-red-600 text-white shadow-md" : "bg-red-50 border-red-200 text-red-500 hover:bg-red-100"}`}>NÃO</button></div></div><FieldInput label="Telefone" placeholder="(62) 99999-0000" type="tel" value={form.telefone} onChange={(v) => updateField("telefone", v)} icon={<Phone className="w-4 h-4" />} /><FieldInput label="Melhor dia de contato" placeholder="Ex: Segunda-feira" value={form.melhorDiaContato} onChange={(v) => updateField("melhorDiaContato", v)} /><div className="border-t border-slate-100 pt-4 mt-4 space-y-4"><h3 className="text-xs font-bold text-slate-400 uppercase">Informações do Contato no Local</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FieldInput label="Nome de quem recebeu a visita" placeholder="Ex: José Silva" value={form.nomeRecebedor} onChange={(v) => updateField("nomeRecebedor", v)} icon={<User className="w-4 h-4" />} /><FieldInput label="Cargo do Recebedor" placeholder="Ex: Gerente, Capataz" value={form.cargoRecebedor} onChange={(v) => updateField("cargoRecebedor", v)} /></div></div></CardContent></Card>
-                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><Landmark className="w-4 h-4 text-primary" /> B. Detalhes Comerciais e Atividade</CardTitle></CardHeader><CardContent className="space-y-6"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FieldInput label="Frigorífico que costuma abater" placeholder="Ex: JBS, Minerva..." value={form.frigorificoCostume} onChange={(v) => updateField("frigorificoCostume", v)} /><FieldInput label="Qtd. cabeças abatidas (último ano)" type="number" placeholder="Ex: 500" value={form.cabecasAbatidasAno} onChange={(v) => updateField("cabecasAbatidasAno", v)} /></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Venda</Label><div className="flex gap-2">{["DIRETO", "CONTRATO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoVenda", t)} className={getToggleClass(form.tipoVenda, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Atividade</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CRIA", "RECRIA", "ENGORDA", "CICLO COMPLETO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoAtividade", t)} className={getToggleClass(form.tipoAtividade, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Terminação</Label><div className="grid grid-cols-3 gap-2">{["CONFINADO", "SEMI-CONF.", "PASTO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoTerminacao", t)} className={getToggleClass(form.tipoTerminacao, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Habilitação</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CHINA", "EUROPA", "MI", "OUTROS"].map((t) => (<button key={t} type="button" onClick={() => updateField("habilitacao", t)} className={getToggleClass(form.habilitacao, t)}>{t}</button>))}</div></div></CardContent></Card>
-                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> C. Rebanho e Fechamento</CardTitle></CardHeader><CardContent className="space-y-6"><FieldInput label="Nº de Animais na Propriedade (Efetivo Total)" type="number" placeholder="Ex: 1500" value={form.numAnimais} onChange={(v) => updateField("numAnimais", v)} /><div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200"><Label className="text-xs font-bold text-slate-500 uppercase block mb-3">Disponibilidade p/ Abate</Label><div className="space-y-3"><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp30Dias", !form.disp30Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp30Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>30 Dias {form.disp30Dias && "✓"}</button>{form.disp30Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd30Dias} onChange={(e) => updateField("qtd30Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo30Dias} onChange={(e) => updateField("sexo30Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status30Dias} onChange={(e) => updateField("status30Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp60Dias", !form.disp60Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp60Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>60 Dias {form.disp60Dias && "✓"}</button>{form.disp60Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd60Dias} onChange={(e) => updateField("qtd60Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo60Dias} onChange={(e) => updateField("sexo60Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status60Dias} onChange={(e) => updateField("status60Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp90Dias", !form.disp90Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp90Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>90 Dias {form.disp90Dias && "✓"}</button>{form.disp90Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd90Dias} onChange={(e) => updateField("qtd90Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo90Dias} onChange={(e) => updateField("sexo90Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status90Dias} onChange={(e) => updateField("status90Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div></div></div><div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4"><FieldInput label="Data da Visita" type="date" value={form.dataVisita} onChange={(v) => updateField("dataVisita", v)} /><div className="space-y-1.5 opacity-70"><Label className="text-xs font-bold text-slate-500 uppercase">Visitante</Label><Input disabled value={form.visitante} className="h-12 bg-slate-100 font-bold uppercase" /></div></div><FieldInput label="Produtor / Recebedor (Assinatura digital)" placeholder="Digite o nome para assinar" value={form.produtorAssinatura} onChange={(v) => updateField("produtorAssinatura", v)} className="border-b-2 border-t-0 border-x-0 border-slate-300 rounded-none bg-transparent text-center font-serif text-lg italic mt-2 uppercase" /></CardContent></Card>
+                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><FileText className="w-4 h-4 text-primary" /> A. Dados da Propriedade e Contato</CardTitle></CardHeader><CardContent className="space-y-4"><FieldInput label="Nome do Produtor" placeholder="Nome do proprietário/empresa" value={form.nome} onChange={(v) => updateField("nome", v)} /><FieldInput label="I.E. (Inscrição Estadual)" placeholder="000.000.000" value={form.ie} onChange={(v) => updateField("ie", v)} inputMode="numeric" /><FieldInput label="Propriedade" placeholder="Ex: Fazenda Santa Fé" value={form.propriedade} onChange={(v) => updateField("propriedade", v)} /><FieldInput label="Município (Preenchido pelo GPS ou Base)" placeholder="Ex: Goiânia" value={form.municipio} onChange={(v) => updateField("municipio", v)} icon={<MapPin className="w-4 h-4 text-primary" />} /><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Possui CAR?</Label><div className="flex gap-4"><button type="button" onClick={() => updateField("car", "SIM")} className={`flex-1 py-4 rounded-xl font-bold text-base transition-all border-2 ${form.car.toUpperCase() === "SIM" ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>SIM</button><button type="button" onClick={() => updateField("car", "NAO")} className={`flex-1 py-4 rounded-xl font-bold text-base transition-all border-2 ${form.car.toUpperCase() === "NAO" ? "bg-red-600 border-red-600 text-white shadow-md" : "bg-red-50 border-red-200 text-red-500 hover:bg-red-100"}`}>NÃO</button></div></div><FieldInput label="Telefone" placeholder="(62) 99999-0000" type="tel" value={form.telefone} onChange={(v) => updateField("telefone", v)} icon={<Phone className="w-4 h-4" />} />
+                
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Melhor dia de contato</Label>
+                  <select 
+                    className="flex h-12 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary uppercase font-medium"
+                    value={form.melhorDiaContato}
+                    onChange={(e) => updateField("melhorDiaContato", e.target.value)}
+                  >
+                    <option value="">Selecione um dia...</option>
+                    <option value="SEGUNDA-FEIRA">Segunda-feira</option>
+                    <option value="TERCA-FEIRA">Terça-feira</option>
+                    <option value="QUARTA-FEIRA">Quarta-feira</option>
+                    <option value="QUINTA-FEIRA">Quinta-feira</option>
+                    <option value="SEXTA-FEIRA">Sexta-feira</option>
+                    <option value="SABADO">Sábado</option>
+                    <option value="DOMINGO">Domingo</option>
+                  </select>
+                </div>
+                
+                <div className="border-t border-slate-100 pt-4 mt-4 space-y-4"><h3 className="text-xs font-bold text-slate-400 uppercase">Informações do Contato no Local</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FieldInput label="Nome de quem recebeu a visita" placeholder="Ex: José Silva" value={form.nomeRecebedor} onChange={(v) => updateField("nomeRecebedor", v)} icon={<User className="w-4 h-4" />} /><FieldInput label="Cargo do Recebedor" placeholder="Ex: Gerente, Capataz" value={form.cargoRecebedor} onChange={(v) => updateField("cargoRecebedor", v)} /></div></div></CardContent></Card>
+                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><Landmark className="w-4 h-4 text-primary" /> B. Detalhes Comerciais e Atividade</CardTitle></CardHeader><CardContent className="space-y-6"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Frigorífico Costumaz</Label>
+                    <select 
+                      className="flex h-12 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary uppercase font-medium"
+                      value={form.frigorificoCostume}
+                      onChange={(e) => updateField("frigorificoCostume", e.target.value)}
+                    >
+                      <option value="">Selecione um frigorífico...</option>
+                      <option value="OUTROS">Outros</option>
+                      <option value="JBS">JBS</option>
+                      <option value="MINERVA">Minerva</option>
+                      <option value="BEAUVALLET">Beauvallet</option>
+                      <option value="MARFRIG">Marfrig</option>
+                      <option value="PLENA">Plena</option>
+                      <option value="MERCOFRIGO">Mercofrigo</option>
+                    </select>
+                  </div>
+                  
+                  <FieldInput label="Qtd. cabeças abatidas (último ano)" type="number" placeholder="Ex: 500" value={form.cabecasAbatidasAno} onChange={(v) => updateField("cabecasAbatidasAno", v)} /></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Venda</Label><div className="flex gap-2">{["DIRETO", "CONTRATO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoVenda", t)} className={getToggleClass(form.tipoVenda, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Atividade</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CRIA", "RECRIA", "ENGORDA", "CICLO COMPLETO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoAtividade", t)} className={getToggleClass(form.tipoAtividade, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Terminação</Label><div className="grid grid-cols-3 gap-2">{["CONFINADO", "SEMI-CONF.", "PASTO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoTerminacao", t)} className={getToggleClass(form.tipoTerminacao, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Habilitação</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CHINA", "EUROPA", "MI", "OUTROS"].map((t) => (<button key={t} type="button" onClick={() => updateField("habilitacao", t)} className={getToggleClass(form.habilitacao, t)}>{t}</button>))}</div></div></CardContent></Card>
+                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> C. Rebanho e Fechamento</CardTitle></CardHeader><CardContent className="space-y-6"><FieldInput label="Nº de Animais na Propriedade (Efetivo Total)" type="number" placeholder="Ex: 1500" value={form.numAnimais} onChange={(v) => updateField("numAnimais", v)} /><div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200"><Label className="text-xs font-bold text-slate-500 uppercase block mb-3">Disponibilidade p/ Abate</Label><div className="space-y-3"><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp30Dias", !form.disp30Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp30Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>30 Dias {form.disp30Dias && "✓"}</button>{form.disp30Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd30Dias} onChange={(e) => updateField("qtd30Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo30Dias} onChange={(e) => updateField("sexo30Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status30Dias} onChange={(e) => updateField("status30Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp60Dias", !form.disp60Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp60Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>60 Dias {form.disp60Dias && "✓"}</button>{form.disp60Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd60Dias} onChange={(e) => updateField("qtd60Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo60Dias} onChange={(e) => updateField("sexo60Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status60Dias} onChange={(e) => updateField("status60Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp90Dias", !form.disp90Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp90Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>90 Dias {form.disp90Dias && "✓"}</button>{form.disp90Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd90Dias} onChange={(e) => updateField("qtd90Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo90Dias} onChange={(e) => updateField("sexo90Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status90Dias} onChange={(e) => updateField("status90Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div></div></div><div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4"><FieldInput label="Data da Visita" type="date" value={form.dataVisita} onChange={(v) => updateField("dataVisita", v)} /><div className="space-y-1.5 opacity-70"><Label className="text-xs font-bold text-slate-500 uppercase">Visitante</Label><Input disabled value={form.visitante} className="h-12 bg-slate-100 font-bold uppercase" /></div></div>
+                
+                {/* 👇 MODULO DE ASSINATURA DIGITAL 👇 */}
+                <div className="border-t border-slate-100 pt-4 mt-6">
+                  <Label className="text-xs font-bold text-slate-500 uppercase block mb-3 text-center">
+                    Assinatura do Produtor / Recebedor
+                  </Label>
+                  
+                  <div className="flex flex-col items-center">
+                    <div className="border-2 border-dashed border-slate-300 bg-slate-50 rounded-lg overflow-hidden w-full max-w-sm">
+                      <SignatureCanvas 
+                        ref={sigCanvas} 
+                        penColor="black"
+                        canvasProps={{ className: "w-full h-40 bg-transparent cursor-crosshair touch-none" }} 
+                      />
+                    </div>
+                    <div className="flex gap-2 mt-3 w-full max-w-sm">
+                      <Button variant="outline" className="w-full" onClick={limparAssinatura}>Limpar Assinatura</Button>
+                    </div>
+                  </div>
+                </div>
+                
+                </CardContent></Card>
                 <Button className="w-full h-14 text-lg font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg mt-4" onClick={validateAndProceed} disabled={saving}>{saving ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> SINCRONIZANDO...</> : "SALVAR VISITA E SINCRONIZAR"}</Button>
               </div>
             )}
@@ -722,7 +806,7 @@ export function FieldVisit() {
                 <p className="text-slate-600 font-medium leading-relaxed mb-8">A localização real do seu dispositivo não foi coletada. Se você salvar agora, o relatório ficará registrado com a localização de simulação (Goiânia). Tem certeza que deseja continuar?</p>
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1 font-bold h-12" onClick={() => setConfirmSaveModal(false)}>VOLTAR</Button>
-                  <Button className="flex-1 font-bold h-12 bg-amber-500 hover:bg-amber-600 text-white" onClick={executeSavePayload}>SIM, SALVAR ASSIM</Button>
+                  <Button className="flex-1 font-bold h-12 bg-amber-500 hover:bg-amber-600 text-white" onClick={() => executeSavePayload()}>SIM, SALVAR ASSIM</Button>
                 </div>
               </CardContent>
             </Card>
