@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge"; // Certifique-se de ter exportado o Badge do Shadcn!
 import { 
   Users, 
   Building2, 
@@ -17,8 +18,6 @@ import {
   Route,
   FileText,
   Download,
-  ChevronDown,
-  ChevronUp,
   ArrowUpDown,
   Filter
 } from "lucide-react";
@@ -94,17 +93,22 @@ function MapController({ selectedCity }: { selectedCity: CityData | null }) {
   return null;
 }
 
-function MetricCard({ title, value, icon, sub }: { title: string, value: string | number, icon: React.ReactNode, sub: string }) {
+// 👇 COMPONENTE DO CARD DE MÉTRICA REDESENHADO (ESTILO PREMIUM) 👇
+function MetricCard({ title, value, icon, sub, colorClass }: { title: string, value: string | number, icon: React.ReactNode, sub: string, colorClass: string }) {
   return (
-    <Card className="border-none shadow-sm bg-white">
+    <Card className="bg-white border-slate-200 shadow-sm transition-all hover:shadow-md">
       <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div className="p-3 bg-slate-50 rounded-xl">{icon}</div>
+        <div className="flex items-start gap-4">
+          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${colorClass}`}>
+            {icon}
+          </div>
+          <div className="flex flex-col">
+            <p className="text-sm font-bold text-slate-500 tracking-wide uppercase">{title}</p>
+            <h3 className="text-4xl font-black text-slate-800 tracking-tight mt-1">{value}</h3>
+          </div>
         </div>
-        <div className="mt-4">
-          <p className="text-sm text-muted-foreground font-medium">{title}</p>
-          <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
-          <p className="text-[10px] text-slate-400 mt-1">{sub}</p>
+        <div className="mt-4 pt-4 border-t border-slate-100">
+          <p className="text-xs font-medium text-slate-400">{sub}</p>
         </div>
       </CardContent>
     </Card>
@@ -130,8 +134,6 @@ export function Dashboard() {
   const navigate = useNavigate();
   const temPermissaoAdmin = user?.modulos?.includes('ADMIN') || false;
 
-  // 👇 CONTROLES DO FILTRO DE TEMPO GLOBAL 👇
-  // Padrão: Últimos 30 dias
   const [dateStart, setDateStart] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -184,7 +186,6 @@ export function Dashboard() {
     carregarDados();
   }, [temPermissaoAdmin]);
 
-  // 👇 FILTRO GLOBAL APLICADO: Apenas as visitas no intervalo selecionado 👇
   const visitas = useMemo(() => {
     if (!dateStart || !dateEnd) return visitasBrutas;
     return visitasBrutas.filter(v => {
@@ -266,9 +267,8 @@ export function Dashboard() {
     const alertasFrete: any[] = [];
 
     visitas.forEach(v => {
-      // 👇 TRAVA DO STATUS DISPONÍVEL 👇
       const checkLot = (qtdOriginal: number | null, status: string | null, diasIniciais: number) => {
-        if (status !== 'DISPONIVEL' || !qtdOriginal) return; // Se não for disponível, ignora!
+        if (status !== 'DISPONIVEL' || !qtdOriginal) return; 
         const diff = getDiffEmDias(v.DATA_REGISTRO_VISITA, diasIniciais);
         
         if (diff >= -7 && diff <= 30) f30 += Number(qtdOriginal); 
@@ -287,7 +287,7 @@ export function Dashboard() {
            const distGps = Number(v.DISTANCIA_PERCORRIDA_REAL);
            const divergencia = distErp - distGps;
            if (divergencia > 3) { 
-              alertasFrete.push({ id: v.ID_VISITA, data: v.DATA_REGISTRO_VISITA, produtor: v.NOME_PRODUTOR, fazenda: v.NOME_FAZENDA, erp: distErp, gps: distGps, diff: divergencia });
+             alertasFrete.push({ id: v.ID_VISITA, data: v.DATA_REGISTRO_VISITA, produtor: v.NOME_PRODUTOR, fazenda: v.NOME_FAZENDA, erp: distErp, gps: distGps, diff: divergencia });
            }
         }
       }
@@ -313,19 +313,18 @@ export function Dashboard() {
        let minDiff = Infinity;
 
        const checkLotForModal = (qtdOriginal: number | null, status: string | null, diasIniciais: number) => {
-          // 👇 TRAVA DO STATUS DISPONÍVEL NO MODAL 👇
-          if (status !== 'DISPONIVEL' || !qtdOriginal) return;
-          const diff = getDiffEmDias(v.DATA_REGISTRO_VISITA, diasIniciais);
-          
-          let belongsToThisBucket = false;
-          if (targetBucket === 30 && diff >= -7 && diff <= 30) belongsToThisBucket = true;
-          else if (targetBucket === 60 && diff > 30 && diff <= 60) belongsToThisBucket = true;
-          else if (targetBucket === 90 && diff > 60) belongsToThisBucket = true;
+         if (status !== 'DISPONIVEL' || !qtdOriginal) return;
+         const diff = getDiffEmDias(v.DATA_REGISTRO_VISITA, diasIniciais);
+         
+         let belongsToThisBucket = false;
+         if (targetBucket === 30 && diff >= -7 && diff <= 30) belongsToThisBucket = true;
+         else if (targetBucket === 60 && diff > 30 && diff <= 60) belongsToThisBucket = true;
+         else if (targetBucket === 90 && diff > 60) belongsToThisBucket = true;
 
-          if (belongsToThisBucket) {
+         if (belongsToThisBucket) {
              totalQtd += Number(qtdOriginal);
              if (diff < minDiff) minDiff = diff;
-          }
+         }
        };
 
        checkLotForModal(v.QTD_30DIAS, v.STATUS_30DIAS, 30);
@@ -363,208 +362,214 @@ export function Dashboard() {
   };
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in relative pb-24">
-      <header className="flex flex-col md:flex-row justify-between md:items-start gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Dashboard Estratégico</h1>
-          <p className="text-muted-foreground text-sm">Visão geral de originação baseada em dados em tempo real</p>
-        </div>
+    // 👇 Fundo com Profundidade (bg-slate-50) 👇
+    <div className="min-h-screen bg-slate-50 p-6 lg:p-8 space-y-8 animate-fade-in relative pb-24">
+      <div className="max-w-[1600px] mx-auto space-y-8">
         
-        {/* 👇 FILTRO DE DATA GLOBAL 👇 */}
-        <div className="flex flex-col sm:flex-row items-end gap-3 bg-white p-3 rounded-lg shadow-sm border border-slate-100">
-          <div className="flex items-center gap-2 text-slate-500 font-medium">
-            <Filter className="w-4 h-4" />
-            <span className="text-xs uppercase">Filtro Temporal:</span>
-          </div>
-          <div className="flex gap-2 items-center">
-            <div className="flex flex-col">
-              <Label className="text-[9px] uppercase font-bold text-slate-400 mb-1">Início</Label>
-              <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="h-8 text-xs font-semibold" />
-            </div>
-            <div className="flex flex-col">
-              <Label className="text-[9px] uppercase font-bold text-slate-400 mb-1">Fim</Label>
-              <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} className="h-8 text-xs font-semibold" />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* MÉTRICAS DE BI */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {isLoading ? (
-          Array(4).fill(0).map((_, i) => (
-             <Card key={i} className="h-[140px] flex items-center justify-center border-none shadow-sm"><Loader2 className="w-6 h-6 text-slate-300 animate-spin" /></Card>
-          ))
-        ) : (
-          <>
-            <MetricCard title="Gado Prospectado" value={kpis.totalHeads.toLocaleString('pt-BR')} icon={<TrendingUp className="text-blue-600" />} sub="Efetivo total registrado em visitas" />
-            <MetricCard title="Visitas Realizadas" value={kpis.totalVisitas} icon={<Navigation className="text-indigo-600" />} sub="Total de registros no banco" />
-            <MetricCard title="Novos Pecuaristas" value={kpis.novosPecuaristas} icon={<Users className="text-emerald-600" />} sub="Visitas sem cadastro prévio no ERP" />
-            <MetricCard title="Cidades Cobertas" value={kpis.cidadesCobertas} icon={<Building2 className="text-amber-600" />} sub="Abrangência geográfica real" />
-          </>
-        )}
-      </div>
-
-      {/* MAPA PRINCIPAL */}
-      <Card className={`overflow-hidden border-none shadow-md transition-all duration-300 ${isMapExpanded ? 'fixed inset-4 z-[200] flex flex-col' : ''}`}>
-        <CardHeader className="bg-white border-b pb-4 shrink-0 flex flex-row items-center justify-between">
+        <header className="flex flex-col md:flex-row justify-between md:items-start gap-4">
           <div>
-            <CardTitle className="text-lg">Mapa de Densidade de Compra</CardTitle>
-            <CardDescription>Distribuição geográfica e potencial baseados no GPS das visitas</CardDescription>
+            <h1 className="text-2xl font-black text-slate-800 tracking-tight">Dashboard Estratégico</h1>
+            <p className="text-muted-foreground text-sm font-medium mt-1">Visão geral de originação baseada em dados em tempo real</p>
           </div>
-          <div className="flex gap-2">
-            {!isMapExpanded && <Button variant="outline" size="sm" onClick={() => setSelectedCity(null)}>Resetar Mapa</Button>}
-            <Button size="sm" variant={isMapExpanded ? "ghost" : "default"} onClick={() => setIsMapExpanded(!isMapExpanded)}>
-              {isMapExpanded ? <X className="w-5 h-5 text-slate-500" /> : <><Maximize2 className="w-4 h-4 mr-2" /> Expandir</>}
-            </Button>
+          
+          {/* 👇 FILTRO DE DATA GLOBAL REDESENHADO 👇 */}
+          <div className="flex flex-col sm:flex-row items-end gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+            <div className="flex items-center gap-2 text-slate-600 font-bold mb-1 sm:mb-0">
+              <Filter className="w-4 h-4 text-primary" />
+              <span className="text-xs uppercase tracking-wider">Filtro Temporal</span>
+            </div>
+            <div className="flex gap-3 items-center">
+              <div className="flex flex-col">
+                <Label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5">Início</Label>
+                <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="h-9 text-xs font-bold bg-slate-50 border-slate-200" />
+              </div>
+              <div className="flex flex-col">
+                <Label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5">Fim</Label>
+                <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} className="h-9 text-xs font-bold bg-slate-50 border-slate-200" />
+              </div>
+            </div>
           </div>
-        </CardHeader>
-        <CardContent className="p-0 relative flex-1">
+        </header>
+
+        {/* MÉTRICAS DE BI REDESENHADAS */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {isLoading ? (
-             <div className="h-[400px] flex flex-col items-center justify-center bg-slate-50">
-               <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-             </div>
+            Array(4).fill(0).map((_, i) => (
+              <Card key={i} className="h-[140px] flex items-center justify-center border-none shadow-sm"><Loader2 className="w-6 h-6 text-slate-300 animate-spin" /></Card>
+            ))
           ) : (
-            <div className={`w-full z-0 ${isMapExpanded ? 'h-full min-h-[600px]' : 'h-[400px]'}`}>
-              <MapContainer center={[-15.933, -50.14]} zoom={6} className="h-full w-full">
-                <MapController selectedCity={selectedCity} />
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                {mapData.map((city, idx) => (
-                  <CircleMarker 
-                    key={idx} 
-                    center={[city.lat, city.lng]} 
-                    radius={Math.min(25, 8 + (city.ranchersCount * 2))} 
-                    fillColor="#1d4ed8" 
-                    color="#1e3a8a" 
-                    fillOpacity={0.6} 
-                    eventHandlers={{ click: () => setSelectedCity(city) }}
-                  >
-                    <Tooltip>{city.city}: {city.ranchersCount} pecuarista(s)</Tooltip>
-                    <Popup>
-                      <div className="p-2 min-w-[200px] max-h-[250px] overflow-y-auto">
-                        <h4 className="font-bold border-b mb-2 sticky top-0 bg-white text-slate-800">{city.city}</h4>
-                        {city.ranchersList.map(r => (
-                          <div key={r.id} className="text-xs mb-2 border-b border-slate-100 pb-2 last:border-0">
-                            <p className="font-bold text-slate-800 uppercase">{r.name}</p>
-                            <p className="text-slate-500">{r.farm}</p>
-                            <p className="text-blue-600 font-bold mt-0.5">{r.headCount} cabeças de efetivo</p>
-                          </div>
-                        ))}
-                      </div>
-                    </Popup>
-                  </CircleMarker>
-                ))}
-              </MapContainer>
-            </div>
+            <>
+              <MetricCard title="Gado Prospectado" value={kpis.totalHeads.toLocaleString('pt-BR')} icon={<TrendingUp className="w-7 h-7 text-blue-600" />} colorClass="bg-blue-50 text-blue-600" sub="Efetivo total registrado em visitas" />
+              <MetricCard title="Visitas Realizadas" value={kpis.totalVisitas} icon={<Navigation className="w-7 h-7 text-indigo-600" />} colorClass="bg-indigo-50 text-indigo-600" sub="Total de registros no banco" />
+              <MetricCard title="Novos Pecuaristas" value={kpis.novosPecuaristas} icon={<Users className="w-7 h-7 text-emerald-600" />} colorClass="bg-emerald-50 text-emerald-600" sub="Visitas sem cadastro prévio no ERP" />
+              <MetricCard title="Cidades Cobertas" value={kpis.cidadesCobertas} icon={<Building2 className="w-7 h-7 text-amber-600" />} colorClass="bg-amber-50 text-amber-600" sub="Abrangência geográfica real" />
+            </>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* PAINÉIS DE INTELIGÊNCIA */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* PAINEL 1: FORECAST DE ABATE */}
-        <Card className="border-none shadow-md overflow-hidden">
-          <CardHeader className="bg-white border-b pb-4">
-            <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
-              <CalendarDays className="w-5 h-5 text-indigo-500" />
-              Forecast de Abate (Fluxo Real)
-            </CardTitle>
-            <CardDescription>O gado move de janela automaticamente pelo tempo restante</CardDescription>
-          </CardHeader>
-          <CardContent className="p-6">
-            <div className="space-y-4">
-              <div 
-                className="bg-slate-50 p-4 rounded-xl border flex items-center justify-between cursor-pointer hover:border-indigo-400 hover:shadow-sm transition-all group"
-                onClick={() => openForecastModal(30, 'Previsão para 30 Dias')}
-              >
-                <div>
-                  <p className="text-xs font-bold text-slate-500 uppercase group-hover:text-indigo-600 transition-colors">Em 30 Dias</p>
-                  <p className="text-3xl font-black text-indigo-600 mt-1">{forecast.f30}</p>
-                </div>
-                <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500 font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">1M</div>
-              </div>
-              
-              <div 
-                className="bg-slate-50 p-4 rounded-xl border flex items-center justify-between cursor-pointer hover:border-indigo-400 hover:shadow-sm transition-all group"
-                onClick={() => openForecastModal(60, 'Previsão para 60 Dias')}
-              >
-                <div>
-                  <p className="text-xs font-bold text-slate-500 uppercase group-hover:text-indigo-600 transition-colors">Em 60 Dias</p>
-                  <p className="text-3xl font-black text-indigo-500 mt-1">{forecast.f60}</p>
-                </div>
-                <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500 font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">2M</div>
-              </div>
-              
-              <div 
-                className="bg-slate-50 p-4 rounded-xl border flex items-center justify-between cursor-pointer hover:border-slate-400 hover:shadow-sm transition-all group"
-                onClick={() => openForecastModal(90, 'Previsão para 90 Dias')}
-              >
-                <div>
-                  <p className="text-xs font-bold text-slate-500 uppercase group-hover:text-slate-700 transition-colors">Em 90 Dias</p>
-                  <p className="text-3xl font-black text-slate-700 mt-1">{forecast.f90}</p>
-                </div>
-                <div className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center text-slate-600 font-bold group-hover:bg-slate-600 group-hover:text-white transition-colors">3M</div>
-              </div>
+        {/* MAPA PRINCIPAL */}
+        <Card className={`overflow-hidden border-slate-200 shadow-sm transition-all duration-300 bg-white ${isMapExpanded ? 'fixed inset-4 z-[200] flex flex-col' : ''}`}>
+          <CardHeader className="bg-white border-b pb-4 shrink-0 flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-lg font-bold text-slate-800">Mapa de Densidade de Compra</CardTitle>
+              <CardDescription className="font-medium">Distribuição geográfica e potencial baseados no GPS das visitas</CardDescription>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* PAINEL 2: AUDITORIA DE FRETE */}
-        <Card className="border-none shadow-md overflow-hidden flex flex-col">
-          <CardHeader className="bg-white border-b pb-4">
-            <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
-              <Route className="w-5 h-5 text-red-500" />
-              Auditoria de Rota (Gargalo de Frete)
-            </CardTitle>
-            <CardDescription>Fazendas onde a empresa paga mais frete do que o real rodado (&gt; 3km)</CardDescription>
+            <div className="flex gap-2">
+              {!isMapExpanded && <Button variant="outline" size="sm" onClick={() => setSelectedCity(null)} className="font-bold text-slate-600">Resetar Mapa</Button>}
+              <Button size="sm" variant={isMapExpanded ? "ghost" : "default"} onClick={() => setIsMapExpanded(!isMapExpanded)} className="font-bold">
+                {isMapExpanded ? <X className="w-5 h-5 text-slate-500" /> : <><Maximize2 className="w-4 h-4 mr-2" /> Expandir Mapa</>}
+              </Button>
+            </div>
           </CardHeader>
-          <CardContent className="p-0 flex-1 overflow-x-auto">
-            {temPermissaoAdmin ? (
-              <Table>
-                <TableHeader className="bg-slate-50">
-                  <TableRow>
-                    <TableHead className="font-semibold text-xs text-slate-500 uppercase">Pecuarista</TableHead>
-                    <TableHead className="font-semibold text-xs text-right text-slate-500 uppercase">GPS</TableHead>
-                    <TableHead className="font-semibold text-xs text-right text-slate-500 uppercase">ERP</TableHead>
-                    <TableHead className="font-semibold text-xs text-right text-slate-500 uppercase">Divergência</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    <TableRow><TableCell colSpan={4} className="text-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" /></TableCell></TableRow>
-                  ) : auditoriaFrete.length === 0 ? (
-                    <TableRow><TableCell colSpan={4} className="text-center py-8 text-slate-500 font-medium">Nenhuma divergência de custo encontrada no período.</TableCell></TableRow>
-                  ) : (
-                    auditoriaFrete.map((alerta) => (
-                      <TableRow key={alerta.id} className="hover:bg-red-50/30 transition-colors">
-                        <TableCell>
-                          <p className="font-bold text-[11px] sm:text-xs text-slate-800 uppercase line-clamp-1">{alerta.produtor}</p>
-                        </TableCell>
-                        <TableCell className="text-right text-slate-700 font-bold whitespace-nowrap">{alerta.gps.toFixed(1)} km</TableCell>
-                        <TableCell className="text-right text-slate-500 font-medium whitespace-nowrap">{alerta.erp.toFixed(1)} km</TableCell>
-                        <TableCell className="text-right">
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold text-[10px] sm:text-[11px] bg-red-100 text-red-700 whitespace-nowrap">
-                            + {alerta.diff.toFixed(1)} km pagos
-                            <AlertTriangle className="w-3 h-3" />
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+          <CardContent className="p-0 relative flex-1">
+            {isLoading ? (
+              <div className="h-[400px] flex flex-col items-center justify-center bg-slate-50">
+                <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+              </div>
             ) : (
-               <div className="flex flex-col items-center justify-center h-full min-h-[300px] p-6 text-center text-slate-400">
-                  <AlertTriangle className="w-10 h-10 mb-2 opacity-20" />
-                  <p className="font-medium text-sm">O Módulo de Auditoria é restrito para usuários Administradores.</p>
-               </div>
+              <div className={`w-full z-0 ${isMapExpanded ? 'h-full min-h-[600px]' : 'h-[400px]'}`}>
+                <MapContainer center={[-15.933, -50.14]} zoom={6} className="h-full w-full">
+                  <MapController selectedCity={selectedCity} />
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  {mapData.map((city, idx) => (
+                    <CircleMarker 
+                      key={idx} 
+                      center={[city.lat, city.lng]} 
+                      radius={Math.min(25, 8 + (city.ranchersCount * 2))} 
+                      fillColor="#1d4ed8" 
+                      color="#1e3a8a" 
+                      fillOpacity={0.6} 
+                      eventHandlers={{ click: () => setSelectedCity(city) }}
+                    >
+                      <Tooltip>{city.city}: {city.ranchersCount} pecuarista(s)</Tooltip>
+                      <Popup>
+                        <div className="p-2 min-w-[200px] max-h-[250px] overflow-y-auto">
+                          <h4 className="font-bold border-b mb-2 sticky top-0 bg-white text-slate-800">{city.city}</h4>
+                          {city.ranchersList.map(r => (
+                            <div key={r.id} className="text-xs mb-2 border-b border-slate-100 pb-2 last:border-0">
+                              <p className="font-bold text-slate-800 uppercase">{r.name}</p>
+                              <p className="text-slate-500">{r.farm}</p>
+                              <p className="text-blue-600 font-bold mt-0.5">{r.headCount} cabeças de efetivo</p>
+                            </div>
+                          ))}
+                        </div>
+                      </Popup>
+                    </CircleMarker>
+                  ))}
+                </MapContainer>
+              </div>
             )}
           </CardContent>
         </Card>
 
+        {/* PAINÉIS DE INTELIGÊNCIA */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          {/* PAINEL 1: FORECAST DE ABATE */}
+          <Card className="border-slate-200 shadow-sm bg-white overflow-hidden">
+            <CardHeader className="border-b pb-4">
+              <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                <CalendarDays className="w-5 h-5 text-indigo-500" />
+                Forecast de Abate (Fluxo Real)
+              </CardTitle>
+              <CardDescription className="font-medium">O gado move de janela automaticamente pelo tempo restante</CardDescription>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="space-y-4">
+                <div 
+                  className="bg-white p-5 rounded-xl border border-slate-200 flex items-center justify-between cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all group"
+                  onClick={() => openForecastModal(30, 'Previsão para 30 Dias')}
+                >
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-indigo-600 transition-colors">Em 30 Dias</p>
+                    <p className="text-3xl font-black text-indigo-600 mt-1">{forecast.f30}</p>
+                  </div>
+                  <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 font-black group-hover:bg-indigo-600 group-hover:text-white transition-colors">1M</div>
+                </div>
+                
+                <div 
+                  className="bg-white p-5 rounded-xl border border-slate-200 flex items-center justify-between cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all group"
+                  onClick={() => openForecastModal(60, 'Previsão para 60 Dias')}
+                >
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-indigo-600 transition-colors">Em 60 Dias</p>
+                    <p className="text-3xl font-black text-indigo-500 mt-1">{forecast.f60}</p>
+                  </div>
+                  <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-500 font-black group-hover:bg-indigo-500 group-hover:text-white transition-colors">2M</div>
+                </div>
+                
+                <div 
+                  className="bg-white p-5 rounded-xl border border-slate-200 flex items-center justify-between cursor-pointer hover:border-slate-400 hover:shadow-md transition-all group"
+                  onClick={() => openForecastModal(90, 'Previsão para 90 Dias')}
+                >
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-slate-700 transition-colors">Em 90 Dias</p>
+                    <p className="text-3xl font-black text-slate-700 mt-1">{forecast.f90}</p>
+                  </div>
+                  <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-500 font-black group-hover:bg-slate-700 group-hover:text-white transition-colors">3M</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* PAINEL 2: AUDITORIA DE FRETE (AGORA COM BADGES) */}
+          <Card className="border-slate-200 shadow-sm bg-white overflow-hidden flex flex-col">
+            <CardHeader className="border-b pb-4">
+              <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                <Route className="w-5 h-5 text-red-500" />
+                Auditoria de Rota (Gargalo de Frete)
+              </CardTitle>
+              <CardDescription className="font-medium">Fazendas onde a empresa paga mais frete do que o real rodado (&gt; 3km)</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0 flex-1 overflow-x-auto">
+              {temPermissaoAdmin ? (
+                <Table>
+                  <TableHeader className="bg-slate-50/50">
+                    <TableRow>
+                      <TableHead className="font-bold text-xs text-slate-500 uppercase tracking-wider">Pecuarista</TableHead>
+                      <TableHead className="font-bold text-xs text-right text-slate-500 uppercase tracking-wider">GPS</TableHead>
+                      <TableHead className="font-bold text-xs text-right text-slate-500 uppercase tracking-wider">ERP</TableHead>
+                      <TableHead className="font-bold text-xs text-right text-slate-500 uppercase tracking-wider">Divergência</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoading ? (
+                      <TableRow><TableCell colSpan={4} className="text-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary mx-auto" /></TableCell></TableRow>
+                    ) : auditoriaFrete.length === 0 ? (
+                      <TableRow><TableCell colSpan={4} className="text-center py-10 text-slate-500 font-medium">Nenhuma divergência de custo encontrada no período.</TableCell></TableRow>
+                    ) : (
+                      auditoriaFrete.map((alerta) => (
+                        <TableRow key={alerta.id} className="hover:bg-slate-50 transition-colors">
+                          <TableCell>
+                            <p className="font-bold text-xs text-slate-800 uppercase line-clamp-1">{alerta.produtor}</p>
+                          </TableCell>
+                          <TableCell className="text-right text-slate-600 font-bold whitespace-nowrap">{alerta.gps.toFixed(1)} km</TableCell>
+                          <TableCell className="text-right text-slate-500 font-medium whitespace-nowrap">{alerta.erp.toFixed(1)} km</TableCell>
+                          <TableCell className="text-right">
+                            {/* 👇 AQUI ESTÁ A BADGE PREMIUM NO LUGAR DO TEXTO SOLTO 👇 */}
+                            <Badge variant="destructive" className="bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 gap-1 rounded-md shadow-none font-bold">
+                              <AlertTriangle className="w-3 h-3" />
+                              + {alerta.diff.toFixed(1)} km
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              ) : (
+                 <div className="flex flex-col items-center justify-center h-full min-h-[300px] p-6 text-center text-slate-400">
+                    <AlertTriangle className="w-10 h-10 mb-3 opacity-20" />
+                    <p className="font-bold text-sm">O Módulo de Auditoria é restrito para usuários Administradores.</p>
+                 </div>
+              )}
+            </CardContent>
+          </Card>
+
+        </div>
       </div>
 
+      {/* O resto dos modais (Forecast e Relatório) continuam iguais */}
       {/* 👇 MODAL FLUTUANTE (TABELA) DO FORECAST 👇 */}
       {forecastModal && forecastModal.isOpen && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
@@ -585,7 +590,6 @@ export function Dashboard() {
                     <TableHead className="font-bold text-xs uppercase text-slate-500">Pecuarista</TableHead>
                     <TableHead className="font-bold text-xs uppercase text-slate-500">Município / Contato</TableHead>
                     
-                    {/* CABEÇALHO ORDENÁVEL: CABEÇAS */}
                     <TableHead 
                       className={`font-bold text-xs uppercase text-center cursor-pointer transition-colors select-none ${forecastSortBy === 'qtd' ? 'text-primary bg-primary/5' : 'text-slate-500 hover:bg-slate-100'}`}
                       onClick={() => handleSort('qtd')}
@@ -596,7 +600,6 @@ export function Dashboard() {
                       </div>
                     </TableHead>
                     
-                    {/* CABEÇALHO ORDENÁVEL: VENCIMENTO */}
                     <TableHead 
                       className={`font-bold text-xs uppercase text-center cursor-pointer transition-colors select-none ${forecastSortBy === 'vencimento' ? 'text-primary bg-primary/5' : 'text-slate-500 hover:bg-slate-100'}`}
                       onClick={() => handleSort('vencimento')}
@@ -642,7 +645,6 @@ export function Dashboard() {
                           </TableCell>
                           
                           <TableCell className="text-right">
-                            {/* BOTÃO AZUL QUE ABRE O RELATÓRIO */}
                             <Button 
                               size="sm" 
                               className="text-[11px] font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
@@ -686,7 +688,6 @@ export function Dashboard() {
             <CardContent className="overflow-y-auto p-0 bg-slate-50/50">
               <div ref={reportRef} className="p-8 space-y-6 bg-white">
                 
-                {/* Cabeçalho do Relatório de PDF */}
                 <div className="border-b-2 border-primary pb-4 mb-6 flex justify-between items-end">
                   <div>
                     <h2 className="text-2xl font-black text-primary uppercase tracking-tight">Ficha de Visita</h2>

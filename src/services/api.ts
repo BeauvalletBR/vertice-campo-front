@@ -125,11 +125,10 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let cachedPecuaristas: ApiRancher[] | null = null;
 let fetchPromise: Promise<ApiRancher[]> | null = null;
 
-// --- FUNÇÃO AJUDANTE PARA MONTAR OS HEADERS (Porteiro + Crachá) ---
 const getAuthHeaders = (isJson = false) => {
   const tokenAPI = import.meta.env.VITE_N8N_SECRET_TOKEN;
   const headerKey = import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key";
-  const jwtToken = localStorage.getItem("jwt_token"); // Pega o crachá do bolso
+  const jwtToken = localStorage.getItem("jwt_token"); 
 
   const headers: Record<string, string> = {
     [headerKey]: tokenAPI,
@@ -140,7 +139,7 @@ const getAuthHeaders = (isJson = false) => {
   }
 
   if (jwtToken) {
-    headers["Authorization"] = `Bearer ${jwtToken}`; // Mostra o crachá
+    headers["Authorization"] = `Bearer ${jwtToken}`; 
   }
 
   return headers;

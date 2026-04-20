@@ -7,7 +7,6 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -39,24 +38,36 @@ export function AppSidebar() {
   });
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" className="bg-slate-950 border-r-slate-800 text-white shadow-xl">
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>
-            {!collapsed && "Vértice Campo"}
-          </SidebarGroupLabel>
+          
+          {/* CABEÇALHO COM LOGO PROTEGIDA */}
+          <div className={`flex items-center mt-4 mb-6 transition-all ${collapsed ? 'justify-center px-0' : 'px-4 gap-3'}`}>
+            <div className="bg-white p-1 rounded-md flex items-center justify-center shrink-0 shadow-sm">
+              <img src="/logo.png" alt="Logo" className="h-6 w-6 object-contain" />
+            </div>
+            
+            {!collapsed && (
+              <div className="flex flex-col">
+                <span className="font-black text-lg text-white leading-none tracking-tight">Vértice</span>
+                <span className="font-bold text-white/50 text-[10px] uppercase tracking-widest leading-none mt-1">Campo</span>
+              </div>
+            )}
+          </div>
+
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="space-y-1.5">
               {filteredItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
+                  <SidebarMenuButton asChild tooltip={item.title} className="hover:bg-transparent">
                     <NavLink
                       to={item.url}
                       end
-                      className="hover:bg-sidebar-accent/50"
-                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      className="flex items-center w-full px-3 py-2.5 rounded-lg text-white/70 hover:bg-white/10 hover:text-white transition-all font-medium"
+                      activeClassName="bg-white !text-slate-900 font-bold shadow-md hover:bg-white hover:text-slate-900"
                     >
-                      <item.icon className="mr-2 h-4 w-4" />
+                      <item.icon className="mr-3 h-5 w-5 shrink-0" />
                       {!collapsed && <span>{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
@@ -67,26 +78,35 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       
-      <SidebarFooter className="p-2 border-t border-border/50">
+      {/* RODAPÉ DO USUÁRIO */}
+      <SidebarFooter className="p-3 border-t border-white/10">
         {!collapsed && user && (
-          <div className="px-3 mb-2 mt-1">
-            <div className="text-sm font-bold text-sidebar-foreground truncate">
-              {user.name}
+          <div className="flex items-center gap-3 px-2 mb-4 mt-1">
+            <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+              <span className="font-bold text-white text-sm">
+                {user.name ? user.name.charAt(0).toUpperCase() : "U"}
+              </span>
             </div>
-            {/* Opcional: Mostrar também o nome da empresa ou os acessos que ele tem */}
-            <div className="text-[10px] font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
-              {user.role}
+            
+            <div className="flex flex-col overflow-hidden">
+              <div className="text-sm font-bold text-white truncate">
+                {user.name}
+              </div>
+              <div className="text-[10px] font-bold text-white/50 uppercase tracking-wider truncate">
+                {user.role}
+              </div>
             </div>
           </div>
         )}
+
         <Button
           variant="ghost"
           size="sm"
           onClick={logout}
-          className="w-full justify-start text-sidebar-foreground/70 hover:text-red-600 hover:bg-red-100"
+          className={`w-full text-white/70 hover:text-white hover:bg-red-500/80 transition-all ${collapsed ? 'justify-center px-0 h-10' : 'justify-start h-10'}`}
         >
-          <LogOut className="h-4 w-4 mr-2" />
-          {!collapsed && "Sair do Sistema"}
+          <LogOut className="h-4 w-4 shrink-0" />
+          {!collapsed && <span className="ml-3 font-bold">Sair do Sistema</span>}
         </Button>
       </SidebarFooter>
     </Sidebar>
