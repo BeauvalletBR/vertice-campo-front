@@ -164,7 +164,7 @@ export default function LoginPage() {
         <img
           src="/imagem_login.png"
           alt="Fazenda e Agronegócio"
-          className="absolute inset-0 w-full h-full object-cover opacity-80"
+          className="absolute inset-0 w-full h-full object-cover opacity-95"
         />
         
         {/* Gradiente sutil só para dar contraste */}

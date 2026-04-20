@@ -22,6 +22,13 @@ const items = [
   { title: "Visitas", url: "/visitas", icon: Users, reqModule: "RELATORIOS" },
 ];
 
+const formatarNomeCurto = (nomeCompleto: string) => {
+  if (!nomeCompleto) return "Usuário";
+  const partes = nomeCompleto.trim().split(" ");
+  if (partes.length === 1) return partes[0]; // Se tiver só um nome, retorna ele
+  return `${partes[0]} ${partes[partes.length - 1]}`;
+};
+
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
@@ -89,8 +96,9 @@ export function AppSidebar() {
             </div>
             
             <div className="flex flex-col overflow-hidden">
-              <div className="text-sm font-bold text-white truncate">
-                {user.name}
+              {/* 👇 APLICANDO A FUNÇÃO DE NOME CURTO AQUI 👇 */}
+              <div className="text-sm font-bold text-white truncate" title={user.name}>
+                {formatarNomeCurto(user.name)}
               </div>
               <div className="text-[10px] font-bold text-white/50 uppercase tracking-wider truncate">
                 {user.role}

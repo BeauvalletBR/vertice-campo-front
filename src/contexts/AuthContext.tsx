@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '@/services/api';
 import { toast } from 'sonner';
-// 👇 Importando os componentes visuais para o modal de bloqueio
+//👇 Importando os componentes visuais para o modal de bloqueio
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
@@ -27,7 +27,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   
-  // 👇 ESTADO DO MODAL DE EXPIRAÇÃO 👇
+   //👇 ESTADO DO MODAL DE EXPIRAÇÃO 👇
   const [isSessionExpired, setIsSessionExpired] = useState(false);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(JSON.parse(storedUser));
     }
 
-    // 👇 OUVINTE DO EVENTO DE EXPIRAÇÃO DE SESSÃO 👇
+    //👇 OUVINTE DO EVENTO DE EXPIRAÇÃO DE SESSÃO 👇
     const handleSessaoExpirada = () => {
       setIsSessionExpired(true);
     };
@@ -65,6 +65,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(loggedUser);
         localStorage.setItem('@OriginaGoias:user', JSON.stringify(loggedUser));
         toast.success(`Bem-vindo(a), ${loggedUser.name}!`);
+
+
+        const isMobile = window.innerWidth <= 768; 
+        
+        if (isMobile) {
+          window.location.href = "/campo"; 
+        } else {
+          window.location.href = "/dashboard"; 
+        }
+
         return true;
       } else {
         toast.error(response.message || "Login, senha ou empresa incorretos.");
@@ -83,18 +93,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     toast.info("Você saiu do sistema.");
   };
 
-  // 👇 FUNÇÃO PARA REDIRECIONAR QUANDO A SESSÃO CAIR 👇
   const handleForcarLogin = () => {
     setIsSessionExpired(false);
-    logout(); // Limpa as senhas antigas do cache
-    window.location.href = "/"; // Joga pra página inicial/login
+    logout(); 
+    window.location.href = "/";
   };
 
   return (
     <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
       {children}
 
-      {/* 👇 MODAL GIGANTE DE BLOQUEIO 👇 */}
+      {/*👇 MODAL GIGANTE DE BLOQUEIO👇*/}
       {isSessionExpired && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-300">
           <Card className="w-full max-w-sm shadow-2xl border-t-4 border-t-red-600 overflow-hidden animate-in zoom-in-95 duration-300">

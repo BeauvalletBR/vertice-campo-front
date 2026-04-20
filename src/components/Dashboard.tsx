@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge"; // Certifique-se de ter exportado o Badge do Shadcn!
+import { Badge } from "@/components/ui/badge"; 
 import { 
   Users, 
   Building2, 
@@ -93,7 +93,6 @@ function MapController({ selectedCity }: { selectedCity: CityData | null }) {
   return null;
 }
 
-// 👇 COMPONENTE DO CARD DE MÉTRICA REDESENHADO (ESTILO PREMIUM) 👇
 function MetricCard({ title, value, icon, sub, colorClass }: { title: string, value: string | number, icon: React.ReactNode, sub: string, colorClass: string }) {
   return (
     <Card className="bg-white border-slate-200 shadow-sm transition-all hover:shadow-md">
@@ -246,7 +245,9 @@ export function Dashboard() {
       const cabecas = Number(v.EFETIVO_TOTAL_ANIMAIS) || 0;
       totalHeads += cabecas;
       
-      if (!v.COD_PRODUTOR) novosPecuaristas += 1;
+      // 👇 REGRA ALTERADA AQUI 👇
+      if (v.NATUREZA_VISITA?.toUpperCase() === "PROSPECÇÃO") novosPecuaristas += 1;
+      
       if (v.MUNICIPIO) cidadesSet.add(v.MUNICIPIO.toUpperCase());
 
       if (v.GPS_LATITUDE && v.GPS_LONGITUDE) {
@@ -362,7 +363,6 @@ export function Dashboard() {
   };
 
   return (
-    // 👇 Fundo com Profundidade (bg-slate-50) 👇
     <div className="min-h-screen bg-slate-50 p-6 lg:p-8 space-y-8 animate-fade-in relative pb-24">
       <div className="max-w-[1600px] mx-auto space-y-8">
         
@@ -372,7 +372,6 @@ export function Dashboard() {
             <p className="text-muted-foreground text-sm font-medium mt-1">Visão geral de originação baseada em dados em tempo real</p>
           </div>
           
-          {/* 👇 FILTRO DE DATA GLOBAL REDESENHADO 👇 */}
           <div className="flex flex-col sm:flex-row items-end gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
             <div className="flex items-center gap-2 text-slate-600 font-bold mb-1 sm:mb-0">
               <Filter className="w-4 h-4 text-primary" />
@@ -401,7 +400,8 @@ export function Dashboard() {
             <>
               <MetricCard title="Gado Prospectado" value={kpis.totalHeads.toLocaleString('pt-BR')} icon={<TrendingUp className="w-7 h-7 text-blue-600" />} colorClass="bg-blue-50 text-blue-600" sub="Efetivo total registrado em visitas" />
               <MetricCard title="Visitas Realizadas" value={kpis.totalVisitas} icon={<Navigation className="w-7 h-7 text-indigo-600" />} colorClass="bg-indigo-50 text-indigo-600" sub="Total de registros no banco" />
-              <MetricCard title="Novos Pecuaristas" value={kpis.novosPecuaristas} icon={<Users className="w-7 h-7 text-emerald-600" />} colorClass="bg-emerald-50 text-emerald-600" sub="Visitas sem cadastro prévio no ERP" />
+              {/* 👇 AQUI ESTÁ O CARTÃO COM A MENSAGEM ALTERADA 👇 */}
+              <MetricCard title="Novos Pecuaristas" value={kpis.novosPecuaristas} icon={<Users className="w-7 h-7 text-emerald-600" />} colorClass="bg-emerald-50 text-emerald-600" sub="Visitas com natureza de Prospecção" />
               <MetricCard title="Cidades Cobertas" value={kpis.cidadesCobertas} icon={<Building2 className="w-7 h-7 text-amber-600" />} colorClass="bg-amber-50 text-amber-600" sub="Abrangência geográfica real" />
             </>
           )}
@@ -546,7 +546,6 @@ export function Dashboard() {
                           <TableCell className="text-right text-slate-600 font-bold whitespace-nowrap">{alerta.gps.toFixed(1)} km</TableCell>
                           <TableCell className="text-right text-slate-500 font-medium whitespace-nowrap">{alerta.erp.toFixed(1)} km</TableCell>
                           <TableCell className="text-right">
-                            {/* 👇 AQUI ESTÁ A BADGE PREMIUM NO LUGAR DO TEXTO SOLTO 👇 */}
                             <Badge variant="destructive" className="bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 gap-1 rounded-md shadow-none font-bold">
                               <AlertTriangle className="w-3 h-3" />
                               + {alerta.diff.toFixed(1)} km
