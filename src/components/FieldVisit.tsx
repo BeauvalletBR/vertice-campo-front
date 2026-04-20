@@ -32,10 +32,9 @@ import {
   AlertCircle,
   MapPinOff,
   RefreshCw,
-  ChevronRight,
-  PenTool,
-  Eraser,
-  Check
+  Maximize2,
+  Check,
+  Eraser
 } from "lucide-react";
 import { api, fetchPecuaristasAgendamento, fetchAgendamentosPendentes, type ApiRancher, type ApiAgendamento, type ApiUsuario } from "@/services/api";
 
@@ -151,9 +150,9 @@ export function FieldVisit() {
   const [isRealLocation, setIsRealLocation] = useState<boolean>(false);
 
   const [confirmSaveModal, setConfirmSaveModal] = useState<boolean>(false);
-  
-  // 👇 ESTADOS PARA O MODAL DE ASSINATURA 👇
-  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState<boolean>(false);
+
+  // 👇 NOVO ESTADO PARA O MODAL TELA CHEIA DA ASSINATURA 👇
+  const [isSignatureFullscreen, setIsSignatureFullscreen] = useState<boolean>(false);
 
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState<FormData>(emptyForm(today, userName));
@@ -379,30 +378,10 @@ export function FieldVisit() {
   const updateField = (key: keyof FormData, value: any) => setForm(prev => ({ ...prev, [key]: value }));
   const formatToUpper = (val: any) => (val === null || val === undefined) ? "" : typeof val === 'string' ? val.trim().toUpperCase() : val;
 
-  // 👇 FUNÇÕES PARA O MODAL DE ASSINATURA 👇
-  const abrirModalAssinatura = () => {
-    setIsSignatureModalOpen(true);
-  };
-
-  const limparAssinaturaModal = () => {
-    if (sigCanvas.current) {
-      sigCanvas.current.clear();
-    }
-  };
-
-  const salvarAssinaturaModal = () => {
-    if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
-      const assinaturaImg = sigCanvas.current.getCanvas().toDataURL('image/png');
-      updateField("produtorAssinatura", assinaturaImg);
-      setIsSignatureModalOpen(false);
-    } else {
-      toast.error("O quadro de assinatura está vazio.");
-    }
-  };
-  
-  const apagarAssinaturaSalva = () => {
+  const limparAssinatura = () => {
+    sigCanvas.current?.clear();
     updateField("produtorAssinatura", "");
-  }
+  };
 
   const validateAndProceed = () => {
     const camposObrigatorios: { key: keyof FormData, label: string }[] = [
@@ -440,7 +419,15 @@ export function FieldVisit() {
       return;
     }
 
-    if (!form.produtorAssinatura) {
+    // 👇 CAPTURA A ASSINATURA USANDO getCanvas() PARA NÃO QUEBRAR O VITE 👇
+    let assinaturaPronta = form.produtorAssinatura;
+    
+    if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
+       assinaturaPronta = sigCanvas.current.getCanvas().toDataURL('image/png');
+       updateField("produtorAssinatura", assinaturaPronta);
+    }
+
+    if (!assinaturaPronta) {
       setAlertModal({ isOpen: true, type: "error", title: "Assinatura Pendente!", message: "O produtor ou recebedor precisa assinar no quadro no final do formulário." });
       return;
     }
@@ -450,7 +437,7 @@ export function FieldVisit() {
       return;
     }
 
-    executeSavePayload(form.produtorAssinatura);
+    executeSavePayload(assinaturaPronta);
   };
 
   const executeSavePayload = async (assinaturaForcada?: string) => {
@@ -524,522 +511,326 @@ export function FieldVisit() {
   };
 
   const getToggleClass = (currentValue: string, expectedValue: string) => 
-    `py-3 rounded-lg font-bold text-[11px] sm:text-xs transition-all border shadow-sm ${currentValue.toUpperCase() === expectedValue.toUpperCase() ? "bg-primary border-primary text-white" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 hover:border-slate-300"}`;
+    `py-3 rounded-lg font-bold text-[11px] sm:text-xs transition-all border ${currentValue.toLowerCase() === expectedValue.toLowerCase() ? "bg-primary border-primary text-primary-foreground shadow-md" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`;
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 relative font-sans">
-      <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative items-start">
-          <div className="order-2 lg:order-1 flex flex-col gap-6 lg:sticky lg:top-8 lg:h-[calc(100vh-4rem)] lg:overflow-y-auto pr-1 pb-4 custom-scrollbar">
-            
+    <div className="min-h-screen bg-surface pb-24 relative">
+      <div className="p-4 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10">
+          <div className="space-y-5 order-2 lg:order-1">
             {step === "idle" && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-slate-200 pb-5">
+              <div className="space-y-6 animate-fade-in pt-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-4">
                   <div>
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-                      <Navigation className="w-8 h-8 text-primary" /> Minhas Visitas
-                    </h1>
-                    <p className="text-sm font-medium text-slate-500 mt-1">Sua agenda de prospecção e rota de campo.</p>
+                    <h1 className="text-2xl font-bold text-primary flex items-center gap-2"><Navigation className="w-6 h-6" /> Minhas Visitas</h1>
+                    <p className="text-sm text-muted-foreground mt-1">Sua agenda de prospecção.</p>
                   </div>
-                  <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
-                    <div className="flex flex-col flex-1 sm:flex-initial">
-                      <Label className="text-[10px] font-bold uppercase text-slate-400 mb-1">Início</Label>
-                      <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="h-9 text-xs font-bold bg-slate-50 border-slate-100" />
-                    </div>
-                    <div className="flex flex-col flex-1 sm:flex-initial">
-                      <Label className="text-[10px] font-bold uppercase text-slate-400 mb-1">Fim</Label>
-                      <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} className="h-9 text-xs font-bold bg-slate-50 border-slate-100" />
-                    </div>
+                  <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm w-full sm:w-auto">
+                    <div className="space-y-1 flex-1 sm:flex-initial"><Label className="text-[10px] font-black uppercase text-slate-400">Início</Label><Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="h-8 text-xs border-none focus-visible:ring-0 p-0" /></div>
+                    <div className="h-8 w-[1px] bg-slate-200 self-end mb-1" />
+                    <div className="space-y-1 flex-1 sm:flex-initial"><Label className="text-[10px] font-black uppercase text-slate-400">Fim</Label><Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} className="h-8 text-xs border-none focus-visible:ring-0 p-0" /></div>
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h2 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                      <CalendarClock className="w-5 h-5 text-primary" /> Agendamentos
-                    </h2>
-                    <span className="bg-primary/10 text-primary text-xs font-bold px-3 py-1 rounded-full">{isLoadingApi ? "..." : filteredAgendamentos.length} Pendentes</span>
+                    <h2 className="font-bold text-slate-800 flex items-center gap-2"><CalendarClock className="w-5 h-5 text-amber-500" /> Agendamentos do Período</h2>
+                    <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-full">{isLoadingApi ? "..." : filteredAgendamentos.length}</span>
                   </div>
 
-                  {isLoadingApi ? (
-                    <div className="flex justify-center p-12 bg-white rounded-xl border border-slate-200 shadow-sm"><Loader2 className="animate-spin text-primary w-8 h-8" /></div> 
-                  ) : filteredAgendamentos.length === 0 ? (
-                    <div className="text-center p-12 bg-white border border-slate-200 rounded-xl text-slate-400 shadow-sm">
-                      <CalendarIcon className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                      <p className="text-sm font-bold">Nenhum agendamento pendente para este intervalo.</p>
-                    </div>
+                  {isLoadingApi ? <div className="flex justify-center p-10"><Loader2 className="animate-spin text-primary w-8 h-8" /></div> : filteredAgendamentos.length === 0 ? (
+                    <div className="text-center p-10 bg-slate-50 border border-dashed rounded-xl text-slate-400"><CalendarIcon className="w-8 h-8 mx-auto mb-2 opacity-20" /><p className="text-sm font-medium">Nenhum agendamento pendente para este intervalo.</p></div>
                   ) : (
-                    <div className="grid gap-3">
-                      {filteredAgendamentos.map((ag) => {
-                        const agDateStr = ag.DATA_AGENDADA ? ag.DATA_AGENDADA.split('T')[0] : '';
-                        const isAtrasada = agDateStr && agDateStr < today;
-                        const isHoje = agDateStr === today;
+                    filteredAgendamentos.map((ag) => {
+                      const agDateStr = ag.DATA_AGENDADA ? ag.DATA_AGENDADA.split('T')[0] : '';
+                      const isAtrasada = agDateStr && agDateStr < today;
+                      const isHoje = agDateStr === today;
 
-                        let cardClass = "bg-white border border-slate-200 hover:border-primary/50 transition-all cursor-pointer shadow-sm hover:shadow-md group rounded-xl overflow-hidden";
-                        let badge = null;
-                        let dateIconClass = "text-slate-500 bg-slate-50";
+                      let cardClass = "border-2 border-slate-200 hover:border-primary/50 transition-colors cursor-pointer shadow-sm group";
+                      let badge = null;
+                      let dateIconClass = "text-slate-600";
 
-                        if (isAtrasada) {
-                          cardClass = "bg-white border border-red-200 hover:border-red-400 transition-all cursor-pointer shadow-sm hover:shadow-md group rounded-xl overflow-hidden";
-                          badge = <span className="bg-red-50 text-red-600 border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Atrasada</span>;
-                          dateIconClass = "text-red-700 font-bold bg-red-50 border border-red-100";
-                        } else if (isHoje) {
-                          cardClass = "bg-white border border-blue-200 hover:border-blue-400 transition-all cursor-pointer shadow-sm hover:shadow-md group rounded-xl overflow-hidden";
-                          badge = <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Hoje</span>;
-                          dateIconClass = "text-blue-700 font-bold bg-blue-50 border border-blue-100";
-                        }
+                      if (isAtrasada) {
+                        cardClass = "border-2 border-red-400 bg-red-50/50 hover:border-red-500 transition-colors cursor-pointer shadow-sm group";
+                        badge = <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase ml-2">Atrasada</span>;
+                        dateIconClass = "text-red-600 font-bold";
+                      } else if (isHoje) {
+                        cardClass = "border-2 border-blue-400 bg-blue-50/50 hover:border-blue-500 transition-colors cursor-pointer shadow-sm group";
+                        badge = <span className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase ml-2">Hoje</span>;
+                        dateIconClass = "text-blue-600 font-bold";
+                      }
 
-                        return (
-                          <Card key={ag.ID_AGENDAMENTO} className={cardClass} onClick={() => startScheduledVisit(ag)}>
-                            <CardContent className="p-0 flex items-stretch">
-                              <div className={`w-2 shrink-0 transition-colors ${isAtrasada ? 'bg-red-500' : isHoje ? 'bg-blue-500' : 'bg-primary'}`} />
-                              <div className="p-4 flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <h3 className="font-black text-slate-800 text-base uppercase">{ag.NOME_FAZENDA}</h3>
-                                    {badge}
-                                  </div>
-                                  <p className="text-xs font-bold text-slate-500 uppercase">{ag.NOME_PRODUTOR}</p>
-                                  
-                                  <div className="flex items-center gap-2 pt-2 text-[11px] flex-wrap">
-                                    <span className="flex items-center gap-1 font-bold text-slate-600 bg-slate-50 border border-slate-100 px-2 py-1 rounded-md uppercase">
-                                      <MapPin className="w-3 h-3 text-slate-400" /> {ag.MUNICIPIO}
-                                    </span>
-                                    <span className={`flex items-center gap-1 px-2 py-1 rounded-md uppercase ${dateIconClass}`}>
-                                      <CalendarClock className="w-3 h-3" /> {ag.DATA_AGENDADA ? new Date(ag.DATA_AGENDADA.split('T')[0] + "T12:00:00").toLocaleDateString("pt-BR") : ''}
-                                    </span>
-                                    <span className="flex items-center gap-1 font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md uppercase">
-                                      <User className="w-3 h-3 text-slate-400" /> {getNomeComprador(ag.ID_COMPRADOR)}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="hidden sm:flex shrink-0 w-10 h-10 rounded-full bg-slate-50 border border-slate-100 items-center justify-center group-hover:bg-primary group-hover:border-primary transition-colors">
-                                  <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-white" />
-                                </div>
+                      return (
+                        <Card key={ag.ID_AGENDAMENTO} className={cardClass} onClick={() => startScheduledVisit(ag)}>
+                          <CardContent className="p-4 flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center mb-1">
+                                <h3 className="font-bold text-primary text-base group-hover:text-blue-700">{ag.NOME_PRODUTOR}</h3>
+                                {badge}
                               </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
+                              <p className="text-sm font-medium text-slate-700">{ag.NOME_FAZENDA}</p>
+                              
+                              <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground flex-wrap">
+                                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {ag.MUNICIPIO}</span>
+                                <span>•</span>
+                                <span className={`flex items-center gap-1 ${dateIconClass}`}>
+                                  <CalendarClock className="w-3 h-3" /> {ag.DATA_AGENDADA ? new Date(ag.DATA_AGENDADA.split('T')[0] + "T12:00:00").toLocaleDateString("pt-BR") : ''}
+                                </span>
+                              </div>
+
+                            </div>
+                            <div className={`p-2 rounded-full transition-colors ${isAtrasada ? 'text-red-600 bg-red-100 group-hover:bg-red-600 group-hover:text-white' : isHoje ? 'text-blue-600 bg-blue-100 group-hover:bg-blue-600 group-hover:text-white' : 'text-primary bg-primary/10 group-hover:bg-primary group-hover:text-white'}`}>
+                              <Navigation className="w-5 h-5" />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })
                   )}
                 </div>
-                <div className="pt-2">
-                  <Button size="xl" className="w-full bg-white border-2 border-primary text-primary hover:bg-primary/5 font-bold shadow-sm h-14 rounded-xl" onClick={startNewVisit}>
-                    <Plus className="w-5 h-5 mr-2" /> INICIAR VISITA AVULSA
-                  </Button>
-                </div>
+                <div className="pt-6"><Button size="xl" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold shadow-md h-14" onClick={startNewVisit}><Plus className="w-5 h-5 mr-2" /> NOVA VISITA AVULSA</Button></div>
               </div>
             )}
 
-            {step === "routing" && (
-              <Card className="text-center py-32 animate-fade-in border-none shadow-sm bg-white rounded-2xl">
-                <CardContent>
-                  <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Loader2 className="w-10 h-10 text-primary animate-spin" />
-                  </div>
-                  <h2 className="text-xl font-bold text-slate-800">Traçando Rota Real...</h2>
-                  <p className="text-sm font-medium text-slate-500 mt-2">Buscando sua localização GPS e mapeando a logística.</p>
-                </CardContent>
-              </Card>
-            )}
+            {step === "routing" && <Card className="text-center py-32 animate-fade-in border-0 shadow-none bg-transparent"><CardContent><div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6"><Loader2 className="w-10 h-10 text-primary animate-spin" /></div><h2 className="text-xl font-bold text-foreground">Traçando Rota Real...</h2><p className="text-sm text-muted-foreground mt-2">Buscando sua localização e mapeando as estradas a partir de Inhumas.</p></CardContent></Card>}
 
             {step === "form" && (
-              <div className="space-y-6 animate-fade-in pb-10">
+              <div className="space-y-5 animate-fade-in">
                 
-                <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                  <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-primary" /> Formulário de Campo
-                  </h2>
-                  <Button variant="ghost" size="sm" className="text-slate-500 hover:bg-slate-100 font-bold" onClick={() => { setStep("idle"); setRoutePath([]); setUserLocation(null); setIsRealLocation(false); }}>
-                    <X className="w-4 h-4 mr-1" /> FECHAR
-                  </Button>
-                </div>
-
+                {/* AVISO DE GPS */}
                 {isRealLocation ? (
-                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3 shadow-sm animate-in fade-in">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+                  <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center gap-3 shadow-sm animate-in fade-in">
+                    <CheckCircle2 className="w-5 h-5 text-green-600" />
                     <div>
-                      <p className="text-sm font-bold">Sinal de GPS Conectado</p>
-                      <p className="text-xs font-medium opacity-80 mt-0.5">Sua posição exata está sendo usada para o cálculo de frete.</p>
+                      <p className="text-sm font-bold">Localização Coletada com Sucesso!</p>
+                      <p className="text-xs opacity-80">Sua posição GPS real está sendo usada no relatório.</p>
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
-                    <div className="flex items-center gap-3 text-red-800">
-                      <MapPinOff className="w-6 h-6 text-red-600 shrink-0" />
+                  <div className="bg-red-50 border border-red-200 px-4 py-3 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-in fade-in">
+                    <div className="flex items-center gap-3 text-red-700">
+                      <MapPinOff className="w-5 h-5 text-red-600" />
                       <div>
-                        <p className="text-sm font-bold">GPS Não Encontrado</p>
-                        <p className="text-xs font-medium opacity-80 mt-0.5">O navegador bloqueou ou não há sinal. Usando simulação.</p>
+                        <p className="text-sm font-bold">GPS Não Coletado</p>
+                        <p className="text-[11px] opacity-80 leading-tight mt-0.5">O navegador bloqueou ou não achou o sinal. O mapa está usando uma simulação (Goiânia).</p>
                       </div>
                     </div>
-                    <Button size="sm" variant="destructive" className="shrink-0 h-10 font-bold shadow-sm rounded-lg" onClick={retryLocation}>
-                      <RefreshCw className="w-4 h-4 mr-2" /> RECONECTAR
+                    <Button size="sm" variant="destructive" className="shrink-0 h-8 font-bold shadow-sm" onClick={retryLocation}>
+                      <RefreshCw className="w-3.5 h-3.5 mr-2" /> TENTAR GPS DE NOVO
                     </Button>
                   </div>
                 )}
 
-                <Card className="border border-slate-200 shadow-sm bg-white rounded-xl overflow-hidden">
-                  <CardHeader className="bg-slate-50 border-b border-slate-100 py-3 px-5">
-                    <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                      <Navigation className="w-4 h-4 text-primary" /> Rota & Distância
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-5">
-                    <div className="flex justify-between items-end mb-4">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Distância Oficial (Ida)</span>
-                      <span className="text-2xl font-black text-slate-800 tabular-nums">{distance || "Calculando..."}</span>
-                    </div>
-                    <div className="h-16 bg-slate-50 rounded-lg flex items-center justify-center border border-slate-200 relative overflow-hidden px-10">
-                      <div className="h-1 bg-slate-200 w-full rounded-full" />
-                      <div className="absolute left-6 flex flex-col items-center">
-                        <Building2 className="w-5 h-5 text-slate-400 bg-white" />
-                      </div>
-                      <div className="absolute right-6 flex flex-col items-center">
-                        <MapPin className="w-5 h-5 text-primary bg-white" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-slate-200 shadow-sm bg-white rounded-xl">
-                  <CardHeader className="bg-slate-50 border-b border-slate-100 py-3 px-5">
-                    <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                      <User className="w-4 h-4 text-primary" /> A. Identificação do Pecuarista
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-5 p-5">
+                <div className="flex items-center justify-between pb-2"><h2 className="text-lg font-bold text-primary flex items-center gap-2"><FileText className="w-5 h-5" /> Checklist de Campo</h2><Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => { setStep("idle"); setRoutePath([]); setUserLocation(null); setIsRealLocation(false); }}><X className="w-4 h-4 mr-1" /> Cancelar</Button></div>
+                <Card className="border-2 border-primary/20 shadow-sm"><CardContent className="pt-4 pb-4"><div className="flex justify-between items-center mb-3"><span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Trajeto Calculado (GPS)</span><span className="text-sm font-bold text-primary tabular-nums">{distance || "Calculando..."}</span></div><div className="h-24 bg-slate-50 rounded-lg flex items-center justify-center border border-dashed border-slate-300 relative overflow-hidden"><div className="relative w-full px-12"><div className="h-0.5 bg-primary/30 w-full" /><div className="absolute left-10 -top-2.5 flex flex-col items-center"><MapPin className="w-5 h-5 text-slate-400" /><span className="text-[9px] font-semibold text-slate-500 mt-0.5">Sede (Inhumas)</span></div><div className="absolute right-10 -top-2.5 flex flex-col items-center"><Navigation className="w-5 h-5 text-primary" /><span className="text-[9px] font-semibold text-primary mt-0.5">Local Atual</span></div></div></div></CardContent></Card>
+                <Card className="border-2 border-slate-200 shadow-sm">
+                  <CardHeader className="pb-3 bg-slate-50 border-b flex flex-row justify-between items-center"><CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2"><User className="w-4 h-4" /> Identificação e Tipo de Visita</CardTitle></CardHeader>
+                  <CardContent className="space-y-4 pt-4">
                     
                     {!isScheduled && (
                       <>
                         <div className="flex gap-2">
-                          <Button variant={!isManual ? "default" : "outline"} size="sm" onClick={switchToSearch} className={`flex-1 h-10 text-xs ${!isManual ? 'bg-slate-800 text-white hover:bg-slate-700 shadow-sm' : 'font-bold text-slate-500 border-slate-200'}`}>
-                            <Search className="w-3.5 h-3.5 mr-1.5" /> Buscar na Base
+                          <Button variant={!isManual ? "default" : "outline"} size="sm" onClick={switchToSearch} className={getToggleClass(isManual ? "MANUAL" : "BASE", "BASE")}>
+                            <Search className="w-3 h-3 mr-1" /> Base de Dados
                           </Button>
-                          <Button variant={isManual ? "default" : "outline"} size="sm" onClick={switchToManual} className={`flex-1 h-10 text-xs ${isManual ? 'bg-slate-800 text-white hover:bg-slate-700 shadow-sm' : 'font-bold text-slate-500 border-slate-200'}`}>
-                            <UserPlus className="w-3.5 h-3.5 mr-1.5" /> Digitar Manual
+                          <Button variant={isManual ? "default" : "outline"} size="sm" onClick={switchToManual} className={getToggleClass(isManual ? "MANUAL" : "BASE", "MANUAL")}>
+                            <UserPlus className="w-3 h-3 mr-1" /> Novo Manual
                           </Button>
                         </div>
                         {!isManual && (
-                          <Button className={`w-full h-12 flex justify-start items-center transition-colors shadow-sm border border-slate-200 rounded-lg ${selectedRancher ? "bg-slate-50 text-slate-700 hover:bg-slate-100" : "bg-white text-slate-500 hover:bg-slate-50 hover:text-primary hover:border-primary"}`} onClick={() => setIsSearchModalOpen(true)}>
-                            <Search className={`w-5 h-5 mr-3 ${selectedRancher ? 'text-slate-400' : 'text-primary'}`} />
-                            <span className="font-bold text-sm">{selectedRancher ? "Trocar pecuarista selecionado..." : "Clique para pesquisar no ERP..."}</span>
+                          <Button className={`w-full h-12 flex justify-start items-center transition-colors shadow-sm ${selectedRancher ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-primary text-white hover:bg-primary/90"}`} onClick={() => setIsSearchModalOpen(true)}>
+                            <Search className="w-5 h-5 mr-3" />
+                            <span className="font-medium">{selectedRancher ? "Trocar pecuarista..." : "Clique para buscar na base..."}</span>
                           </Button>
                         )}
                       </>
                     )}
 
                     {selectedRancher && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 animate-in fade-in">
-                        <div className="flex items-center gap-2 mb-1">
-                          <CheckCircle2 className="w-5 h-5 text-blue-600" />
-                          <span className="text-sm font-black text-blue-900 uppercase">{selectedRancher.NOME_PRODUTOR || selectedRancher.nome}</span>
-                        </div>
-                        <p className="text-xs font-bold text-blue-700/70 uppercase ml-7">{selectedRancher.NOME_FAZENDA || selectedRancher.propriedade} • {selectedRancher.MUNICIPIO || selectedRancher.municipio}</p>
-                      </div>
-                    )}
-                    
-                    <div className="border-t border-slate-100 pt-5">
-                      <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-3">Qual a natureza desta visita?</Label>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {["PROSPECÇÃO", "REATIVAÇÃO", "OBRIGATÓRIA", "ACOMP. EMBARQUE", "CORTESIA"].map((t) => (
-                          <button key={t} type="button" onClick={() => updateField("tipoVisita", t)} className={getToggleClass(form.tipoVisita, t)}>{t}</button>
-                        ))}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-slate-200 shadow-sm bg-white rounded-xl">
-                  <CardHeader className="bg-slate-50 border-b border-slate-100 py-3 px-5">
-                    <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-primary" /> B. Dados e Contato
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4 p-5">
-                    <FieldInput label="Nome do Produtor" placeholder="Nome do proprietário/empresa" value={form.nome} onChange={(v) => updateField("nome", v)} />
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <FieldInput label="Propriedade" placeholder="Ex: Fazenda Santa Fé" value={form.propriedade} onChange={(v) => updateField("propriedade", v)} />
-                      <FieldInput label="Município" placeholder="Ex: Goiânia" value={form.municipio} onChange={(v) => updateField("municipio", v)} />
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <FieldInput label="I.E. (Inscrição Estadual)" placeholder="0000000" value={form.ie} onChange={(v) => updateField("ie", v)} inputMode="numeric" />
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Possui CAR?</Label>
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => updateField("car", "S")} className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all border ${form.car.toUpperCase() === "S" ? "bg-primary border-primary text-white shadow-sm" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>SIM</button>
-                          <button type="button" onClick={() => updateField("car", "N")} className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all border ${form.car.toUpperCase() === "N" ? "bg-slate-800 border-slate-800 text-white shadow-sm" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>NÃO</button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4 mt-2">
-                      <FieldInput label="Telefone" placeholder="(62) 90000-0000" type="tel" value={form.telefone} onChange={(v) => updateField("telefone", v)} icon={<Phone className="w-4 h-4" />} />
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Melhor dia p/ ligar</Label>
-                        <select className="flex h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700 shadow-sm focus:outline-none focus:border-primary uppercase" value={form.melhorDiaContato} onChange={(e) => updateField("melhorDiaContato", e.target.value)}>
-                          <option value="">Selecione...</option><option value="SEGUNDA-FEIRA">Segunda-feira</option><option value="TERCA-FEIRA">Terça-feira</option><option value="QUARTA-FEIRA">Quarta-feira</option><option value="QUINTA-FEIRA">Quinta-feira</option><option value="SEXTA-FEIRA">Sexta-feira</option><option value="SABADO">Sábado</option><option value="DOMINGO">Domingo</option>
-                        </select>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 mt-2">
-                      <FieldInput label="Nome (Quem recebeu a visita)" placeholder="Ex: José Silva" value={form.nomeRecebedor} onChange={(v) => updateField("nomeRecebedor", v)} />
-                      <FieldInput label="Cargo do Recebedor" placeholder="Ex: Gerente, Capataz" value={form.cargoRecebedor} onChange={(v) => updateField("cargoRecebedor", v)} />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-slate-200 shadow-sm bg-white rounded-xl">
-                  <CardHeader className="bg-slate-50 border-b border-slate-100 py-3 px-5">
-                    <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                      <Landmark className="w-4 h-4 text-primary" /> C. Detalhes Comerciais
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6 p-5">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Frigorífico Costumaz</Label>
-                        <select className="flex h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700 shadow-sm focus:outline-none focus:border-primary uppercase" value={form.frigorificoCostume} onChange={(e) => updateField("frigorificoCostume", e.target.value)}>
-                          <option value="">Selecione...</option><option value="OUTROS">Outros</option><option value="JBS">JBS</option><option value="MINERVA">Minerva</option><option value="BEAUVALLET">Beauvallet</option><option value="MARFRIG">Marfrig</option><option value="PLENA">Plena</option><option value="MERCOFRIGO">Mercofrigo</option>
-                        </select>
-                      </div>
-                      <FieldInput label="Abates (Cabeças no último ano)" type="number" placeholder="Ex: 500" value={form.cabecasAbatidasAno} onChange={(v) => updateField("cabecasAbatidasAno", v)} />
-                    </div>
-                    
-                    <div className="space-y-2"><Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tipo de Venda</Label><div className="flex gap-2">{["DIRETO", "CONTRATO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoVenda", t)} className={getToggleClass(form.tipoVenda, t)}>{t}</button>))}</div></div>
-                    <div className="space-y-2"><Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tipo de Atividade</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CRIA", "RECRIA", "ENGORDA", "CICLO COMPLETO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoAtividade", t)} className={getToggleClass(form.tipoAtividade, t)}>{t}</button>))}</div></div>
-                    <div className="space-y-2"><Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Terminação</Label><div className="grid grid-cols-3 gap-2">{["CONFINADO", "SEMI-CONF.", "PASTO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoTerminacao", t)} className={getToggleClass(form.tipoTerminacao, t)}>{t}</button>))}</div></div>
-                    <div className="space-y-2"><Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Habilitação</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CHINA", "EUROPA", "MI", "OUTROS"].map((t) => (<button key={t} type="button" onClick={() => updateField("habilitacao", t)} className={getToggleClass(form.habilitacao, t)}>{t}</button>))}</div></div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-slate-200 shadow-sm bg-white rounded-xl">
-                  <CardHeader className="bg-slate-50 border-b border-slate-100 py-3 px-5">
-                    <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-primary" /> D. Rebanho e Fechamento
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6 p-5">
-                    <FieldInput label="Nº de Animais na Propriedade (Efetivo Total)" type="number" placeholder="Ex: 1500" value={form.numAnimais} onChange={(v) => updateField("numAnimais", v)} className="bg-blue-50/50 border-blue-200 focus:border-blue-500 font-black text-blue-900 text-lg" />
-                    
-                    <div className="space-y-3 bg-slate-50 p-5 rounded-xl border border-slate-200">
-                      <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-3">Disponibilidade p/ Abate</Label>
-                      <div className="space-y-3">
-                        <div className="flex flex-col xl:flex-row items-start xl:items-center gap-3">
-                          <button type="button" onClick={() => updateField("disp30Dias", !form.disp30Dias)} className={`w-full xl:w-32 h-11 rounded-lg font-bold text-xs transition-all border shadow-sm ${form.disp30Dias ? "bg-primary border-primary text-white" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100"}`}>30 Dias {form.disp30Dias && "✓"}</button>
-                          {form.disp30Dias && (
-                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2">
-                              <Input type="number" placeholder="Qtd. cabeças" className="h-11 bg-white text-sm font-black text-slate-800 shadow-sm" value={form.qtd30Dias} onChange={(e) => updateField("qtd30Dias", e.target.value)} />
-                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo30Dias} onChange={(e) => updateField("sexo30Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select>
-                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.status30Dias} onChange={(e) => updateField("status30Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-col xl:flex-row items-start xl:items-center gap-3">
-                          <button type="button" onClick={() => updateField("disp60Dias", !form.disp60Dias)} className={`w-full xl:w-32 h-11 rounded-lg font-bold text-xs transition-all border shadow-sm ${form.disp60Dias ? "bg-primary border-primary text-white" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100"}`}>60 Dias {form.disp60Dias && "✓"}</button>
-                          {form.disp60Dias && (
-                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2">
-                              <Input type="number" placeholder="Qtd. cabeças" className="h-11 bg-white text-sm font-black text-slate-800 shadow-sm" value={form.qtd60Dias} onChange={(e) => updateField("qtd60Dias", e.target.value)} />
-                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo60Dias} onChange={(e) => updateField("sexo60Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select>
-                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.status60Dias} onChange={(e) => updateField("status60Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-col xl:flex-row items-start xl:items-center gap-3">
-                          <button type="button" onClick={() => updateField("disp90Dias", !form.disp90Dias)} className={`w-full xl:w-32 h-11 rounded-lg font-bold text-xs transition-all border shadow-sm ${form.disp90Dias ? "bg-primary border-primary text-white" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100"}`}>90 Dias {form.disp90Dias && "✓"}</button>
-                          {form.disp90Dias && (
-                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2">
-                              <Input type="number" placeholder="Qtd. cabeças" className="h-11 bg-white text-sm font-black text-slate-800 shadow-sm" value={form.qtd90Dias} onChange={(e) => updateField("qtd90Dias", e.target.value)} />
-                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo90Dias} onChange={(e) => updateField("sexo90Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select>
-                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.status90Dias} onChange={(e) => updateField("status90Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 pt-2">
-                      <FieldInput label="Data" type="date" value={form.dataVisita} onChange={(v) => updateField("dataVisita", v)} />
-                      <div className="space-y-1.5 opacity-70">
-                        <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Visitante</Label>
-                        <Input disabled value={form.visitante} className="h-12 bg-slate-100 font-bold uppercase" />
-                      </div>
-                    </div>
-                    
-                    {/* 👇 MODULO DE ASSINATURA DIGITAL (ATUALIZADO) 👇 */}
-                    <div className="border-t border-slate-100 pt-6 mt-6">
-                      <Label className="text-xs font-bold text-slate-700 uppercase block mb-3 text-center tracking-widest">
-                        Assinatura do Produtor
-                      </Label>
-                      
-                      <div className="flex flex-col items-center">
-                        {form.produtorAssinatura ? (
-                          <div className="flex flex-col items-center">
-                            <div className="border border-slate-200 bg-white rounded-xl p-4 shadow-sm relative group">
-                              <img src={form.produtorAssinatura} alt="Assinatura salva" className="h-24 w-auto object-contain mix-blend-multiply" />
-                            </div>
-                            <div className="flex gap-2 mt-4">
-                              <Button variant="outline" size="sm" className="font-bold text-slate-600 border-slate-200 hover:bg-slate-100" onClick={abrirModalAssinatura}>
-                                <PenTool className="w-4 h-4 mr-2" /> REFAZER
-                              </Button>
-                              <Button variant="outline" size="sm" className="font-bold text-red-600 border-red-200 hover:bg-red-50" onClick={apagarAssinaturaSalva}>
-                                <Eraser className="w-4 h-4 mr-2" /> APAGAR
-                              </Button>
-                            </div>
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex justify-between items-center animate-in fade-in">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-green-600" />
+                            <span className="text-sm font-bold text-green-800">{selectedRancher.NOME_PRODUTOR || selectedRancher.nome}</span>
                           </div>
-                        ) : (
-                          <Button 
-                            variant="outline" 
-                            className="w-full max-w-sm h-20 border-2 border-dashed border-primary/50 text-primary hover:bg-primary/5 bg-slate-50 font-bold text-base flex flex-col gap-1 items-center justify-center rounded-xl transition-all"
-                            onClick={abrirModalAssinatura}
-                          >
-                            <PenTool className="w-5 h-5" />
-                            Toque aqui para assinar
-                          </Button>
-                        )}
+                          <p className="text-xs text-green-700 mt-1 ml-6">{selectedRancher.NOME_FAZENDA || selectedRancher.propriedade} — {selectedRancher.MUNICIPIO || selectedRancher.municipio}</p>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     
+                    <div className="border-t border-slate-100 pt-4 mt-2"><Label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Natureza da Visita</Label><div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{["PROSPECÇÃO", "REATIVAÇÃO", "OBRIGATÓRIA", "ACOMP. EMBARQUE", "CORTESIA"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoVisita", t)} className={getToggleClass(form.tipoVisita, t)}>{t}</button>))}</div></div>
                   </CardContent>
                 </Card>
-
-                <Button 
-                  className="w-full h-16 text-lg font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl shadow-emerald-600/20 rounded-xl tracking-wide transition-all active:scale-[0.98]" 
-                  onClick={validateAndProceed} 
-                  disabled={saving}
-                >
-                  {saving ? <><Loader2 className="w-6 h-6 animate-spin mr-3" /> SINCRONIZANDO COM ERP...</> : "SALVAR VISITA E SINCRONIZAR"}
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* ==============================================================
-              LADO DIREITO: MAPA (Fixo na tela no Desktop)
-              ============================================================== */}
-          <div className={`order-1 lg:order-2 h-[400px] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-8 w-full rounded-2xl overflow-hidden border-4 border-white shadow-xl z-0 bg-slate-200 ${step === "idle" ? 'hidden lg:block' : 'block'}`}>
-            {typeof window !== "undefined" && (
-              <MapContainer center={EMPRESA_COORDS} zoom={7} style={{ height: "100%", width: "100%", zIndex: 1 }}>
-                <RouteMapController routePath={routePath} />
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><FileText className="w-4 h-4 text-primary" /> A. Dados da Propriedade e Contato</CardTitle></CardHeader><CardContent className="space-y-4"><FieldInput label="Nome do Produtor" placeholder="Nome do proprietário/empresa" value={form.nome} onChange={(v) => updateField("nome", v)} /><FieldInput label="I.E. (Inscrição Estadual)" placeholder="000.000.000" value={form.ie} onChange={(v) => updateField("ie", v)} inputMode="numeric" /><FieldInput label="Propriedade" placeholder="Ex: Fazenda Santa Fé" value={form.propriedade} onChange={(v) => updateField("propriedade", v)} /><FieldInput label="Município (Preenchido pelo GPS ou Base)" placeholder="Ex: Goiânia" value={form.municipio} onChange={(v) => updateField("municipio", v)} icon={<MapPin className="w-4 h-4 text-primary" />} /><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Possui CAR?</Label><div className="flex gap-4"><button type="button" onClick={() => updateField("car", "S")} className={`flex-1 py-4 rounded-xl font-bold text-base transition-all border-2 ${form.car.toUpperCase() === "S" ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>SIM</button><button type="button" onClick={() => updateField("car", "N")} className={`flex-1 py-4 rounded-xl font-bold text-base transition-all border-2 ${form.car.toUpperCase() === "N" ? "bg-slate-800 border-slate-800 text-white shadow-md" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"}`}>NÃO</button></div></div><FieldInput label="Telefone" placeholder="(62) 99999-0000" type="tel" value={form.telefone} onChange={(v) => updateField("telefone", v)} icon={<Phone className="w-4 h-4" />} />
                 
-                <CircleMarker center={EMPRESA_COORDS} radius={8} fillColor="#dc2626" color="#7f1d1d" weight={2} fillOpacity={1}>
-                  <Tooltip direction="top" className="font-bold text-red-700" permanent={!userLocation}>Sede Beauvallet (Inhumas)</Tooltip>
-                </CircleMarker>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Melhor dia de contato</Label>
+                  <select 
+                    className="flex h-12 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary uppercase font-medium"
+                    value={form.melhorDiaContato}
+                    onChange={(e) => updateField("melhorDiaContato", e.target.value)}
+                  >
+                    <option value="">Selecione um dia...</option>
+                    <option value="SEGUNDA-FEIRA">Segunda-feira</option>
+                    <option value="TERCA-FEIRA">Terça-feira</option>
+                    <option value="QUARTA-FEIRA">Quarta-feira</option>
+                    <option value="QUINTA-FEIRA">Quinta-feira</option>
+                    <option value="SEXTA-FEIRA">Sexta-feira</option>
+                    <option value="SABADO">Sábado</option>
+                    <option value="DOMINGO">Domingo</option>
+                  </select>
+                </div>
                 
-                {userLocation && (
-                  <>
-                    <CircleMarker center={userLocation} radius={8} fillColor={isRealLocation ? "#2563eb" : "#94a3b8"} color={isRealLocation ? "#1e3a8a" : "#475569"} weight={2} fillOpacity={1}>
-                      <Tooltip direction="top" className={`font-bold ${isRealLocation ? 'text-blue-700' : 'text-slate-600'}`} permanent>{isRealLocation ? "Sua Posição GPS" : "Simulação (Goiânia)"}</Tooltip>
-                    </CircleMarker>
-                    {routePath.length > 0 && (
-                      <Polyline positions={routePath} color={isRealLocation ? "#3b82f6" : "#94a3b8"} weight={5} dashArray="15, 15" opacity={0.8} />
+                <div className="border-t border-slate-100 pt-4 mt-4 space-y-4"><h3 className="text-xs font-bold text-slate-400 uppercase">Informações do Contato no Local</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FieldInput label="Nome de quem recebeu a visita" placeholder="Ex: José Silva" value={form.nomeRecebedor} onChange={(v) => updateField("nomeRecebedor", v)} icon={<User className="w-4 h-4" />} /><FieldInput label="Cargo do Recebedor" placeholder="Ex: Gerente, Capataz" value={form.cargoRecebedor} onChange={(v) => updateField("cargoRecebedor", v)} /></div></div></CardContent></Card>
+                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><Landmark className="w-4 h-4 text-primary" /> B. Detalhes Comerciais e Atividade</CardTitle></CardHeader><CardContent className="space-y-6"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Frigorífico Costumaz</Label>
+                    <select 
+                      className="flex h-12 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary uppercase font-medium"
+                      value={form.frigorificoCostume}
+                      onChange={(e) => updateField("frigorificoCostume", e.target.value)}
+                    >
+                      <option value="">Selecione um frigorífico...</option>
+                      <option value="OUTROS">Outros</option>
+                      <option value="JBS">JBS</option>
+                      <option value="MINERVA">Minerva</option>
+                      <option value="BEAUVALLET">Beauvallet</option>
+                      <option value="MARFRIG">Marfrig</option>
+                      <option value="PLENA">Plena</option>
+                      <option value="MERCOFRIGO">Mercofrigo</option>
+                    </select>
+                  </div>
+                  
+                  <FieldInput label="Qtd. cabeças abatidas (último ano)" type="number" placeholder="Ex: 500" value={form.cabecasAbatidasAno} onChange={(v) => updateField("cabecasAbatidasAno", v)} /></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Venda</Label><div className="flex gap-2">{["DIRETO", "CONTRATO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoVenda", t)} className={getToggleClass(form.tipoVenda, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Atividade</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CRIA", "RECRIA", "ENGORDA", "CICLO COMPLETO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoAtividade", t)} className={getToggleClass(form.tipoAtividade, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Tipo de Terminação</Label><div className="grid grid-cols-3 gap-2">{["CONFINADO", "SEMI-CONF.", "PASTO"].map((t) => (<button key={t} type="button" onClick={() => updateField("tipoTerminacao", t)} className={getToggleClass(form.tipoTerminacao, t)}>{t}</button>))}</div></div><div className="space-y-2"><Label className="text-xs font-bold text-slate-500 uppercase">Habilitação</Label><div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{["CHINA", "EUROPA", "MI", "OUTROS"].map((t) => (<button key={t} type="button" onClick={() => updateField("habilitacao", t)} className={getToggleClass(form.habilitacao, t)}>{t}</button>))}</div></div></CardContent></Card>
+                <Card className="shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> C. Rebanho e Fechamento</CardTitle></CardHeader><CardContent className="space-y-6"><FieldInput label="Nº de Animais na Propriedade (Efetivo Total)" type="number" placeholder="Ex: 1500" value={form.numAnimais} onChange={(v) => updateField("numAnimais", v)} /><div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200"><Label className="text-xs font-bold text-slate-500 uppercase block mb-3">Disponibilidade p/ Abate</Label><div className="space-y-3"><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp30Dias", !form.disp30Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp30Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>30 Dias {form.disp30Dias && "✓"}</button>{form.disp30Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd30Dias} onChange={(e) => updateField("qtd30Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo30Dias} onChange={(e) => updateField("sexo30Dias", e.target.value)}><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status30Dias} onChange={(e) => updateField("status30Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp60Dias", !form.disp60Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp60Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>60 Dias {form.disp60Dias && "✓"}</button>{form.disp60Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd60Dias} onChange={(e) => updateField("qtd60Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo60Dias} onChange={(e) => updateField("sexo60Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status60Dias} onChange={(e) => updateField("status60Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div><div className="flex flex-col sm:flex-row items-start sm:items-center gap-2"><button type="button" onClick={() => updateField("disp90Dias", !form.disp90Dias)} className={`w-full sm:w-32 py-2 rounded-md font-bold text-xs transition-all border ${form.disp90Dias ? "bg-primary border-primary text-white shadow-md" : "bg-white border-slate-300 text-slate-500 hover:bg-slate-100"}`}>90 Dias {form.disp90Dias && "✓"}</button>{form.disp90Dias && (<div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2"><Input type="number" placeholder="Qtd. cabeças" className="h-9 bg-white text-xs font-bold" value={form.qtd90Dias} onChange={(e) => updateField("qtd90Dias", e.target.value)} /><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.sexo90Dias} onChange={(e) => updateField("sexo90Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select><select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={form.status90Dias} onChange={(e) => updateField("status90Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select></div>)}</div></div></div><div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4"><FieldInput label="Data da Visita" type="date" value={form.dataVisita} onChange={(v) => updateField("dataVisita", v)} /><div className="space-y-1.5 opacity-70"><Label className="text-xs font-bold text-slate-500 uppercase">Visitante</Label><Input disabled value={form.visitante} className="h-12 bg-slate-100 font-bold uppercase" /></div></div>
+                
+                {/* 👇 MODULO DE ASSINATURA DIGITAL (AGORA COM EXPANDIR E LINHA GUIA) 👇 */}
+                <div className="border-t border-slate-100 pt-4 mt-6">
+                  <Label className="text-xs font-bold text-slate-500 uppercase block mb-3 text-center">
+                    Assinatura do Produtor / Recebedor
+                  </Label>
+                  
+                  {/* O CONTÊINER DO CANVAS ALTERNA CLASSES PARA VIRAR FULLSCREEN OU FICAR NA TELA */}
+                  <div className={isSignatureFullscreen ? "fixed inset-0 z-[99999] flex flex-col bg-slate-100 animate-in slide-in-from-bottom-full duration-300" : "flex flex-col items-center w-full"}>
+                    
+                    {/* CABEÇALHO SÓ APARECE NO MODO TELA CHEIA */}
+                    {isSignatureFullscreen && (
+                      <div className="bg-white px-4 py-4 flex items-center justify-between shadow-sm border-b border-slate-200 shrink-0">
+                        <div>
+                          <h2 className="text-lg font-black text-slate-800">Assinatura Digital</h2>
+                          <p className="text-xs font-bold text-slate-500 uppercase mt-0.5">Assine no espaço em branco</p>
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => setIsSignatureFullscreen(false)} className="text-slate-400 hover:text-slate-700">
+                          <X className="w-6 h-6" />
+                        </Button>
+                      </div>
                     )}
-                  </>
-                )}
-              </MapContainer>
-            )}
-            
-            {!userLocation && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-sm px-5 py-2.5 rounded-full shadow-lg border border-slate-200 z-[1000] pointer-events-none">
-                <p className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-red-600" /> Sede em Inhumas-GO. Inicie uma visita p/ traçar rota.
-                </p>
+
+                    {/* ÁREA DO CANVAS (Muda de tamanho dependendo do estado) */}
+                    <div className={`relative ${isSignatureFullscreen ? 'flex-1 w-full bg-white' : 'border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-white transition-colors rounded-xl overflow-hidden w-full max-w-sm h-48'}`}>
+                      
+                      {/* BOTÃO DE EXPANDIR (SÓ APARECE NO MODO NORMAL INLINE) */}
+                      {!isSignatureFullscreen && (
+                        <Button 
+                          type="button"
+                          variant="ghost" 
+                          size="icon" 
+                          className="absolute top-2 right-2 z-20 text-slate-400 hover:text-primary bg-white/50 backdrop-blur-sm"
+                          onClick={() => setIsSignatureFullscreen(true)}
+                          title="Assinar em Tela Cheia"
+                        >
+                          <Maximize2 className="w-4 h-4" />
+                        </Button>
+                      )}
+
+                      {/* LINHA GUIA DE ASSINATURA */}
+                      <div className={`absolute left-8 right-8 border-b-2 border-slate-300 border-dashed pointer-events-none opacity-50 ${isSignatureFullscreen ? 'bottom-[20%]' : 'bottom-[25%]'}`} />
+                      
+                      <SignatureCanvas 
+                        ref={sigCanvas} 
+                        penColor="black"
+                        clearOnResize={false}
+                        canvasProps={{ 
+                          className: "w-full h-full absolute inset-0 cursor-crosshair touch-none z-10" 
+                        }} 
+                      />
+                    </div>
+
+                    {/* RODAPÉ DO CANVAS (Botões de Limpar e Confirmar) */}
+                    {isSignatureFullscreen ? (
+                      <div className="bg-white p-4 pb-8 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)] shrink-0 flex gap-3 z-10 border-t border-slate-200">
+                        <Button variant="outline" className="flex-1 h-14 font-bold text-red-600 border-red-200 hover:bg-red-50 text-sm" onClick={limparAssinatura}>
+                          <Eraser className="w-5 h-5 mr-2" /> LIMPAR
+                        </Button>
+                        <Button className="flex-1 h-14 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-600/20" onClick={() => setIsSignatureFullscreen(false)}>
+                          <Check className="w-5 h-5 mr-2" /> PRONTO
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button variant="ghost" className="mt-3 text-slate-500 font-bold" onClick={limparAssinatura}>
+                        Limpar Assinatura
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                
+                </CardContent></Card>
+                <Button className="w-full h-14 text-lg font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg mt-4" onClick={validateAndProceed} disabled={saving}>{saving ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> SINCRONIZANDO...</> : "SALVAR VISITA E SINCRONIZAR"}</Button>
               </div>
             )}
           </div>
-
+          <div className="order-1 lg:order-2 h-[400px] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-8 w-full rounded-2xl overflow-hidden border-2 border-primary/20 shadow-xl z-0">{typeof window !== "undefined" && (<MapContainer center={EMPRESA_COORDS} zoom={7} style={{ height: "100%", width: "100%", zIndex: 1 }}><RouteMapController routePath={routePath} /><TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><CircleMarker center={EMPRESA_COORDS} radius={8} fillColor="#dc2626" color="#7f1d1d" weight={2} fillOpacity={1}><Tooltip direction="top" className="font-bold text-red-700" permanent={!userLocation}>Sede Beauvallet (Inhumas)</Tooltip></CircleMarker>{userLocation && (<><CircleMarker center={userLocation} radius={8} fillColor={isRealLocation ? "#2563eb" : "#94a3b8"} color={isRealLocation ? "#1e3a8a" : "#475569"} weight={2} fillOpacity={1}><Tooltip direction="top" className={`font-bold ${isRealLocation ? 'text-blue-700' : 'text-slate-600'}`} permanent>{isRealLocation ? "Sua Posição (Fazenda)" : "Simulação (Goiânia)"}</Tooltip></CircleMarker>{routePath.length > 0 && (<Polyline positions={routePath} color={isRealLocation ? "#3b82f6" : "#94a3b8"} weight={5} dashArray="15, 15" opacity={0.8} />)}</>)}</MapContainer>)}{!userLocation && (<div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg border border-slate-200 z-[1000] pointer-events-none"><p className="text-xs font-bold text-slate-700 flex items-center gap-2"><Building2 className="w-4 h-4 text-red-600" /> Sede em Inhumas-GO. Inicie uma visita para ligar o GPS.</p></div>)}</div>
         </div>
 
-        {/* ==============================================================
-            MODAIS
-            ============================================================== */}
-
-        {/* 👇 MODAL FULLSCREEN DE ASSINATURA 👇 */}
-        {isSignatureModalOpen && (
-          <div className="fixed inset-0 z-[99999] flex flex-col bg-slate-100 animate-in slide-in-from-bottom-full duration-300">
-            <div className="bg-white px-4 py-4 flex items-center justify-between shadow-sm border-b border-slate-200 shrink-0">
-              <div>
-                <h2 className="text-lg font-black text-slate-800">Assinatura Digital</h2>
-                <p className="text-xs font-bold text-slate-500 uppercase mt-0.5">Assine no espaço em branco</p>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => setIsSignatureModalOpen(false)} className="text-slate-400 hover:text-slate-700">
-                <X className="w-6 h-6" />
-              </Button>
-            </div>
-
-            <div className="flex-1 bg-white relative">
-              <SignatureCanvas 
-                ref={sigCanvas} 
-                penColor="black"
-                canvasProps={{ 
-                  className: "w-full h-full absolute inset-0 cursor-crosshair touch-none" 
-                }} 
-              />
-              {/* Linha guia para assinar */}
-              <div className="absolute bottom-[20%] left-10 right-10 border-b-2 border-slate-200 border-dashed pointer-events-none opacity-50" />
-            </div>
-
-            <div className="bg-white p-4 pb-8 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)] shrink-0 flex gap-3 z-10 border-t border-slate-200">
-              <Button variant="outline" className="flex-1 h-14 font-bold text-red-600 border-red-200 hover:bg-red-50 text-sm" onClick={limparAssinaturaModal}>
-                <Eraser className="w-5 h-5 mr-2" /> LIMPAR
-              </Button>
-              <Button className="flex-1 h-14 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-600/20" onClick={salvarAssinaturaModal}>
-                <Check className="w-5 h-5 mr-2" /> CONFIRMAR
-              </Button>
-            </div>
-          </div>
-        )}
-
         {isSearchModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <Card className="w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl border-none rounded-2xl overflow-hidden">
-              <CardHeader className="border-b bg-slate-50 pb-4 shrink-0">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">
+              <CardHeader className="border-b bg-surface pb-4 shrink-0 rounded-t-lg">
                 <div className="flex justify-between items-center mb-4">
-                  <CardTitle className="text-lg font-black flex items-center gap-2 text-slate-800">
-                    <Search className="w-5 h-5 text-primary" /> Buscar Pecuarista no ERP
+                  <CardTitle className="text-lg font-bold flex items-center gap-2 text-primary">
+                    <Search className="w-5 h-5" /> Buscar Pecuarista
                   </CardTitle>
-                  <button onClick={() => setIsSearchModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500">
-                    <X className="w-5 h-5" />
+                  <button onClick={() => setIsSearchModalOpen(false)} className="p-2 hover:bg-muted rounded-full transition-colors">
+                    <X className="w-5 h-5 text-muted-foreground" />
                   </button>
                 </div>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input autoFocus placeholder="Filtrar por nome, município ou fazenda..." value={modalSearchTerm} onChange={(e) => setModalSearchTerm(e.target.value)} className="pl-10 h-12 text-sm font-bold text-slate-700 bg-white" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input autoFocus placeholder="Filtrar por nome, município ou fazenda..." value={modalSearchTerm} onChange={(e) => setModalSearchTerm(e.target.value)} className="pl-10 h-12 text-sm" />
                 </div>
               </CardHeader>
               
-              <CardContent className="overflow-y-auto p-0 bg-white">
+              <CardContent className="overflow-y-auto p-0">
                 <Table>
-                  <TableHeader className="bg-slate-50/80 sticky top-0 shadow-sm backdrop-blur-sm">
+                  <TableHeader className="bg-muted/50 sticky top-0 shadow-sm">
                     <TableRow>
-                      <TableHead className="font-bold text-[11px] uppercase tracking-wider text-slate-500">Pecuarista</TableHead>
-                      <TableHead className="font-bold text-[11px] uppercase tracking-wider text-slate-500">Local</TableHead>
-                      <TableHead className="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 w-24">Ação</TableHead>
+                      <TableHead className="font-semibold text-xs whitespace-nowrap">Pecuarista</TableHead>
+                      <TableHead className="font-semibold text-xs whitespace-nowrap">Local</TableHead>
+                      <TableHead className="text-right font-semibold text-xs w-20">Ação</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredRanchers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3} className="text-center py-10 text-slate-400 font-medium">Nenhum registro encontrado na base.</TableCell>
+                        <TableCell colSpan={3} className="text-center py-10 text-muted-foreground">Nenhum registro encontrado.</TableCell>
                       </TableRow>
                     ) : (
                       filteredRanchers.map((r, index) => {
                         const uniqueKey = `${r.COD_PRODUTOR}-${r.INSCRICAO || 'sn'}-${r.NOME_FAZENDA}-${r.MUNICIPIO}-${index}`;
+                        
                         return (
-                          <TableRow key={uniqueKey} className="hover:bg-slate-50 cursor-pointer transition-colors" onClick={() => selectRancher(r)}>
-                            <TableCell className="py-4">
-                              <p className="font-black text-sm text-slate-800 uppercase">{r.NOME_PRODUTOR}</p>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">CÓD: {r.COD_PRODUTOR} • IE: {r.INSCRICAO}</p>
+                          <TableRow key={uniqueKey} className="hover:bg-accent/5 cursor-pointer" onClick={() => selectRancher(r)}>
+                            <TableCell className="py-3">
+                              <p className="font-bold text-sm text-foreground">{r.NOME_PRODUTOR}</p>
+                              <p className="text-[10px] text-muted-foreground">IE: {r.INSCRICAO}</p>
                             </TableCell>
-                            <TableCell className="py-4">
-                              <p className="text-xs font-bold text-slate-700 uppercase">{r.NOME_FAZENDA}</p>
-                              <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500 mt-0.5"><MapPin className="w-3 h-3" /> {r.MUNICIPIO}</div>
+                            <TableCell className="py-3">
+                              <p className="text-xs font-medium text-foreground">{r.NOME_FAZENDA}</p>
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5"><MapPin className="w-3 h-3" /> {r.MUNICIPIO}</div>
                             </TableCell>
-                            <TableCell className="text-right py-4 pr-4">
-                             <Button size="sm" className="text-[10px] h-8 bg-slate-800 text-white hover:bg-slate-700 font-bold tracking-wider rounded-md">USAR DADOS</Button>
+                            <TableCell className="text-right py-3">
+                             <Button size="sm" className="text-[10px] h-8 bg-primary text-primary-foreground hover:bg-primary/90 font-bold tracking-wider">SELECIONAR</Button>
                             </TableCell>
                           </TableRow>
                         );
@@ -1052,43 +843,43 @@ export function FieldVisit() {
           </div>
         )}
 
-        {/* MODAL DE ALERTA DE GPS FALTANDO */}
+        {/* 👇 MODAL DE CONFIRMAÇÃO PARA SALVAR SEM GPS */}
         {confirmSaveModal && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-none rounded-2xl">
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-0">
               <div className="h-2 w-full bg-amber-500" />
               <CardHeader className="text-center pt-8 pb-2">
-                <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-amber-50 border border-amber-100 text-amber-500">
+                <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-amber-100 text-amber-600">
                   <MapPinOff className="w-8 h-8" />
                 </div>
-                <CardTitle className="text-2xl font-black text-slate-800">Atenção ao GPS!</CardTitle>
+                <CardTitle className="text-2xl font-bold text-slate-800">Atenção!</CardTitle>
               </CardHeader>
               <CardContent className="text-center pb-8 px-8">
-                <p className="text-slate-500 font-medium leading-relaxed mb-8">A localização real do seu dispositivo não foi coletada. Se você salvar agora, o relatório ficará registrado com a localização de simulação (Sede). Tem certeza que deseja continuar?</p>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Button variant="outline" className="flex-1 font-bold h-12 border-slate-200 text-slate-600 hover:bg-slate-50" onClick={() => setConfirmSaveModal(false)}>VOLTAR</Button>
-                  <Button className="flex-1 font-bold h-12 bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20" onClick={() => executeSavePayload()}>SIM, GRAVAR ASSIM</Button>
+                <p className="text-slate-600 font-medium leading-relaxed mb-8">A localização real do seu dispositivo não foi coletada. Se você salvar agora, o relatório ficará registrado com a localização de simulação (Goiânia). Tem certeza que deseja continuar?</p>
+                <div className="flex gap-3">
+                  <Button variant="outline" className="flex-1 font-bold h-12" onClick={() => setConfirmSaveModal(false)}>VOLTAR</Button>
+                  <Button className="flex-1 font-bold h-12 bg-amber-500 hover:bg-amber-600 text-white" onClick={() => executeSavePayload()}>SIM, SALVAR ASSIM</Button>
                 </div>
               </CardContent>
             </Card>
           </div>
         )}
 
-        {/* MODAL DE ALERTAS GERAIS E ERROS */}
+        {/* MODAL DE ALERTAS GERAIS */}
         {alertModal && alertModal.isOpen && (
-          <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-none rounded-2xl">
-              <div className={`h-2 w-full ${alertModal.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-0">
+              <div className={`h-2 w-full ${alertModal.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />
               <CardHeader className="text-center pt-8 pb-2">
-                <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 border ${alertModal.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-500' : 'bg-red-50 border-red-100 text-red-500'}`}>
+                <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${alertModal.type === 'success' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                   {alertModal.type === 'success' ? <CheckCircle2 className="w-8 h-8" /> : <AlertCircle className="w-8 h-8" />}
                 </div>
-                <CardTitle className="text-2xl font-black text-slate-800 tracking-tight">{alertModal.title}</CardTitle>
+                <CardTitle className="text-2xl font-bold text-slate-800">{alertModal.title}</CardTitle>
               </CardHeader>
               <CardContent className="text-center pb-8 px-8">
-                <p className="text-slate-500 font-medium leading-relaxed mb-8">{alertModal.message}</p>
+                <p className="text-slate-600 font-medium leading-relaxed mb-8">{alertModal.message}</p>
                 <Button 
-                  className={`w-full h-14 text-base tracking-wide font-black shadow-lg ${alertModal.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20' : 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/20'}`}
+                  className={`w-full h-14 text-lg font-bold shadow-md ${alertModal.type === 'success' ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
                   onClick={() => setAlertModal(null)}
                 >
                   OK, ENTENDIDO
@@ -1105,10 +896,10 @@ export function FieldVisit() {
 function FieldInput({ label, icon, className, value, onChange, ...props }: { label: string; icon?: React.ReactNode; value?: string; onChange?: (value: string) => void; } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "value">) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</Label>
+      <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">{label}</Label>
       <div className="relative">
-        {icon && <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>}
-        <Input {...props} value={value} onChange={(e) => onChange?.(e.target.value)} className={`h-12 bg-slate-50 font-bold text-slate-700 border-slate-200 focus:bg-white focus:border-primary focus:ring-1 focus:ring-primary uppercase transition-colors ${icon ? "pl-10" : ""} ${className || ""}`} />
+        {icon && <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>}
+        <Input {...props} value={value} onChange={(e) => onChange?.(e.target.value)} className={`h-12 bg-white border-slate-200 focus:border-primary focus:ring-1 focus:ring-primary uppercase ${icon ? "pl-10" : ""} ${className || ""}`} />
       </div>
     </div>
   );
