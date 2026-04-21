@@ -27,7 +27,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   
-   //👇 ESTADO DO MODAL DE EXPIRAÇÃO 👇
+  //👇 ESTADO DO MODAL DE EXPIRAÇÃO 👇
   const [isSessionExpired, setIsSessionExpired] = useState(false);
 
   useEffect(() => {
@@ -65,15 +65,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(loggedUser);
         localStorage.setItem('@OriginaGoias:user', JSON.stringify(loggedUser));
         toast.success(`Bem-vindo(a), ${loggedUser.name}!`);
-
-
-        const isMobile = window.innerWidth <= 768; 
-        
-        if (isMobile) {
-          window.location.href = "/campo"; 
-        } else {
-          window.location.href = "/dashboard"; 
-        }
 
         return true;
       } else {

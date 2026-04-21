@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom"; // 👈 1. IMPORTANTE: Adicionar o useNavigate
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +12,9 @@ export default function LoginPage() {
   const [empresa, setEmpresa] = useState("1"); 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  
   const { login } = useAuth();
+  const navigate = useNavigate(); // 👈 2. IMPORTANTE: Inicializar o navigate
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,6 +28,14 @@ export default function LoginPage() {
         
         if (!success) {
           setErrorMsg("Usuário, senha ou empresa incorretos.");
+        } else {
+          // 👇 3. A LÓGICA DE REDIRECIONAMENTO VEM AQUI 👇
+          const isMobile = window.innerWidth <= 768;
+          if (isMobile) {
+            navigate("/campo"); // Joga para a tela de Campo se for celular
+          } else {
+            navigate("/dashboard"); // Joga para o Dashboard se for computador
+          }
         }
       } finally {
         setIsLoading(false);
