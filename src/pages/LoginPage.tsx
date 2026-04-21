@@ -29,8 +29,13 @@ export default function LoginPage() {
         if (!success) {
           setErrorMsg("Usuário, senha ou empresa incorretos.");
         } else {
-          // 👇 VOLTAMOS AQUI PARA COMO ERA ANTES: TODO MUNDO PRO DASHBOARD 👇
-          navigate("/dashboard");
+          const isMobile = window.innerWidth < 1024;
+          
+          if (isMobile) {
+            navigate("/campo"); // Vai direto pro módulo do campo no celular
+          } else {
+            navigate("/dashboard"); // Vai pro dashboard no computador
+          }
         }
       } finally {
         setIsLoading(false);
@@ -158,8 +163,8 @@ export default function LoginPage() {
       {/* ==========================================
           LADO DIREITO: IMAGEM (Oculto no Mobile)
           ========================================== */}
+      {/* 👇 Repare no "hidden lg:flex" aqui. Ele já oculta a imagem no celular sozinho! 👇 */}
       <div className="hidden lg:flex w-1/2 relative bg-slate-900 overflow-hidden items-center justify-center">
-        {/* A Profundidade / Opacidade que alteramos antes */}
         <img
           src="/imagem_login.png"
           alt="Fazenda e Agronegócio"

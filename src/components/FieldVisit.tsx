@@ -1009,13 +1009,13 @@ export function FieldVisit() {
               </MapContainer>
             )}
             
-            {!userLocation && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-sm px-5 py-2.5 rounded-full shadow-lg border border-slate-200 z-[1000] pointer-events-none">
-                <p className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-red-600" /> Sede em Inhumas-GO. Inicie uma visita p/ traçar rota.
-                </p>
-              </div>
-            )}
+              {!userLocation && (
+                <div className="hidden md:block absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-sm px-5 py-2.5 rounded-full shadow-lg border border-slate-200 z-[1000] pointer-events-none">
+                  <p className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-red-600" /> Sede em Inhumas-GO. Inicie uma visita p/ traçar rota.
+                  </p>
+                </div>
+              )}
           </div>
 
         </div>

@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '@/services/api';
 import { toast } from 'sonner';
-//👇 Importando os componentes visuais para o modal de bloqueio
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
