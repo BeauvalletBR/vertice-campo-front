@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom"; // 👈 1. IMPORTANTE: Adicionar o useNavigate
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,7 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState("");
   
   const { login } = useAuth();
-  const navigate = useNavigate(); // 👈 2. IMPORTANTE: Inicializar o navigate
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,13 +29,8 @@ export default function LoginPage() {
         if (!success) {
           setErrorMsg("Usuário, senha ou empresa incorretos.");
         } else {
-          // 👇 3. A LÓGICA DE REDIRECIONAMENTO VEM AQUI 👇
-          const isMobile = window.innerWidth <= 768;
-          if (isMobile) {
-            navigate("/campo"); // Joga para a tela de Campo se for celular
-          } else {
-            navigate("/dashboard"); // Joga para o Dashboard se for computador
-          }
+          // 👇 VOLTAMOS AQUI PARA COMO ERA ANTES: TODO MUNDO PRO DASHBOARD 👇
+          navigate("/dashboard");
         }
       } finally {
         setIsLoading(false);
@@ -58,9 +53,7 @@ export default function LoginPage() {
         
         <div className="w-full max-w-md space-y-10">
           
-          {/* 👇 CABEÇALHO DO FORMULÁRIO TOTALMENTE CENTRALIZADO 👇 */}
           <div className="flex flex-col items-center text-center space-y-6">
-            {/* Logo da Empresa */}
             <img 
               src="/logo.png" 
               alt="Logo Empresa" 
@@ -68,19 +61,15 @@ export default function LoginPage() {
             />
             
             <div className="space-y-1.5">
-              {/* Nome do Sistema em Destaque */}
               <h1 className="text-4xl font-black tracking-tight text-slate-800">
                 Vértice <span className="text-primary">Campo</span>
               </h1>
-              
-              {/* Subtítulo de Boas-vindas */}
               <p className="text-sm font-medium text-slate-500">
                 Bem-vindo de volta! Insira suas credenciais para acessar.
               </p>
             </div>
           </div>
 
-          {/* O Formulário */}
           <form onSubmit={handleSubmit} className="space-y-6">
             
             <div className="space-y-2.5">
@@ -157,7 +146,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Rodapé do Formulário */}
           <div className="pt-8 text-center">
             <p className="text-xs text-slate-400 font-medium">
               &copy; {new Date().getFullYear()} Beauvallet — Vértice <strong>Campo</strong>
@@ -171,14 +159,13 @@ export default function LoginPage() {
           LADO DIREITO: IMAGEM (Oculto no Mobile)
           ========================================== */}
       <div className="hidden lg:flex w-1/2 relative bg-slate-900 overflow-hidden items-center justify-center">
-        {/* Imagem de Fundo */}
+        {/* A Profundidade / Opacidade que alteramos antes */}
         <img
           src="/imagem_login.png"
           alt="Fazenda e Agronegócio"
           className="absolute inset-0 w-full h-full object-cover opacity-95"
         />
         
-        {/* Gradiente sutil só para dar contraste */}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/40 to-slate-900/10" />
       </div>
       
