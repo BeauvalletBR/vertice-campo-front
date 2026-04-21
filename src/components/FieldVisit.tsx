@@ -32,10 +32,11 @@ import {
   AlertCircle,
   MapPinOff,
   RefreshCw,
-  Maximize2, 
+  Maximize2,
   Eraser,    
   Check,
-  ChevronRight,      
+  ChevronRight,
+  PenTool
 } from "lucide-react";
 import { api, fetchPecuaristasAgendamento, fetchAgendamentosPendentes, type ApiRancher, type ApiAgendamento, type ApiUsuario } from "@/services/api";
 
@@ -151,7 +152,16 @@ export function FieldVisit() {
   const [isRealLocation, setIsRealLocation] = useState<boolean>(false);
   const [confirmSaveModal, setConfirmSaveModal] = useState<boolean>(false);
 
-  // 👇 ADICIONADO: ESTADOS DO MODAL DE ASSINATURA 👇
+  // 👇 LÓGICA DE TAMANHO DE TELA PARA NÃO QUEBRAR O MAPA NO LEAFLET 👇
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 1024 : false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // 👇 ESTADOS PARA O MODAL TELA CHEIA DA ASSINATURA 👇
   const [isSignatureFullscreen, setIsSignatureFullscreen] = useState<boolean>(false);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState({ 
@@ -212,7 +222,7 @@ export function FieldVisit() {
     loadApiData();
   }, []);
 
-  // 👇 ADICIONADO: EFEITO PARA CORRIGIR O TAMANHO DO CANVAS NO CELULAR 👇
+  // 👇 EFEITO PARA CORRIGIR O TAMANHO DO CANVAS NO CELULAR 👇
   useEffect(() => {
     if (isSignatureFullscreen) {
       const timer = setTimeout(() => {
@@ -403,6 +413,26 @@ export function FieldVisit() {
     updateField("produtorAssinatura", "");
   };
 
+  const limparAssinaturaModal = () => {
+    if (sigCanvas.current) {
+      sigCanvas.current.clear();
+    }
+  };
+
+  const salvarAssinaturaModal = () => {
+    if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
+      const assinaturaImg = sigCanvas.current.getCanvas().toDataURL('image/png');
+      updateField("produtorAssinatura", assinaturaImg);
+      setIsSignatureFullscreen(false);
+    } else {
+      toast.error("O quadro de assinatura está vazio.");
+    }
+  };
+  
+  const apagarAssinaturaSalva = () => {
+    updateField("produtorAssinatura", "");
+  }
+
   const validateAndProceed = () => {
     const camposObrigatorios: { key: keyof FormData, label: string }[] = [
       { key: "nome", label: "Nome do Produtor" }, { key: "propriedade", label: "Propriedade" },
@@ -439,7 +469,7 @@ export function FieldVisit() {
       return;
     }
 
-    // Tenta pegar do canvas que está na tela
+    // Tenta pegar do canvas que está na tela, caso o usuário tenha assinado sem maximizar
     let assinaturaPronta = form.produtorAssinatura;
     
     if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
@@ -448,7 +478,7 @@ export function FieldVisit() {
     }
 
     if (!assinaturaPronta) {
-      setAlertModal({ isOpen: true, type: "error", title: "Assinatura Pendente!", message: "O produtor ou recebedor precisa assinar no quadro no final do formulário." });
+      setAlertModal({ isOpen: true, type: "error", title: "Assinatura Pendente!", message: "O produtor ou recebedor precisa assinar a ficha da visita." });
       return;
     }
 
@@ -531,7 +561,7 @@ export function FieldVisit() {
   };
 
   const getToggleClass = (currentValue: string, expectedValue: string) => 
-    `py-3 rounded-lg font-bold text-[11px] sm:text-xs transition-all border shadow-sm ${currentValue.toLowerCase() === expectedValue.toLowerCase() ? "bg-primary border-primary text-primary-foreground shadow-md" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 hover:border-slate-300"}`;
+    `py-3 rounded-lg font-bold text-[11px] sm:text-xs transition-all border shadow-sm ${currentValue.toUpperCase() === expectedValue.toUpperCase() ? "bg-primary border-primary text-white" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 hover:border-slate-300"}`;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 relative font-sans">
@@ -541,19 +571,19 @@ export function FieldVisit() {
             
             {step === "idle" && (
               <div className="space-y-6 animate-fade-in">
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-slate-200 pb-5">
+                <div className="flex flex-col xl:flex-row justify-between xl:items-end gap-4 border-b border-slate-200 pb-5">
                   <div>
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
                       <Navigation className="w-8 h-8 text-primary" /> Minhas Visitas
                     </h1>
                     <p className="text-sm font-medium text-slate-500 mt-1">Sua agenda de prospecção e rota de campo.</p>
                   </div>
-                  <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
-                    <div className="flex flex-col flex-1 sm:flex-initial">
+                  <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full xl:w-auto">
+                    <div className="flex flex-col flex-1 xl:flex-initial">
                       <Label className="text-[10px] font-bold uppercase text-slate-400 mb-1">Início</Label>
                       <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="h-9 text-xs font-bold bg-slate-50 border-slate-100" />
                     </div>
-                    <div className="flex flex-col flex-1 sm:flex-initial">
+                    <div className="flex flex-col flex-1 xl:flex-initial">
                       <Label className="text-[10px] font-bold uppercase text-slate-400 mb-1">Fim</Label>
                       <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} className="h-9 text-xs font-bold bg-slate-50 border-slate-100" />
                     </div>
@@ -839,7 +869,7 @@ export function FieldVisit() {
                           {form.disp30Dias && (
                             <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2">
                               <Input type="number" placeholder="Qtd. cabeças" className="h-11 bg-white text-sm font-black text-slate-800 shadow-sm" value={form.qtd30Dias} onChange={(e) => updateField("qtd30Dias", e.target.value)} />
-                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo30Dias} onChange={(e) => updateField("sexo30Dias", e.target.value)}><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
+                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo30Dias} onChange={(e) => updateField("sexo30Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select>
                               <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.status30Dias} onChange={(e) => updateField("status30Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
                             </div>
                           )}
@@ -849,7 +879,7 @@ export function FieldVisit() {
                           {form.disp60Dias && (
                             <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2">
                               <Input type="number" placeholder="Qtd. cabeças" className="h-11 bg-white text-sm font-black text-slate-800 shadow-sm" value={form.qtd60Dias} onChange={(e) => updateField("qtd60Dias", e.target.value)} />
-                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo60Dias} onChange={(e) => updateField("sexo60Dias", e.target.value)}><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
+                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo60Dias} onChange={(e) => updateField("sexo60Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select>
                               <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.status60Dias} onChange={(e) => updateField("status60Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
                             </div>
                           )}
@@ -888,7 +918,7 @@ export function FieldVisit() {
                               <img src={form.produtorAssinatura} alt="Assinatura salva" className="h-24 w-auto object-contain mix-blend-multiply" />
                             </div>
                             <div className="flex gap-2 mt-4">
-                              <Button variant="outline" size="sm" className="font-bold text-slate-600 border-slate-200 hover:bg-slate-100" onClick={() => updateField("produtorAssinatura", "")}>
+                              <Button variant="outline" size="sm" className="font-bold text-slate-600 border-slate-200 hover:bg-slate-100" onClick={apagarAssinaturaSalva}>
                                 <Eraser className="w-4 h-4 mr-2" /> APAGAR E REFAZER
                               </Button>
                             </div>
@@ -942,7 +972,7 @@ export function FieldVisit() {
             )}
           </div>
 
-          <div className={`order-1 lg:order-2 h-[400px] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-8 w-full rounded-2xl overflow-hidden border-4 border-white shadow-xl z-0 bg-slate-200 ${step === "idle" ? 'hidden lg:block' : 'block'}`}>
+          <div className={`order-1 lg:order-2 h-[400px] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-8 w-full rounded-2xl overflow-hidden border-4 border-white shadow-xl z-0 bg-slate-200 ${step === "idle" && isMobile ? 'hidden' : 'block'}`}>
             {typeof window !== "undefined" && (
               <MapContainer center={EMPRESA_COORDS} zoom={7} style={{ height: "100%", width: "100%", zIndex: 1 }}>
                 <RouteMapController routePath={routePath} />
@@ -1005,23 +1035,17 @@ export function FieldVisit() {
             </div>
 
             <div className="bg-white p-4 pb-8 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)] shrink-0 flex gap-3 z-10 border-t border-slate-200">
-              <Button variant="outline" className="flex-1 h-14 font-bold text-red-600 border-red-200 hover:bg-red-50 text-sm" onClick={() => sigCanvas.current?.clear()}>
+              <Button variant="outline" className="flex-1 h-14 font-bold text-red-600 border-red-200 hover:bg-red-50 text-sm" onClick={limparAssinaturaModal}>
                 <Eraser className="w-5 h-5 mr-2" /> LIMPAR
               </Button>
-              <Button className="flex-1 h-14 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-600/20" onClick={() => {
-                if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
-                  updateField("produtorAssinatura", sigCanvas.current.getCanvas().toDataURL('image/png'));
-                  setIsSignatureFullscreen(false);
-                } else {
-                  toast.error("O quadro de assinatura está vazio.");
-                }
-              }}>
+              <Button className="flex-1 h-14 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-600/20" onClick={salvarAssinaturaModal}>
                 <Check className="w-5 h-5 mr-2" /> CONFIRMAR
               </Button>
             </div>
           </div>
         )}
 
+        {/* MODAL DE BUSCA */}
         {isSearchModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl border-none rounded-2xl overflow-hidden">
