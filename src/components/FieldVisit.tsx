@@ -152,15 +152,6 @@ export function FieldVisit() {
   const [isRealLocation, setIsRealLocation] = useState<boolean>(false);
   const [confirmSaveModal, setConfirmSaveModal] = useState<boolean>(false);
 
-  // 👇 LÓGICA DE TAMANHO DE TELA PARA NÃO QUEBRAR O MAPA NO LEAFLET 👇
-  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 1024 : false);
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 1024);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
   // 👇 ESTADOS PARA O MODAL TELA CHEIA DA ASSINATURA 👇
   const [isSignatureFullscreen, setIsSignatureFullscreen] = useState<boolean>(false);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
@@ -469,7 +460,7 @@ export function FieldVisit() {
       return;
     }
 
-    // Tenta pegar do canvas que está na tela, caso o usuário tenha assinado sem maximizar
+    // Tenta pegar do canvas que está na tela
     let assinaturaPronta = form.produtorAssinatura;
     
     if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
@@ -571,19 +562,19 @@ export function FieldVisit() {
             
             {step === "idle" && (
               <div className="space-y-6 animate-fade-in">
-                <div className="flex flex-col xl:flex-row justify-between xl:items-end gap-4 border-b border-slate-200 pb-5">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-slate-200 pb-5">
                   <div>
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
                       <Navigation className="w-8 h-8 text-primary" /> Minhas Visitas
                     </h1>
                     <p className="text-sm font-medium text-slate-500 mt-1">Sua agenda de prospecção e rota de campo.</p>
                   </div>
-                  <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full xl:w-auto">
-                    <div className="flex flex-col flex-1 xl:flex-initial">
+                  <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
+                    <div className="flex flex-col flex-1 sm:flex-initial">
                       <Label className="text-[10px] font-bold uppercase text-slate-400 mb-1">Início</Label>
                       <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="h-9 text-xs font-bold bg-slate-50 border-slate-100" />
                     </div>
-                    <div className="flex flex-col flex-1 xl:flex-initial">
+                    <div className="flex flex-col flex-1 sm:flex-initial">
                       <Label className="text-[10px] font-bold uppercase text-slate-400 mb-1">Fim</Label>
                       <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} className="h-9 text-xs font-bold bg-slate-50 border-slate-100" />
                     </div>
@@ -905,7 +896,7 @@ export function FieldVisit() {
                       </div>
                     </div>
                     
-                    {/* 👇 MODULO DE ASSINATURA DIGITAL (AGORA COM EXPANDIR E LINHA GUIA) 👇 */}
+                    {/* 👇 MODULO DE ASSINATURA DIGITAL 👇 */}
                     <div className="border-t border-slate-100 pt-6 mt-6">
                       <Label className="text-xs font-bold text-slate-700 uppercase block mb-3 text-center tracking-widest">
                         Assinatura do Produtor
@@ -972,7 +963,7 @@ export function FieldVisit() {
             )}
           </div>
 
-          <div className={`order-1 lg:order-2 h-[400px] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-8 w-full rounded-2xl overflow-hidden border-4 border-white shadow-xl z-0 bg-slate-200 ${step === "idle" && isMobile ? 'hidden' : 'block'}`}>
+          <div className="order-1 lg:order-2 h-[400px] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-8 w-full rounded-2xl overflow-hidden border-4 border-white shadow-xl z-0 bg-slate-200">
             {typeof window !== "undefined" && (
               <MapContainer center={EMPRESA_COORDS} zoom={7} style={{ height: "100%", width: "100%", zIndex: 1 }}>
                 <RouteMapController routePath={routePath} />
