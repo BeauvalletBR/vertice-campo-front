@@ -128,9 +128,12 @@ const emptyForm = (today: string,  userName : string): FormData => ({
 function RouteMapController({ routePath }: { routePath: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
-    if (routePath && routePath.length > 0) {
+    // PROTEÇÃO LEAFLET: Evita "crash" se routePath vier apenas com 1 ponto do GPS fallback
+    if (routePath && routePath.length > 1) {
       const bounds = L.latLngBounds(routePath);
       map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
+    } else if (routePath && routePath.length === 1) {
+      map.flyTo(routePath[0], 13, { duration: 1.5 });
     } else {
       map.flyTo(EMPRESA_COORDS, 7, { duration: 1.5 });
     }
@@ -152,24 +155,32 @@ export function FieldVisit() {
   const [isRealLocation, setIsRealLocation] = useState<boolean>(false);
   const [confirmSaveModal, setConfirmSaveModal] = useState<boolean>(false);
 
-  // 👇 ESTADOS PARA O MODAL TELA CHEIA DA ASSINATURA 👇
+  // 👇 PROTEÇÃO CANVAS: Math.max garante que NUNCA será negativo ou 0.
   const [isSignatureFullscreen, setIsSignatureFullscreen] = useState<boolean>(false);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState({ 
-    width: typeof window !== 'undefined' ? window.innerWidth : 300, 
-    height: typeof window !== 'undefined' ? window.innerHeight - 150 : 300 
+    width: typeof window !== 'undefined' ? Math.max(window.innerWidth, 300) : 300, 
+    height: typeof window !== 'undefined' ? Math.max(window.innerHeight - 150, 200) : 300 
   });
 
-  const today = new Date().toISOString().split("T")[0];
-  const [form, setForm] = useState<FormData>(emptyForm(today, userName));
+  const getLocalYYYYMMDD = () => {
+    const d = new Date();
+    const tzOffset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tzOffset).toISOString().split("T")[0];
+  };
 
+  const today = getLocalYYYYMMDD();
+  const [form, setForm] = useState<FormData>(emptyForm(today, userName));
   const sigCanvas = useRef<SignatureCanvas>(null);
 
-  const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
-  const lastDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split("T")[0];
-  
-  const [dateStart, setDateStart] = useState(firstDayOfMonth);
-  const [dateEnd, setDateEnd] = useState(lastDayOfMonth);
+  const [dateStart, setDateStart] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
+  });
+  const [dateEnd, setDateEnd] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split("T")[0];
+  });
 
   const [isManual, setIsManual] = useState(false);
   const [selectedRancher, setSelectedRancher] = useState<any | null>(null);
@@ -194,16 +205,20 @@ export function FieldVisit() {
     const loadApiData = async () => {
       setIsLoadingApi(true);
       try {
+        // BLINDAGEM DE API: Previne falhas se uma rota da API cair no celular
         const [agendamentosData, ranchersData, usersData] = await Promise.all([
-          fetchAgendamentosPendentes(),
-          fetchPecuaristasAgendamento(),
-          api.getUsuarios()
+          fetchAgendamentosPendentes().catch(() => []),
+          fetchPecuaristasAgendamento().catch(() => []),
+          api.getUsuarios().catch(() => [])
         ]);
         
-        const pendentes = agendamentosData.filter(ag => (ag.STATUS_AGENDAMENTO || "").toLowerCase() === 'pendente');
+        // ARRAY IS ARRAY garante que não daremos ".filter" em um "undefined"
+        const validAgendamentos = Array.isArray(agendamentosData) ? agendamentosData : [];
+        const pendentes = validAgendamentos.filter(ag => (ag.STATUS_AGENDAMENTO || "").toLowerCase() === 'pendente');
+        
         setAgendamentosPendentes(pendentes);
-        setApiRanchers(ranchersData);
-        setUsuariosData(usersData);
+        setApiRanchers(Array.isArray(ranchersData) ? ranchersData : []);
+        setUsuariosData(Array.isArray(usersData) ? usersData : []);
 
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
@@ -213,14 +228,14 @@ export function FieldVisit() {
     loadApiData();
   }, []);
 
-  // 👇 EFEITO PARA CORRIGIR O TAMANHO DO CANVAS NO CELULAR 👇
   useEffect(() => {
     if (isSignatureFullscreen) {
       const timer = setTimeout(() => {
         if (canvasWrapperRef.current) {
+          // BLINDAGEM DE TELA: Impede cálculo de altura zoada.
           setCanvasSize({
-            width: canvasWrapperRef.current.offsetWidth,
-            height: canvasWrapperRef.current.offsetHeight,
+            width: Math.max(canvasWrapperRef.current.offsetWidth, 300),
+            height: Math.max(canvasWrapperRef.current.offsetHeight, 200),
           });
         }
       }, 100);
@@ -251,7 +266,8 @@ export function FieldVisit() {
         return false;
       }
       if (!ag.DATA_AGENDADA) return false;
-      const dataStr = ag.DATA_AGENDADA.split("T")[0];
+      // BLINDAGEM DE STRING: Evita que "split" quebre se a API retornar objeto Date
+      const dataStr = String(ag.DATA_AGENDADA).split("T")[0];
       return dataStr >= dateStart && dataStr <= dateEnd;
     });
   }, [dateStart, dateEnd, agendamentosPendentes, user?.id, user?.role]);
@@ -261,7 +277,7 @@ export function FieldVisit() {
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
       const data = await res.json();
       const city = data.address?.city || data.address?.town || data.address?.village || data.address?.municipality;
-      if (city) setForm(prev => ({ ...prev, municipio: city.toUpperCase() }));
+      if (city) setForm(prev => ({ ...prev, municipio: String(city).toUpperCase() }));
     } catch (error) { }
   };
 
@@ -282,6 +298,9 @@ export function FieldVisit() {
           const routeCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
           setRoutePath(routeCoords);
           setDistance(`${(data.routes[0].distance / 1000).toFixed(1)} km`);
+        } else {
+          setRoutePath([EMPRESA_COORDS, [fallbackLat, fallbackLng]]);
+          setDistance("Aprox. 42 km");
         }
       })
       .catch(() => {
@@ -291,37 +310,42 @@ export function FieldVisit() {
   };
 
   const fetchRealRouteAndLocation = (callback: () => void) => {
-    if (!navigator.geolocation) return executeFallbackLocation(callback);
-    
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setIsRealLocation(true); 
-        const { latitude, longitude } = position.coords;
-        setUserLocation([latitude, longitude]);
-        
-        callback();
+    // PROTEÇÃO TRY CATCH: Alguns celulares bloqueiam a API nativa severamente se não for HTTPS
+    try {
+      if (!navigator.geolocation) return executeFallbackLocation(callback);
+      
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setIsRealLocation(true); 
+          const { latitude, longitude } = position.coords;
+          setUserLocation([latitude, longitude]);
+          
+          callback();
 
-        fetchCityName(latitude, longitude);
+          fetchCityName(latitude, longitude);
 
-        fetch(`https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${longitude},${latitude}?overview=full&geometries=geojson`)
-          .then(res => res.json())
-          .then(data => {
-            if (data.routes && data.routes.length > 0) {
-              setRoutePath(data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]));
-              setDistance(`${(data.routes[0].distance / 1000).toFixed(1)} km`);
-            } else {
+          fetch(`https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${longitude},${latitude}?overview=full&geometries=geojson`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.routes && data.routes.length > 0) {
+                setRoutePath(data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]));
+                setDistance(`${(data.routes[0].distance / 1000).toFixed(1)} km`);
+              } else {
+                setRoutePath([EMPRESA_COORDS, [latitude, longitude]]);
+                setDistance("Distância aproximada");
+              }
+            })
+            .catch(() => {
               setRoutePath([EMPRESA_COORDS, [latitude, longitude]]);
-              setDistance("Distância aproximada");
-            }
-          })
-          .catch(() => {
-            setRoutePath([EMPRESA_COORDS, [latitude, longitude]]);
-            setDistance("Sem conexão p/ rotas");
-          });
-      },
-      () => executeFallbackLocation(callback),
-      { enableHighAccuracy: false, timeout: 5000, maximumAge: 10000 } 
-    );
+              setDistance("Sem conexão p/ rotas");
+            });
+        },
+        () => executeFallbackLocation(callback),
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 10000 } 
+      );
+    } catch (e) {
+      executeFallbackLocation(callback);
+    }
   };
 
   const retryLocation = () => {
@@ -397,7 +421,7 @@ export function FieldVisit() {
   };
 
   const updateField = (key: keyof FormData, value: any) => setForm(prev => ({ ...prev, [key]: value }));
-  const formatToUpper = (val: any) => (val === null || val === undefined) ? "" : typeof val === 'string' ? val.trim().toUpperCase() : val;
+  const formatToUpper = (val: any) => (val === null || val === undefined) ? "" : typeof val === 'string' ? val.trim().toUpperCase() : String(val).toUpperCase();
 
   const limparAssinatura = () => {
     sigCanvas.current?.clear();
@@ -460,7 +484,6 @@ export function FieldVisit() {
       return;
     }
 
-    // Tenta pegar do canvas que está na tela
     let assinaturaPronta = form.produtorAssinatura;
     
     if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
@@ -599,7 +622,7 @@ export function FieldVisit() {
                   ) : (
                     <div className="grid gap-3">
                       {filteredAgendamentos.map((ag) => {
-                        const agDateStr = ag.DATA_AGENDADA ? ag.DATA_AGENDADA.split('T')[0] : '';
+                        const agDateStr = ag.DATA_AGENDADA ? String(ag.DATA_AGENDADA).split('T')[0] : '';
                         const isAtrasada = agDateStr && agDateStr < today;
                         const isHoje = agDateStr === today;
 
@@ -634,7 +657,7 @@ export function FieldVisit() {
                                       <MapPin className="w-3 h-3 text-slate-400" /> {ag.MUNICIPIO}
                                     </span>
                                     <span className={`flex items-center gap-1 px-2 py-1 rounded-md uppercase ${dateIconClass}`}>
-                                      <CalendarClock className="w-3 h-3" /> {ag.DATA_AGENDADA ? new Date(ag.DATA_AGENDADA.split('T')[0] + "T12:00:00").toLocaleDateString("pt-BR") : ''}
+                                      <CalendarClock className="w-3 h-3" /> {ag.DATA_AGENDADA ? new Date(String(ag.DATA_AGENDADA).split('T')[0] + "T12:00:00").toLocaleDateString("pt-BR") : ''}
                                     </span>
                                     <span className="flex items-center gap-1 font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md uppercase">
                                       <User className="w-3 h-3 text-slate-400" /> {getNomeComprador(ag.ID_COMPRADOR)}
@@ -653,7 +676,7 @@ export function FieldVisit() {
                   )}
                 </div>
                 <div className="pt-2">
-                  <Button size="xl" className="w-full bg-white border-2 border-primary text-primary hover:bg-primary/5 font-bold shadow-sm h-14 rounded-xl" onClick={startNewVisit}>
+                  <Button className="w-full bg-white border-2 border-primary text-primary hover:bg-primary/5 font-bold shadow-sm h-14 rounded-xl" onClick={startNewVisit}>
                     <Plus className="w-5 h-5 mr-2" /> INICIAR VISITA AVULSA
                   </Button>
                 </div>
@@ -1018,8 +1041,8 @@ export function FieldVisit() {
                 penColor="black"
                 clearOnResize={false}
                 canvasProps={{ 
-                  width: canvasSize.width,
-                  height: canvasSize.height,
+                  width: Math.max(canvasSize.width, 300),
+                  height: Math.max(canvasSize.height, 200),
                   className: "absolute inset-0 cursor-crosshair touch-none z-10" 
                 }} 
               />

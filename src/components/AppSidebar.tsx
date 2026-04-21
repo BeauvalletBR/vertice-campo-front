@@ -25,7 +25,7 @@ const items = [
 const formatarNomeCurto = (nomeCompleto: string) => {
   if (!nomeCompleto) return "Usuário";
   const partes = nomeCompleto.trim().split(" ");
-  if (partes.length === 1) return partes[0]; // Se tiver só um nome, retorna ele
+  if (partes.length === 1) return partes[0]; 
   return `${partes[0]} ${partes[partes.length - 1]}`;
 };
 
