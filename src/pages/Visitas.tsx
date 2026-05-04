@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/AuthContext";
 import { 
   Clock, 
   MapPin, 
@@ -29,14 +30,15 @@ import {
   Link as LinkIcon,
   Search,
   Check,
-  Filter
+  Filter,
+  Trash2,
+  AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { api, fetchPecuaristasAgendamento, type ApiRancher, type ApiUsuario } from "@/services/api";
 
-// Tipagem do Relatório
 interface CheckinReport {
   id: string;
   cod_produtor: string | null;
@@ -71,6 +73,11 @@ interface CheckinReport {
 }
 
 export default function Pecuaristas() {
+  const { user } = useAuth();
+  
+  // 👇 VERIFICAÇÃO DE NÍVEL PARA EXIBIR A LIXEIRINHA 👇
+  const podeExcluir = user && (user as any).nivel > 3;
+
   const [isPendingOpen, setIsPendingOpen] = useState(true);
   const [selectedReport, setSelectedReport] = useState<CheckinReport | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -90,6 +97,11 @@ export default function Pecuaristas() {
   const [visitToLink, setVisitToLink] = useState<CheckinReport | null>(null);
   const [searchRancher, setSearchRancher] = useState("");
   const [isLinking, setIsLinking] = useState(false);
+  
+  const [isInativando, setIsInativando] = useState<string | null>(null);
+  
+  // 👇 ESTADO DO NOVO MODAL DE CONFIRMAÇÃO DE EXCLUSÃO 👇
+  const [visitaParaInativar, setVisitaParaInativar] = useState<string | null>(null);
 
   useEffect(() => {
     const carregarVisitas = async () => {
@@ -205,6 +217,27 @@ export default function Pecuaristas() {
     }
   };
 
+  // 👇 LÓGICA DE INATIVAÇÃO DA VISITA SEM WINDOW.CONFIRM 👇
+  const confirmInativarVisita = async () => {
+    if (!visitaParaInativar) return;
+    
+    setIsInativando(visitaParaInativar);
+    try {
+      const result = await api.inativarVisita(visitaParaInativar);
+      if (result.success) {
+        toast.success("Visita inativada com sucesso!");
+        setAllData(prev => prev.filter(v => v.id !== visitaParaInativar)); 
+        setVisitaParaInativar(null); // Fecha o modal
+      } else {
+        toast.error(result.message || "Erro ao inativar visita.");
+      }
+    } catch (error) {
+      toast.error("Erro de comunicação com o servidor.");
+    } finally {
+      setIsInativando(null);
+    }
+  };
+
   const handleDownloadPDF = async () => {
     if (!reportRef.current || !selectedReport) return;
     try {
@@ -271,7 +304,6 @@ export default function Pecuaristas() {
           <span className="text-blue-700 font-black">{gpsKm !== null ? `${gpsKm.toFixed(1)} km` : '--'}</span>
         </TableCell>
         
-        {/* 👇 A AUDITORIA COM A BADGE REDESENHADA 👇 */}
         <TableCell className="py-4 text-sm text-center">
           {isRed ? (
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700 font-bold text-[11px] whitespace-nowrap mx-auto shadow-sm" title="Divergência superior a 10% entre ERP e GPS">
@@ -286,14 +318,30 @@ export default function Pecuaristas() {
         </TableCell>
         
         <TableCell className="text-right px-4 py-4">
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="text-[11px] h-8 font-bold shadow-sm border-slate-200 text-slate-600 hover:bg-slate-100 transition-all rounded-lg" 
-            onClick={() => setSelectedReport(v)}
-          >
-            <FileText className="w-3.5 h-3.5 mr-2" /> RELATÓRIO
-          </Button>
+          <div className="flex items-center justify-end gap-2">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="text-[11px] h-8 font-bold shadow-sm border-slate-200 text-slate-600 hover:bg-slate-100 transition-all rounded-lg" 
+              onClick={() => setSelectedReport(v)}
+            >
+              <FileText className="w-3.5 h-3.5 mr-2" /> RELATÓRIO
+            </Button>
+            
+            {/* 👇 TRAVA DE NÍVEL APLICADA NA LIXEIRINHA DO HISTÓRICO 👇 */}
+            {podeExcluir && (
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="h-8 w-8 p-0 border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200 transition-all rounded-lg shadow-sm" 
+                onClick={() => setVisitaParaInativar(v.id)}
+                disabled={isInativando === v.id}
+                title="Inativar Visita"
+              >
+                {isInativando === v.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              </Button>
+            )}
+          </div>
         </TableCell>
       </TableRow>
     );
@@ -316,7 +364,6 @@ export default function Pecuaristas() {
   }).slice(0, 30); 
 
   return (
-    // 👇 FUNDO DA TELA EM CINZA CLARO 👇
     <div className="min-h-screen bg-slate-50 p-6 lg:p-8 animate-fade-in relative pb-24">
       <div className="max-w-[1400px] mx-auto space-y-8">
         
@@ -329,7 +376,6 @@ export default function Pecuaristas() {
           </div>
         </header>
 
-        {/* 👇 ÁREA DE FILTROS REDESENHADA 👇 */}
         <Card className="bg-white border-slate-200 shadow-sm rounded-xl">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 mb-4 text-slate-800 font-bold">
@@ -444,6 +490,20 @@ export default function Pecuaristas() {
                               <FileText className="w-3.5 h-3.5 mr-1.5 text-slate-400" /> RELATÓRIO
                             </Button>
 
+                            {/* 👇 TRAVA DE NÍVEL APLICADA NA LIXEIRINHA DE PENDENTES 👇 */}
+                            {podeExcluir && (
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="h-8 w-8 p-0 border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200 transition-all rounded-lg shadow-sm" 
+                                onClick={() => setVisitaParaInativar(p.id)}
+                                disabled={isInativando === p.id}
+                                title="Inativar Visita"
+                              >
+                                {isInativando === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                              </Button>
+                            )}
+
                           </div>
                         </TableCell>
                       </TableRow>
@@ -472,7 +532,7 @@ export default function Pecuaristas() {
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500">Comprador</TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center whitespace-nowrap">KM da Visita (GPS)</TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center whitespace-nowrap">KM Sistema (ERP)</TableHead>
-                  <TableHead className="text-right font-bold text-xs uppercase tracking-wider text-slate-500 px-4">Ação</TableHead>
+                  <TableHead className="text-right font-bold text-xs uppercase tracking-wider text-slate-500 px-4">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -489,6 +549,45 @@ export default function Pecuaristas() {
             </Table>
           </CardContent>
         </Card>
+
+        {/* =======================================================
+            MODAL DE CONFIRMAÇÃO DE EXCLUSÃO (NOVO E CUSTOMIZADO)
+            ======================================================= */}
+        {visitaParaInativar && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-none rounded-2xl">
+              <div className="h-2 w-full bg-red-600" />
+              <CardHeader className="text-center pt-8 pb-2">
+                <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-red-50 border border-red-100 text-red-500">
+                  <Trash2 className="w-8 h-8" />
+                </div>
+                <CardTitle className="text-2xl font-black text-slate-800">Inativar Visita?</CardTitle>
+              </CardHeader>
+              <CardContent className="text-center pb-8 px-8">
+                <p className="text-slate-500 font-medium leading-relaxed mb-8">
+                  Tem certeza que deseja inativar esta visita? Ela não aparecerá mais nos relatórios do sistema.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1 font-bold h-12 border-slate-200 text-slate-600 hover:bg-slate-50" 
+                    onClick={() => setVisitaParaInativar(null)}
+                    disabled={isInativando !== null}
+                  >
+                    CANCELAR
+                  </Button>
+                  <Button 
+                    className="flex-1 font-bold h-12 bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/20" 
+                    onClick={confirmInativarVisita}
+                    disabled={isInativando !== null}
+                  >
+                    {isInativando ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : "SIM, INATIVAR"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* =======================================================
             MODAL: VINCULAR PECUARISTA

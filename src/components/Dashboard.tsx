@@ -214,7 +214,7 @@ export function Dashboard() {
     numAnimais: v.EFETIVO_TOTAL_ANIMAIS ? String(v.EFETIVO_TOTAL_ANIMAIS) : "",
     data: v.DATA_REGISTRO_VISITA ? v.DATA_REGISTRO_VISITA.split('T')[0] : "",
     visitante: getNomeComprador(v.ID_COMPRADOR), produtorAssinatura: v.ASSINATURA_DIGITAL || "",
-    distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${v.DISTANCIA_PERCORRIDA_REAL} km` : "N/A",
+    distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${v.DISTANCIA_PERCORRIDA_REAL} km` : "DISTÂNCIA NÃO COLETADA",
     statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente"
   });
 
@@ -245,7 +245,6 @@ export function Dashboard() {
       const cabecas = Number(v.EFETIVO_TOTAL_ANIMAIS) || 0;
       totalHeads += cabecas;
       
-      // 👇 REGRA ALTERADA AQUI 👇
       if (v.NATUREZA_VISITA?.toUpperCase() === "PROSPECÇÃO") novosPecuaristas += 1;
       
       if (v.MUNICIPIO) cidadesSet.add(v.MUNICIPIO.toUpperCase());
@@ -390,7 +389,6 @@ export function Dashboard() {
           </div>
         </header>
 
-        {/* MÉTRICAS DE BI REDESENHADAS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {isLoading ? (
             Array(4).fill(0).map((_, i) => (
@@ -400,14 +398,12 @@ export function Dashboard() {
             <>
               <MetricCard title="Gado Prospectado" value={kpis.totalHeads.toLocaleString('pt-BR')} icon={<TrendingUp className="w-7 h-7 text-blue-600" />} colorClass="bg-blue-50 text-blue-600" sub="Efetivo total registrado em visitas" />
               <MetricCard title="Visitas Realizadas" value={kpis.totalVisitas} icon={<Navigation className="w-7 h-7 text-indigo-600" />} colorClass="bg-indigo-50 text-indigo-600" sub="Total de registros no banco" />
-              {/* 👇 AQUI ESTÁ O CARTÃO COM A MENSAGEM ALTERADA 👇 */}
               <MetricCard title="Novos Pecuaristas" value={kpis.novosPecuaristas} icon={<Users className="w-7 h-7 text-emerald-600" />} colorClass="bg-emerald-50 text-emerald-600" sub="Visitas com natureza de Prospecção" />
               <MetricCard title="Cidades Cobertas" value={kpis.cidadesCobertas} icon={<Building2 className="w-7 h-7 text-amber-600" />} colorClass="bg-amber-50 text-amber-600" sub="Abrangência geográfica real" />
             </>
           )}
         </div>
 
-        {/* MAPA PRINCIPAL */}
         <Card className={`overflow-hidden border-slate-200 shadow-sm transition-all duration-300 bg-white ${isMapExpanded ? 'fixed inset-4 z-[200] flex flex-col' : ''}`}>
           <CardHeader className="bg-white border-b pb-4 shrink-0 flex flex-row items-center justify-between">
             <div>
@@ -462,10 +458,7 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* PAINÉIS DE INTELIGÊNCIA */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
-          {/* PAINEL 1: FORECAST DE ABATE */}
           <Card className="border-slate-200 shadow-sm bg-white overflow-hidden">
             <CardHeader className="border-b pb-4">
               <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-800">
@@ -512,7 +505,6 @@ export function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* PAINEL 2: AUDITORIA DE FRETE (AGORA COM BADGES) */}
           <Card className="border-slate-200 shadow-sm bg-white overflow-hidden flex flex-col">
             <CardHeader className="border-b pb-4">
               <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-800">
@@ -568,8 +560,6 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* O resto dos modais (Forecast e Relatório) continuam iguais */}
-      {/* 👇 MODAL FLUTUANTE (TABELA) DO FORECAST 👇 */}
       {forecastModal && forecastModal.isOpen && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <Card className="w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl border-none">
@@ -665,7 +655,7 @@ export function Dashboard() {
       )}
 
       {/* =======================================================
-          MODAL: RELATÓRIO DO CHECK-IN (COMPLETO) z-[10000]
+          MODAL: RELATÓRIO DO CHECK-IN (COM ASSINATURA ARRUMADA)
           ======================================================= */}
       {selectedReport && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -786,14 +776,26 @@ export function Dashboard() {
                     )}
                   </div>
                   
+                  {/* 👇 ASSINATURAS CORRIGIDAS AQUI 👇 */}
                   <div className="grid grid-cols-2 gap-8 mt-10">
-                    <div className="border-t border-slate-300 pt-2 text-center">
+                    <div className="border-t border-slate-300 pt-2 text-center flex flex-col justify-end">
                       <p className="font-bold text-sm text-slate-800 uppercase">{selectedReport.visitante}</p>
-                      <p className="text-[10px] text-slate-500 font-semibold uppercase">Comprador (Visitante)</p>
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase mt-1">Comprador (Visitante)</p>
                     </div>
-                    <div className="border-t border-slate-300 pt-2 text-center">
-                      <p className="font-bold text-sm text-slate-800 font-serif italic uppercase">{selectedReport.produtorAssinatura || "Assinatura Digital Ausente"}</p>
-                      <p className="text-[10px] text-slate-500 font-semibold uppercase">Produtor</p>
+                    <div className="border-t border-slate-300 pt-2 text-center flex flex-col justify-end min-h-[80px]">
+                      {/* Lógica: Verifica se é uma imagem base64 e renderiza a tag <img>, senão renderiza o texto */}
+                      {selectedReport.produtorAssinatura && selectedReport.produtorAssinatura.includes("data:image") ? (
+                        <img 
+                          src={selectedReport.produtorAssinatura} 
+                          alt="Assinatura Produtor" 
+                          className="mx-auto h-16 object-contain mb-1" 
+                        />
+                      ) : (
+                        <p className="font-bold text-sm text-slate-800 font-serif italic uppercase">
+                          {selectedReport.produtorAssinatura || "Assinatura Digital Ausente"}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase mt-auto">Produtor</p>
                     </div>
                   </div>
                 </div>

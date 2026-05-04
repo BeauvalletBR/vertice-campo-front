@@ -5,13 +5,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-
 import Index from "./pages/Index";
 import FieldPage from "./pages/FieldPage";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import Pecuaristas from "./pages/Visitas";
 import Agendamento from "./pages/Agendamento"; 
+import AgendamentoGerenciador from "./pages/AgendamentoGerenciador"; 
 
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
@@ -41,8 +41,10 @@ function ProtectedLayout() {
               
               {/* 🔴 ROTAS RESTRITAS: O que estiver aqui dentro, SOMENTE ADMIN acessa */}
               <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
-                {/* 👇 A mágica acontece aqui: Movemos o agendamento pra dentro deste bloco! */}
                 <Route path="/agendamento" element={<Agendamento />} />
+                
+                {/* 👇 2. ADICIONADA A NOVA ROTA DE GERENCIAMENTO AQUI 👇 */}
+                <Route path="/agendamento/gerenciar" element={<AgendamentoGerenciador />} />
               </Route>
               
               <Route path="*" element={<NotFound />} />

@@ -12,6 +12,7 @@ export interface User {
   role: "ADMIN" | "COMPRADOR";
   empresa?: string;
   modulos?: string[];
+  nivel?: number;
 }
 
 interface AuthContextType {
@@ -58,7 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           login: response.user.login,
           role: response.user.role || "COMPRADOR",
           empresa: empresa, 
-          modulos: response.user.modulos || [] 
+          modulos: response.user.modulos || [] ,
+          nivel: response.user.nivel || 0,
         };
 
         setUser(loggedUser);

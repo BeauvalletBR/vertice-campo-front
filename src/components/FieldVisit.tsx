@@ -43,7 +43,6 @@ import { api, fetchPecuaristasAgendamento, fetchAgendamentosPendentes, type ApiR
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-
 import SignatureCanvas from 'react-signature-canvas';
 
 type Step = "idle" | "routing" | "form";
@@ -68,22 +67,18 @@ interface FormData {
   tipoAtividade: string;
   habilitacao: string;
   tipoTerminacao: string;
-  
   disp30Dias: boolean;
   qtd30Dias: string;
   sexo30Dias: string;
   status30Dias: string;
-  
   disp60Dias: boolean;
   qtd60Dias: string;
   sexo60Dias: string;
   status60Dias: string;
-  
   disp90Dias: boolean;
   qtd90Dias: string;
   sexo90Dias: string;
   status90Dias: string;
-
   numAnimais: string; 
   dataVisita: string;
   visitante: string;
@@ -128,7 +123,6 @@ const emptyForm = (today: string,  userName : string): FormData => ({
 function RouteMapController({ routePath }: { routePath: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
-    // PROTEÇÃO LEAFLET: Evita "crash" se routePath vier apenas com 1 ponto do GPS fallback
     if (routePath && routePath.length > 1) {
       const bounds = L.latLngBounds(routePath);
       map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
@@ -155,7 +149,6 @@ export function FieldVisit() {
   const [isRealLocation, setIsRealLocation] = useState<boolean>(false);
   const [confirmSaveModal, setConfirmSaveModal] = useState<boolean>(false);
 
-  // 👇 PROTEÇÃO CANVAS: Math.max garante que NUNCA será negativo ou 0.
   const [isSignatureFullscreen, setIsSignatureFullscreen] = useState<boolean>(false);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState({ 
@@ -171,7 +164,9 @@ export function FieldVisit() {
 
   const today = getLocalYYYYMMDD();
   const [form, setForm] = useState<FormData>(emptyForm(today, userName));
+
   const sigCanvas = useRef<SignatureCanvas>(null);
+  const sigCanvasFullscreen = useRef<SignatureCanvas>(null); // Para o canvas grande (tela cheia)
 
   const [dateStart, setDateStart] = useState(() => {
     const d = new Date();
@@ -179,7 +174,7 @@ export function FieldVisit() {
   });
   const [dateEnd, setDateEnd] = useState(() => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split("T")[0];
+    return new Date(d.getFullYear(), d.getMonth() + 2, 0).toISOString().split("T")[0];
   });
 
   const [isManual, setIsManual] = useState(false);
@@ -205,14 +200,12 @@ export function FieldVisit() {
     const loadApiData = async () => {
       setIsLoadingApi(true);
       try {
-        // BLINDAGEM DE API: Previne falhas se uma rota da API cair no celular
         const [agendamentosData, ranchersData, usersData] = await Promise.all([
           fetchAgendamentosPendentes().catch(() => []),
           fetchPecuaristasAgendamento().catch(() => []),
           api.getUsuarios().catch(() => [])
         ]);
         
-        // ARRAY IS ARRAY garante que não daremos ".filter" em um "undefined"
         const validAgendamentos = Array.isArray(agendamentosData) ? agendamentosData : [];
         const pendentes = validAgendamentos.filter(ag => (ag.STATUS_AGENDAMENTO || "").toLowerCase() === 'pendente');
         
@@ -232,7 +225,6 @@ export function FieldVisit() {
     if (isSignatureFullscreen) {
       const timer = setTimeout(() => {
         if (canvasWrapperRef.current) {
-          // BLINDAGEM DE TELA: Impede cálculo de altura zoada.
           setCanvasSize({
             width: Math.max(canvasWrapperRef.current.offsetWidth, 300),
             height: Math.max(canvasWrapperRef.current.offsetHeight, 200),
@@ -266,7 +258,6 @@ export function FieldVisit() {
         return false;
       }
       if (!ag.DATA_AGENDADA) return false;
-      // BLINDAGEM DE STRING: Evita que "split" quebre se a API retornar objeto Date
       const dataStr = String(ag.DATA_AGENDADA).split("T")[0];
       return dataStr >= dateStart && dataStr <= dateEnd;
     });
@@ -310,7 +301,6 @@ export function FieldVisit() {
   };
 
   const fetchRealRouteAndLocation = (callback: () => void) => {
-    // PROTEÇÃO TRY CATCH: Alguns celulares bloqueiam a API nativa severamente se não for HTTPS
     try {
       if (!navigator.geolocation) return executeFallbackLocation(callback);
       
@@ -423,20 +413,24 @@ export function FieldVisit() {
   const updateField = (key: keyof FormData, value: any) => setForm(prev => ({ ...prev, [key]: value }));
   const formatToUpper = (val: any) => (val === null || val === undefined) ? "" : typeof val === 'string' ? val.trim().toUpperCase() : String(val).toUpperCase();
 
+  // 👇 Usa o Canvas Pequeno 👇
   const limparAssinatura = () => {
     sigCanvas.current?.clear();
     updateField("produtorAssinatura", "");
   };
 
+  // 👇 Usa o Canvas Grande 👇
   const limparAssinaturaModal = () => {
-    if (sigCanvas.current) {
-      sigCanvas.current.clear();
+    if (sigCanvasFullscreen.current) {
+      sigCanvasFullscreen.current.clear();
+      updateField("produtorAssinatura", "");
     }
   };
 
+  // 👇 Usa o Canvas Grande 👇
   const salvarAssinaturaModal = () => {
-    if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
-      const assinaturaImg = sigCanvas.current.getCanvas().toDataURL('image/png');
+    if (sigCanvasFullscreen.current && !sigCanvasFullscreen.current.isEmpty()) {
+      const assinaturaImg = sigCanvasFullscreen.current.getCanvas().toDataURL('image/png');
       updateField("produtorAssinatura", assinaturaImg);
       setIsSignatureFullscreen(false);
     } else {
@@ -486,6 +480,7 @@ export function FieldVisit() {
 
     let assinaturaPronta = form.produtorAssinatura;
     
+    // 👇 Pega do Canvas Pequeno APENAS se o usuário não tiver salvo a tela cheia
     if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
        assinaturaPronta = sigCanvas.current.getCanvas().toDataURL('image/png');
        updateField("produtorAssinatura", assinaturaPronta);
@@ -883,7 +878,7 @@ export function FieldVisit() {
                           {form.disp30Dias && (
                             <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2">
                               <Input type="number" placeholder="Qtd. cabeças" className="h-11 bg-white text-sm font-black text-slate-800 shadow-sm" value={form.qtd30Dias} onChange={(e) => updateField("qtd30Dias", e.target.value)} />
-                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo30Dias} onChange={(e) => updateField("sexo30Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select>
+                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo30Dias} onChange={(e) => updateField("sexo30Dias", e.target.value)}><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
                               <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.status30Dias} onChange={(e) => updateField("status30Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
                             </div>
                           )}
@@ -893,7 +888,7 @@ export function FieldVisit() {
                           {form.disp60Dias && (
                             <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2">
                               <Input type="number" placeholder="Qtd. cabeças" className="h-11 bg-white text-sm font-black text-slate-800 shadow-sm" value={form.qtd60Dias} onChange={(e) => updateField("qtd60Dias", e.target.value)} />
-                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo60Dias} onChange={(e) => updateField("sexo60Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select>
+                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo60Dias} onChange={(e) => updateField("sexo60Dias", e.target.value)}><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
                               <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.status60Dias} onChange={(e) => updateField("status60Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
                             </div>
                           )}
@@ -903,7 +898,7 @@ export function FieldVisit() {
                           {form.disp90Dias && (
                             <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2">
                               <Input type="number" placeholder="Qtd. cabeças" className="h-11 bg-white text-sm font-black text-slate-800 shadow-sm" value={form.qtd90Dias} onChange={(e) => updateField("qtd90Dias", e.target.value)} />
-                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo90Dias} onChange={(e) => updateField("sexo90Dias", e.target.value)}><option value="BOI">MACHO (BOI)</option><option value="VACA">FÊMEA (VACA)</option><option value="AMBOS">MISTO</option></select>
+                              <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo90Dias} onChange={(e) => updateField("sexo90Dias", e.target.value)}><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
                               <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.status90Dias} onChange={(e) => updateField("status90Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
                             </div>
                           )}
@@ -960,7 +955,7 @@ export function FieldVisit() {
                                 canvasProps={{ 
                                   width: 340, 
                                   height: 200,
-                                  className: "cursor-crosshair touch-none absolute inset-0 z-10" 
+                                  className: "absolute inset-0 cursor-crosshair touch-none z-10" 
                                 }} 
                               />
                             </div>
@@ -990,8 +985,7 @@ export function FieldVisit() {
             {typeof window !== "undefined" && (
               <MapContainer center={EMPRESA_COORDS} zoom={7} style={{ height: "100%", width: "100%", zIndex: 1 }}>
                 <RouteMapController routePath={routePath} />
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />                
                 <CircleMarker center={EMPRESA_COORDS} radius={8} fillColor="#dc2626" color="#7f1d1d" weight={2} fillOpacity={1}>
                   <Tooltip direction="top" className="font-bold text-red-700" permanent={!userLocation}>Sede Beauvallet (Inhumas)</Tooltip>
                 </CircleMarker>
@@ -1008,7 +1002,6 @@ export function FieldVisit() {
                 )}
               </MapContainer>
             )}
-            
               {!userLocation && (
                 <div className="hidden md:block absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-sm px-5 py-2.5 rounded-full shadow-lg border border-slate-200 z-[1000] pointer-events-none">
                   <p className="text-xs font-bold text-slate-700 flex items-center gap-2">
@@ -1017,9 +1010,8 @@ export function FieldVisit() {
                 </div>
               )}
           </div>
-
         </div>
-
+        
         {/* 👇 MODAL FULLSCREEN DE ASSINATURA 👇 */}
         {isSignatureFullscreen && (
           <div className="fixed inset-0 z-[99999] flex flex-col bg-slate-100 animate-in slide-in-from-bottom-full duration-300">
@@ -1037,8 +1029,11 @@ export function FieldVisit() {
               <div className="absolute bottom-[20%] left-10 right-10 border-b-2 border-slate-200 border-dashed pointer-events-none opacity-50" />
               
               <SignatureCanvas 
-                ref={sigCanvas} 
+                ref={sigCanvasFullscreen} 
                 penColor="black"
+                minWidth={4.0} 
+                maxWidth={7.0} 
+                dotSize={5.0}
                 clearOnResize={false}
                 canvasProps={{ 
                   width: Math.max(canvasSize.width, 300),

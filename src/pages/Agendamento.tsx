@@ -16,7 +16,7 @@ import {
   Map as MapIcon, 
   CheckSquare, ArrowLeft, UserSquare2, CalendarDays,
   ChevronDown, ChevronUp, Building2, Users, Filter, ArrowUpDown, ArrowUp, ArrowDown,
-  Loader2, Sparkles, Trophy, Target, Truck
+  Loader2, Sparkles, Trophy, Target, Truck, X
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, fetchPecuaristasAgendamento, saveAgendamento, type ApiRancher, type ApiUsuario } from "@/services/api";
@@ -29,14 +29,23 @@ const formatNumber = (num: number | string) => {
 
 const cityToRegionMap: Record<string, string> = {
   "GOIANIA": "rmg", "APARECIDA DE GOIANIA": "rmg", "TRINDADE": "rmg", "SENADOR CANEDO": "rmg", "INHUMAS": "rmg", "BELA VISTA DE GOIAS": "rmg", "NEROPOLIS": "rmg", "GUAPO": "rmg", "GOIANIRA": "rmg", "ABADIA DE GOIAS": "rmg", "SANTO ANTONIO DE GOIAS": "rmg", "HIDROLANDIA": "rmg", "BONFINOPOLIS": "rmg", "CALDAZINHA": "rmg", "TEREZOPOLIS DE GOIAS": "rmg", "BRAZABRANTES": "rmg", "CATURAI": "rmg", "DAMOLANDIA": "rmg", "ITAUCU": "rmg", "TAQUARAL DE GOIAS": "rmg", "NOVA VENEZA": "rmg", "GOIANAPOLIS": "rmg", "AVELINOPOLIS": "rmg", "ARAGOIANIA": "rmg",
-  "ANAPOLIS": "rcg", "JARAGUA": "rcg", "CERES": "rcg", "RIALMA": "rcg", "RUBIATABA": "rcg", "ITAPACI": "rcg", "CARMO DO RIO VERDE": "rcg", "GOIANESIA": "rcg", "PIRENOPOLIS": "rcg", "CORUMBA DE GOIAS": "rcg", "COCALZINHO DE GOIAS": "rcg", "PETROLINA DE GOIAS": "rcg", "SANTA ISABEL": "rcg", "BARRO ALTO": "rcg", "VILA PROPICIO": "rcg", "CAMPO LIMPO DE GOIAS": "rcg", "OURO VERDE DE GOIAS": "rcg", "JESUPOLIS": "rcg", "SANTA ROSA DE GOIAS": "rcg", "HEITORAI": "rcg", "ITAGUARI": "rcg", "SANTA RITA DO NOVO DESTINO": "rcg", "ITAGUARU": "rcg", "SAO FRANCISCO DE GOIAS": "rcg", "URUANA": "rcg", "SAO PATRICIO": "rcg", "NOVA AMERICA": "rcg", "MORRO AGUDO DE GOIAS": "rcg",
+
+  "ANAPOLIS": "rcg", "JARAGUA": "rcg", "CERES": "rcg", "RIALMA": "rcg", "RUBIATABA": "rcg", "ITAPACI": "rcg", "CARMO DO RIO VERDE": "rcg", "GOIANESIA": "rcg", "PIRENOPOLIS": "rcg", "CORUMBA DE GOIAS": "rcg", "COCALZINHO DE GOIAS": "rcg", "PETROLINA DE GOIAS": "rcg", "SANTA ISABEL": "rcg", "BARRO ALTO": "rcg", "VILA PROPICIO": "rcg", "CAMPO LIMPO DE GOIAS": "rcg", "OURO VERDE DE GOIAS": "rcg", "JESUPOLIS": "rcg", "SANTA ROSA DE GOIAS": "rcg", "HEITORAI": "rcg", "ITAGUARI": "rcg", "SANTA RITA DO NOVO DESTINO": "rcg", "ITAGUARU": "rcg", "SAO FRANCISCO DE GOIAS": "rcg", "URUANA": "rcg", "SAO PATRICIO": "rcg", "NOVA AMERICA": "rcg", "MORRO AGUDO DE GOIAS": "rcg", "IPIRANGA DE GOIAS": "rcg",
+  
   "LUZIANIA": "entorno", "CRISTALINA": "entorno", "FORMOSA": "entorno", "SANTO ANTONIO DO DESCOBERTO": "entorno", "PADRE BERNARDO": "entorno", "CABECEIRAS": "entorno", "ABADIANIA": "entorno",
+  
   "ITUMBIARA": "sul", "MORRINHOS": "sul", "CALDAS NOVAS": "sul", "GOIATUBA": "sul", "PIRACANJUBA": "sul", "BURITI ALEGRE": "sul", "RIO QUENTE": "sul", "MARZAGAO": "sul", "AGUA LIMPA": "sul", "ALOANDIA": "sul", "CROMINIA": "sul", "MAIRIPOTABA": "sul", "PONTALINA": "sul", "VICENTINOPOLIS": "sul", "EDEIA": "sul", "EDEALINA": "sul", "INACIOLANDIA": "sul", "GOUVELANDIA": "sul", "ITARUMA": "sul", "PROFESSOR JAMIL": "sul",
+  
   "RIO VERDE": "sudoeste", "JATAI": "sudoeste", "MINEIROS": "sudoeste", "QUIRINOPOLIS": "sudoeste", "SANTA HELENA DE GOIAS": "sudoeste", "SAO SIMAO": "sudoeste", "ACREUNA": "sudoeste", "MONTIVIDIU": "sudoeste", "TURVELANDIA": "sudoeste", "CASTELANDIA": "sudoeste", "PARANAIGUARA": "sudoeste", "CACU": "sudoeste", "CACHOEIRA ALTA": "sudoeste", "PEROLANDIA": "sudoeste", "SANTA RITA DO ARAGUAIA": "sudoeste", "SANTO ANTONIO DA BARRA": "sudoeste",
+  
   "CATALAO": "sudeste", "IPAMERI": "sudeste", "PIRES DO RIO": "sudeste", "SILVANIA": "sudeste", "VIANOPOLIS": "sudeste", "ORIZONA": "sudeste", "OUVIDOR": "sudeste", "TRES RANCHOS": "sudeste", "GOIANDIRA": "sudeste", "CUMARI": "sudeste", "ANHANGUERA": "sudeste", "DAVINOPOLIS": "sudeste", "CORUMBAIBA": "sudeste", "NOVA AURORA": "sudeste", "CAMPO ALEGRE DE GOIAS": "sudeste", "LEOPOLDO DE BULHOES": "sudeste", "GAMELEIRA DE GOIAS": "sudeste", "CRISTIANOPOLIS": "sudeste", "URUTAI": "sudeste", "PALMELO": "sudeste", "SANTA CRUZ DE GOIAS": "sudeste",
+  
   "PORANGATU": "norte", "URUACU": "norte", "NIQUELANDIA": "norte", "MINACU": "norte", "CAMPINORTE": "norte", "MARA ROSA": "norte", "ALTO HORIZONTE": "norte", "NOVA IGUACU DE GOIAS": "norte", "CAMPINACU": "norte", "MUTUNOPOLIS": "norte", "ESTRELA DO NORTE": "norte", "SANTA TEREZA DE GOIAS": "norte", "TROMBAS": "norte", "FORMOSO": "norte", "SAO LUIZ DO NORTE": "norte", "GUARINOS": "norte", "PILAR DE GOIAS": "norte", "AMARALINA": "norte", "CAMPOS VERDES": "norte", "SANTA TEREZINHA DE GOIAS": "norte", "UIRAPURU": "norte", "HIDROLINA": "norte", "BONOPOLIS": "norte", "NOVO PLANALTO": "norte", "MONTIVIDIU DO NORTE": "norte",
-  "POSSE": "nordeste", "CAMPOS BELOS": "nordeste", "SAO DOMINGOS": "nordeste", "ALTO PARAISO DE GOIAS": "nordeste", "CAVALCANTE": "nordeste", "IACIARA": "nordeste", "ALVORADA DO NORTE": "nordeste", "SIMOLANDIA": "nordeste", "FLORES DE GOIAS": "nordeste", "GUARANI DE GOIAS": "nordeste", "COLINAS DO SUL": "nordeste", "MONTE ALEGRE DE GOIAS": "nordeste", "SITIO D ABADIA": "nordeste",
+  
+  "POSSE": "nordeste", "CAMPOS BELOS": "nordeste", "SAO DOMINGOS": "nordeste", "ALTO PARAISO DE GOIAS": "nordeste", "CAVALCANTE": "nordeste", "IACIARA": "nordeste", "ALVORADA DO NORTE": "nordeste", "SIMOLANDIA": "nordeste", "FLORES DE GOIAS": "nordeste", "GUARANI DE GOIAS": "nordeste", "COLINAS DO SUL": "nordeste", "MONTE ALEGRE DE GOIAS": "nordeste", "SITIO D ABADIA": "nordeste", "DIVINOPOLIS DE GOIAS": "nordeste",
+  
   "IPORA": "oeste", "SAO LUIS DE MONTES BELOS": "oeste", "PIRANHAS": "oeste", "CAIAPONIA": "oeste", "ARAGARCAS": "oeste", "JUSSARA": "oeste", "FAZENDA NOVA": "oeste", "ISRAELANDIA": "oeste", "IVOLANDIA": "oeste", "MOIPORA": "oeste", "CACHOEIRA DE GOIAS": "oeste", "AURILANDIA": "oeste", "FIRMINOPOLIS": "oeste", "TURVANIA": "oeste", "PALMINOPOLIS": "oeste", "CEZARINA": "oeste", "INDIARA": "oeste", "JANDAIA": "oeste", "PARAUNA": "oeste", "SAO JOAO DA PARAUNA": "oeste", "BALIZA": "oeste", "BOM JARDIM DE GOIAS": "oeste", "ARENOPOLIS": "oeste", "DIORAMA": "oeste", "MONTES CLAROS DE GOIAS": "oeste", "DOVERLANDIA": "oeste", "CORREGO DO OURO": "oeste", "PALMEIRAS DE GOIAS": "oeste", "AMORINOPOLIS": "oeste", "NAZARIO": "oeste", "VARJAO": "oeste", "PONTES E LACERDA": "oeste", "SANTA BARBARA DE GOIAS": "oeste", "NOVO BRASIL": "oeste",
+  
   "GOIAS": "noroeste", "ITABERAI": "noroeste", "ITAPURANGA": "noroeste", "ARUANA": "noroeste", "NOVA CRIXAS": "noroeste", "ARAGUAPAZ": "noroeste", "MOZARLANDIA": "noroeste", "CRIXAS": "noroeste", "SAO MIGUEL DO ARAGUAIA": "noroeste", "MUNDO NOVO": "noroeste", "MATRINCHA": "noroeste", "SANTA FE DE GOIAS": "noroeste", "BRITANIA": "noroeste", "FAINA": "noroeste", "ITAPIRAPUA": "noroeste", "SANCLERLANDIA": "noroeste", "BURITI DE GOIAS": "noroeste", "MOSSAMEDES": "noroeste", "ADELANDIA": "noroeste", "AMERICANO DO BRASIL": "noroeste", "ANICUNS": "noroeste", "CAMPESTRE DE GOIAS": "noroeste", "GUARAITA": "noroeste", "COCALINHO": "noroeste", "ARACU": "noroeste"
 };
 
@@ -63,7 +72,7 @@ export default function Agendamento() {
   const [filterCar, setFilterCar] = useState("Todos");
   const [filterHab, setFilterHab] = useState("Todos"); 
   const [filterJaVendeu, setFilterJaVendeu] = useState("Todos"); 
-  const [filterRep, setFilterRep] = useState("Todos"); // <-- NOVO FILTRO DE REPRESENTAÇÃO
+  const [filterRep, setFilterRep] = useState("Todos"); 
   
   const [sortColumn, setSortColumn] = useState<string | null>("quantidade");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
@@ -121,16 +130,14 @@ export default function Agendamento() {
     return Object.values(regionsMap);
   }, [apiData]);
 
-  const handleExpandRegion = (regionId: string) => {
-    if (expandedRegion === regionId) {
-      setExpandedRegion(null);
-    } else {
-      setExpandedRegion(regionId);
+  const handleExpandRegion = (regionId: string | null) => {
+    setExpandedRegion(regionId);
+    if (regionId) {
       setFilterText(""); 
       setFilterCar("Todos"); 
       setFilterHab("Todos");
       setFilterJaVendeu("Todos"); 
-      setFilterRep("Todos"); // <-- RESET DO FILTRO
+      setFilterRep("Todos");
       setSortColumn("quantidade"); 
       setSortDirection("desc");
       setVisibleCount(15); 
@@ -138,6 +145,82 @@ export default function Agendamento() {
       setShowAiMenu(false);
     }
   };
+
+  const getDisplayQuantidade = (r: ApiRancher) => {
+    const china = Number(r.QTD_COMPRADA_12M_CHINA) || 0;
+    const naoChina = Number(r.QTD_COMPRADA_12M_NAO_CHINA) || 0;
+    
+    if (filterHab === "China") return china;
+    if (filterHab === "Não China") return naoChina;
+    return china + naoChina; 
+  };
+
+  // <<< NOVO BLOCO: Processamento isolado da Região Ativa para o Modal >>>
+  const activeRegionData = useMemo(() => {
+    if (!expandedRegion) return null;
+    const region = regionsData.find(r => r.id === expandedRegion);
+    if (!region) return null;
+
+    let visibleRanchers = [...region.ranchers];
+
+    // Aplica os filtros
+    visibleRanchers = visibleRanchers.filter(r => {
+      const searchTerm = filterText.toLowerCase();
+      const matchText = filterText === "" || 
+        r.MUNICIPIO.toLowerCase().includes(searchTerm) ||
+        r.NOME_PRODUTOR.toLowerCase().includes(searchTerm) ||
+        r.NOME_FAZENDA.toLowerCase().includes(searchTerm);
+
+      const matchCar = filterCar === "Todos" || r.POSSUI_CAR === filterCar;
+      const matchHab = filterHab === "Todos" || 
+        (filterHab === "China" && Number(r.QTD_COMPRADA_12M_CHINA) > 0) ||
+        (filterHab === "Não China" && Number(r.QTD_COMPRADA_12M_NAO_CHINA) > 0);
+      
+      const matchJaVendeu = filterJaVendeu === "Todos" || r.JA_VENDEU === filterJaVendeu;
+      const matchRep = filterRep === "Todos" || r.VENDAREPRESENTANTE === filterRep;
+
+      return matchText && matchCar && matchHab && matchJaVendeu && matchRep; 
+    });
+
+    // Aplica a Ordenação (IA ou Colunas)
+    if (aiMode) {
+      visibleRanchers.sort((a, b) => {
+        if (aiMode === 'volume') return calculateScoreVolume(b, filterHab) - calculateScoreVolume(a, filterHab);
+        if (aiMode === 'prospeccao') return calculateScoreProspeccao(b) - calculateScoreProspeccao(a); 
+        if (aiMode === 'logistica') return calculateScoreLogistica(b, filterHab) - calculateScoreLogistica(a, filterHab);
+        return 0;
+      });
+    } else if (sortColumn && sortDirection) {
+      visibleRanchers.sort((a, b) => {
+        let valA: any, valB: any;
+        
+        if (sortColumn === 'cidade') { valA = a.MUNICIPIO; valB = b.MUNICIPIO; }
+        else if (sortColumn === 'distancia') { valA = Number(a.DISTANCIA_CADASTRADA) || 0; valB = Number(b.DISTANCIA_CADASTRADA) || 0; }
+        else if (sortColumn === 'quantidade') { valA = getDisplayQuantidade(a); valB = getDisplayQuantidade(b); }
+        else if (sortColumn === 'car') { valA = a.POSSUI_CAR; valB = b.POSSUI_CAR; }
+        else if (sortColumn === 'javendeu') { valA = a.JA_VENDEU; valB = b.JA_VENDEU; }
+
+        if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    const currentUniqueCitiesArray = Array.from(new Set(visibleRanchers.map(r => r.MUNICIPIO))).sort();
+    const allCitiesString = currentUniqueCitiesArray.length > 0 ? currentUniqueCitiesArray.join(", ") : "Nenhuma cidade encontrada com os filtros.";
+    const currentCitiesCount = currentUniqueCitiesArray.length;
+    const currentTotalComprados = visibleRanchers.reduce((sum, r) => sum + getDisplayQuantidade(r), 0);
+    const displayedRanchers = aiMode ? visibleRanchers.slice(0, 10) : visibleRanchers.slice(0, visibleCount);
+
+    return {
+      ...region,
+      visibleRanchers,
+      allCitiesString,
+      currentCitiesCount,
+      currentTotalComprados,
+      displayedRanchers
+    };
+  }, [expandedRegion, regionsData, filterText, filterCar, filterHab, filterJaVendeu, filterRep, aiMode, sortColumn, sortDirection, visibleCount]);
 
   const handleSort = (column: string) => {
     setAiMode(null); 
@@ -227,27 +310,14 @@ export default function Agendamento() {
     else toast.info(message);
   };
 
-  const getDisplayQuantidade = (r: ApiRancher) => {
-    const china = Number(r.QTD_COMPRADA_12M_CHINA) || 0;
-    const naoChina = Number(r.QTD_COMPRADA_12M_NAO_CHINA) || 0;
-    
-    if (filterHab === "China") return china;
-    if (filterHab === "Não China") return naoChina;
-    return china + naoChina; 
-  };
-
   const renderCompradosDetalhes = (r: ApiRancher) => {
     if (filterHab !== "Todos") return null;
-
     const china = Number(r.QTD_COMPRADA_12M_CHINA) || 0;
     const naoChina = Number(r.QTD_COMPRADA_12M_NAO_CHINA) || 0;
     const total = china + naoChina;
-
     if (total === 0) return null;
-
     const pctChina = Math.round((china / total) * 100);
     const pctNaoChina = Math.round((naoChina / total) * 100);
-
     return (
       <span className="text-[11px] font-bold text-slate-800 mt-0.5 bg-slate-100 px-2 py-0.5 rounded shadow-sm border border-slate-200">
         {pctChina}% China / {pctNaoChina}% N-China
@@ -371,405 +441,370 @@ export default function Agendamento() {
           <CalendarPlus className="w-7 h-7" /> Agendamento de Visitas
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Selecione os pecuaristas disponíveis nas regiões de Goiás para gerar rotas.
+          Selecione as regiões para explorar a base de pecuaristas e gerar rotas otimizadas.
         </p>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+      {/* >>> GRID DE CARDS (VISUAL LIMPO, APENAS O RESUMO) <<< */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 relative">
         {regionsData.map((region) => {
           if (region.id === "outros" && region.ranchers.length === 0) return null;
-
-          const isExpanded = expandedRegion === region.id;
-          const hasRanchers = region.ranchers.length > 0;
-          
-          let visibleRanchers = [...region.ranchers];
-          
-          if (isExpanded) {
-            visibleRanchers = visibleRanchers.filter(r => {
-              const searchTerm = filterText.toLowerCase();
-              const matchText = filterText === "" || 
-                r.MUNICIPIO.toLowerCase().includes(searchTerm) ||
-                r.NOME_PRODUTOR.toLowerCase().includes(searchTerm) ||
-                r.NOME_FAZENDA.toLowerCase().includes(searchTerm);
-
-              const matchCar = filterCar === "Todos" || r.POSSUI_CAR === filterCar;
-              const matchHab = filterHab === "Todos" || 
-                (filterHab === "China" && Number(r.QTD_COMPRADA_12M_CHINA) > 0) ||
-                (filterHab === "Não China" && Number(r.QTD_COMPRADA_12M_NAO_CHINA) > 0);
-              
-              const matchJaVendeu = filterJaVendeu === "Todos" || r.JA_VENDEU === filterJaVendeu;
-              
-              // <-- NOVA REGRA DO FILTRO DE REPRESENTAÇÃO
-              const matchRep = filterRep === "Todos" || r.VENDAREPRESENTANTE === filterRep;
-
-              return matchText && matchCar && matchHab && matchJaVendeu && matchRep; 
-            });
-
-            if (aiMode) {
-              visibleRanchers.sort((a, b) => {
-                if (aiMode === 'volume') return calculateScoreVolume(b, filterHab) - calculateScoreVolume(a, filterHab);
-                if (aiMode === 'prospeccao') return calculateScoreProspeccao(b) - calculateScoreProspeccao(a); 
-                if (aiMode === 'logistica') return calculateScoreLogistica(b, filterHab) - calculateScoreLogistica(a, filterHab);
-                return 0;
-              });
-            } else if (sortColumn && sortDirection) {
-              visibleRanchers.sort((a, b) => {
-                let valA: any, valB: any;
-                
-                if (sortColumn === 'cidade') { valA = a.MUNICIPIO; valB = b.MUNICIPIO; }
-                else if (sortColumn === 'distancia') { valA = Number(a.DISTANCIA_CADASTRADA) || 0; valB = Number(b.DISTANCIA_CADASTRADA) || 0; }
-                else if (sortColumn === 'quantidade') { 
-                  valA = getDisplayQuantidade(a); 
-                  valB = getDisplayQuantidade(b); 
-                }
-                else if (sortColumn === 'car') { valA = a.POSSUI_CAR; valB = b.POSSUI_CAR; }
-                else if (sortColumn === 'javendeu') { valA = a.JA_VENDEU; valB = b.JA_VENDEU; }
-
-                if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
-                if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
-                return 0;
-              });
-            }
-          }
-
-          const currentUniqueCitiesArray = Array.from(new Set(visibleRanchers.map(r => r.MUNICIPIO))).sort();
-          const allCitiesString = currentUniqueCitiesArray.length > 0 ? currentUniqueCitiesArray.join(", ") : "Nenhuma cidade encontrada.";
-          const currentCitiesCount = currentUniqueCitiesArray.length;
-          const currentRanchersCount = visibleRanchers.length;
-          const currentTotalComprados = visibleRanchers.reduce((sum, r) => sum + getDisplayQuantidade(r), 0);
-          
-          const displayedRanchers = aiMode ? visibleRanchers.slice(0, 10) : visibleRanchers.slice(0, visibleCount);
 
           return (
             <Card 
               key={region.id} 
-              className={`border-2 transition-all duration-300 rounded-xl flex flex-col ${isExpanded ? 'border-primary shadow-lg md:col-span-2 z-20 relative' : 'border-slate-200 hover:border-primary/50 z-0 relative'}`}
+              className="cursor-pointer border-slate-200 hover:border-primary/50 hover:shadow-lg transition-all duration-200 flex flex-col group bg-white"
+              onClick={() => handleExpandRegion(region.id)}
             >
-              <div 
-                className={`p-4 cursor-pointer select-none rounded-t-xl flex-grow flex flex-col ${isExpanded ? 'bg-primary/5 border-b border-primary/10' : 'bg-white rounded-b-xl'}`}
-                onClick={() => handleExpandRegion(region.id)}
-              >
-                <div className="flex justify-between items-start gap-4 mb-auto">
-                  <div className="space-y-1.5 flex-1">
-                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                      <MapIcon className="w-5 h-5 text-primary" />
-                      {region.name}
-                    </h2>
-                    
-                    <p className={`text-xs text-muted-foreground leading-relaxed ${isExpanded ? "" : "line-clamp-2"}`}>
-                      {isExpanded ? allCitiesString : region.description}
-                    </p>
-                    
-                  </div>
-                  
-                  <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3 mt-1 sm:mt-0 relative">
-                    
-                    {isExpanded && (
-                      <div className="relative">
-                        
-                        {showAiMenu && (
-                          <div 
-                            className="absolute bottom-full right-0 mb-3 w-56 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 flex flex-col gap-2 z-[100] animate-in fade-in slide-in-from-bottom-2"
-                            onClick={(e) => e.stopPropagation()} 
-                          >
-                            <Label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5 mb-1 px-1">
-                              <Sparkles className="w-3 h-3 text-amber-500" /> Foco da Sugestão
-                            </Label>
-                            <Button 
-                              variant={aiMode === 'volume' ? 'default' : 'outline'} 
-                              size="sm"
-                              className={`justify-start h-8 text-xs font-bold ${aiMode === 'volume' ? 'bg-amber-500 hover:bg-amber-600 text-white border-transparent' : 'text-slate-600 hover:bg-slate-100 border-slate-200'}`}
-                              onClick={() => handleSetAiMode('volume', 'Sugerindo: Parceiros & Volume')}
-                            >
-                              <Trophy className={`w-3.5 h-3.5 mr-2 ${aiMode === 'volume' ? 'text-amber-100' : 'text-amber-500'}`} /> Parceiros & Volume
-                            </Button>
-                            <Button 
-                              variant={aiMode === 'prospeccao' ? 'default' : 'outline'} 
-                              size="sm"
-                              className={`justify-start h-8 text-xs font-bold ${aiMode === 'prospeccao' ? 'bg-amber-500 hover:bg-amber-600 text-white border-transparent' : 'text-slate-600 hover:bg-slate-100 border-slate-200'}`}
-                              onClick={() => handleSetAiMode('prospeccao', 'Sugerindo: Prospecção (Novos)')}
-                            >
-                              <Target className={`w-3.5 h-3.5 mr-2 ${aiMode === 'prospeccao' ? 'text-amber-100' : 'text-amber-500'}`} /> Prospecção (Novos)
-                            </Button>
-                            <Button 
-                              variant={aiMode === 'logistica' ? 'default' : 'outline'} 
-                              size="sm"
-                              className={`justify-start h-8 text-xs font-bold ${aiMode === 'logistica' ? 'bg-amber-500 hover:bg-amber-600 text-white border-transparent' : 'text-slate-600 hover:bg-slate-100 border-slate-200'}`}
-                              onClick={() => handleSetAiMode('logistica', 'Sugerindo: Logística Otimizada')}
-                            >
-                              <Truck className={`w-3.5 h-3.5 mr-2 ${aiMode === 'logistica' ? 'text-amber-100' : 'text-amber-500'}`} /> Logística Otimizada
-                            </Button>
-                            
-                            {aiMode && (
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                className="justify-start h-8 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 mt-1"
-                                onClick={() => handleSetAiMode(null, 'Sugestão Inteligente removida.')}
-                              >
-                                Remover Sugestão
-                              </Button>
-                            )}
-                          </div>
-                        )}
-
-                        <Button 
-                          size="sm"
-                          title="IA DE SUGESTÃO"
-                          className={`h-8 text-[11px] font-bold ${aiMode ? "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white border-none shadow-md shadow-amber-500/30" : "bg-gradient-to-r from-orange-50 to-amber-50 border border-amber-500 text-amber-600 hover:from-amber-100 hover:to-orange-100"}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowAiMenu(!showAiMenu);
-                          }}
-                        >
-                          <Sparkles className={`w-3.5 h-3.5 mr-1.5 ${aiMode ? "text-white" : "text-amber-500"}`} />
-                          {aiMode ? "SUGESTÃO ATIVA" : "SUGERIR VISITAS"}
-                        </Button>
-                      </div>
-                    )}
-
-                    <span className="bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-sm whitespace-nowrap">
-                      {formatNumber(currentTotalComprados)} cab. compradas
-                    </span>
-                    <div className="text-slate-400 hidden sm:block">
-                      {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                    </div>
+              <CardContent className="p-5 flex-grow flex flex-col">
+                <h2 className="text-[17px] font-bold text-slate-800 flex items-center gap-2 group-hover:text-primary transition-colors">
+                  <MapIcon className="w-5 h-5 text-primary opacity-80" />
+                  {region.name}
+                </h2>
+                <p className="text-xs text-muted-foreground mt-2 line-clamp-2 leading-relaxed flex-grow">
+                  {region.description}
+                </p>
+                <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="inline-flex items-center text-[10px] font-bold bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md">
+                    <Users className="w-3.5 h-3.5 mr-1" /> {region.ranchers.length} Propriedades
+                  </span>
+                  <div className="text-slate-300 group-hover:text-primary/70 transition-colors">
+                    <ChevronDown className="w-5 h-5" />
                   </div>
                 </div>
-
-                <div className="flex items-center gap-3 pt-3 mt-2 border-t border-slate-100/50">
-                  <span className="inline-flex items-center text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-md">
-                    <Building2 className="w-3 h-3 mr-1" /> {currentCitiesCount} {isExpanded ? "Cidades Encontradas" : "Cidades"}
-                  </span>
-                  <span className={`inline-flex items-center text-[10px] font-bold px-2 py-1 rounded-md ${currentRanchersCount > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}>
-                    <Users className="w-3 h-3 mr-1" /> {currentRanchersCount} Propriedades
-                  </span>
-                </div>
-
-              </div>
-
-              {isExpanded && (
-                <div className="bg-white animate-in slide-in-from-top-2 duration-200 rounded-b-xl overflow-hidden">
-                  {currentRanchersCount === 0 ? (
-                    <div className="p-8 text-center text-muted-foreground">
-                      <Users className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                      <p className="text-sm font-medium">Nenhum pecuarista retornado com esses filtros.</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className={`bg-slate-50/50 p-4 border-b border-slate-200 flex flex-col md:flex-row flex-wrap gap-3 items-end transition-opacity`}>
-                        <div className="space-y-1.5 flex-1 w-full min-w-[200px]">
-                          <Label className="text-[10px] font-bold text-slate-500 uppercase">Buscar Cidade, Produtor ou Fazenda</Label>
-                          <Input 
-                            placeholder="Digite para buscar..." 
-                            className="h-9 bg-white text-xs"
-                            value={filterText}
-                            onChange={(e) => setFilterText(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1.5 w-full md:w-28">
-                          <Label className="text-[10px] font-bold text-slate-500 uppercase">CAR</Label>
-                          <select 
-                            className="flex h-9 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                            value={filterCar} onChange={(e) => setFilterCar(e.target.value)}
-                          >
-                            <option value="Todos">Todos</option>
-                            <option value="S">Sim</option>
-                            <option value="N">Não</option>
-                          </select>
-                        </div>
-                        
-                        {filterJaVendeu !== "N" && (
-                          <div className="space-y-1.5 w-full md:w-32">
-                            <Label className="text-[10px] font-bold text-slate-500 uppercase">Habilitação</Label>
-                            <select 
-                              className="flex h-9 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                              value={filterHab} onChange={(e) => setFilterHab(e.target.value)}
-                            >
-                              <option value="Todos">Todos</option>
-                              <option value="China">China</option>
-                              <option value="Não China">Não China</option>
-                            </select>
-                          </div>
-                        )}
-
-                        <div className="space-y-1.5 w-full md:w-28">
-                          <Label className="text-[10px] font-bold text-slate-500 uppercase">Já Vendeu?</Label>
-                          <select 
-                            className="flex h-9 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                            value={filterJaVendeu} 
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setFilterJaVendeu(val);
-                              // Se ele nunca vendeu, também resetamos China e Representação
-                              if (val === "N") {
-                                setFilterHab("Todos");
-                                setFilterRep("Todos");
-                              }
-                            }}
-                          >
-                            <option value="Todos">Todos</option>
-                            <option value="S">Sim</option>
-                            <option value="N">Não</option>
-                          </select>
-                        </div>
-
-                        {/* NOVO CAMPO: FILTRO DE REPRESENTAÇÃO */}
-                        {filterJaVendeu !== "N" && (
-                          <div className="space-y-1.5 w-full md:w-32">
-                            <Label className="text-[10px] font-bold text-slate-500 uppercase">Representação?</Label>
-                            <select 
-                              className="flex h-9 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                              value={filterRep} onChange={(e) => setFilterRep(e.target.value)}
-                            >
-                              <option value="Todos">Todos</option>
-                              <option value="S">Sim</option>
-                              <option value="N">Não</option>
-                            </select>
-                          </div>
-                        )}
-
-                        <Button 
-                          variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-slate-700 shrink-0"
-                          title="Limpar todos os filtros"
-                          onClick={() => { 
-                            setFilterText(""); 
-                            setFilterCar("Todos"); 
-                            setFilterHab("Todos"); 
-                            setFilterJaVendeu("Todos"); 
-                            setFilterRep("Todos"); // LIMPA O FILTRO NOVO TAMBÉM
-                            setSortColumn("quantidade"); 
-                            setSortDirection("desc"); 
-                            setVisibleCount(15); 
-                            setAiMode(null); 
-                            setShowAiMenu(false); 
-                          }}
-                        >
-                          <Filter className="w-4 h-4" />
-                        </Button>
-                      </div>
-
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader className="bg-slate-50 sticky top-0 z-10 shadow-sm">
-                            <TableRow>
-                              <TableHead className="w-[50px] text-center">
-                                <input 
-                                  type="checkbox" 
-                                  className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer accent-primary"
-                                  checked={visibleRanchers.length > 0 && visibleRanchers.every(r => selectedRanchers.includes(getUniqueId(r)))}
-                                  onChange={() => toggleAllVisible(visibleRanchers)}
-                                />
-                              </TableHead>
-                              
-                              <TableHead className="text-xs font-bold cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('cidade')}>
-                                <div className="flex items-center gap-1">Cidade {renderSortIcon('cidade')}</div>
-                              </TableHead>
-                              
-                              <TableHead className="text-xs font-bold">Fazenda / Produtor</TableHead>
-                              
-                              <TableHead className="text-xs font-bold cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('distancia')}>
-                                <div className="flex items-center gap-1">Distância {renderSortIcon('distancia')}</div>
-                              </TableHead>
-
-                              <TableHead className="text-xs font-bold text-right cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('quantidade')}>
-                                <div className="flex items-center justify-end gap-1">Comprados (12m) {renderSortIcon('quantidade')}</div>
-                              </TableHead>
-                              
-                              <TableHead className="text-xs font-bold text-center cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('car')}>
-                                <div className="flex items-center justify-center gap-1">CAR {renderSortIcon('car')}</div>
-                              </TableHead>
-                              
-                              <TableHead className="text-xs font-bold text-center cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('javendeu')}>
-                                <div className="flex items-center justify-center gap-1">Já Vendeu? {renderSortIcon('javendeu')}</div>
-                              </TableHead>
-
-                              <TableHead className="text-xs font-bold text-center">Últ. Visita</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {displayedRanchers.map((r, index) => {
-                              const uniqueId = getUniqueId(r);
-                              const isSelected = selectedRanchers.includes(uniqueId);
-                              const displayQuantidade = getDisplayQuantidade(r);
-
-                              return (
-                                <TableRow 
-                                  key={uniqueId} 
-                                  className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary/5' : 'hover:bg-slate-50'}`}
-                                  onClick={() => toggleRancher(uniqueId)}
-                                >
-                                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                                    <input 
-                                      type="checkbox" 
-                                      className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer accent-primary"
-                                      checked={isSelected}
-                                      onChange={() => toggleRancher(uniqueId)}
-                                    />
-                                  </TableCell>
-                                  <TableCell className="text-sm font-medium text-slate-700">
-                                    {aiMode && <span className="inline-block mr-2 bg-amber-500 text-white text-[9px] px-1.5 py-0.5 rounded-full">#{index + 1}</span>}
-                                    {r.MUNICIPIO}
-                                  </TableCell>
-                                  <TableCell>
-                                    <p className="font-black text-[15px] text-slate-900 uppercase">{r.NOME_FAZENDA}</p>
-                                    <p className="text-[11px] font-bold text-slate-500 mt-0.5">
-                                      {r.NOME_PRODUTOR} <span className="font-normal">(IE: <span className="text-slate-800 font-bold">{r.INSCRICAO || "N/A"}</span>)</span>
-                                    </p>
-                                  </TableCell>
-                                  <TableCell className="text-sm tabular-nums text-slate-600">{formatNumber(r.DISTANCIA_CADASTRADA)} km</TableCell>
-                                  
-                                  <TableCell className="text-right text-sm tabular-nums">
-                                    <div className="flex flex-col items-end">
-                                      <span className="font-bold text-blue-700 text-base">{formatNumber(displayQuantidade)}</span>
-                                      {renderCompradosDetalhes(r)}
-                                    </div>
-                                  </TableCell>
-
-                                  <TableCell className="text-center">
-                                    {r.POSSUI_CAR === "S" 
-                                      ? <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded">SIM</span>
-                                      : <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded">NÃO</span>
-                                    }
-                                  </TableCell>
-                                  <TableCell className="text-center">
-                                    {r.JA_VENDEU === "S" 
-                                      ? <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded">SIM</span>
-                                      : <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded">NÃO</span>
-                                    }
-                                  </TableCell>
-                                  <TableCell className="text-center text-xs font-medium text-slate-500">
-                                    {r.DATA_ULTIMA_VISITA ? new Date(r.DATA_ULTIMA_VISITA).toLocaleDateString('pt-BR') : "-"}
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </div>
-
-                      {(!aiMode && visibleRanchers.length > visibleCount) && (
-                        <div className="p-4 border-t border-slate-100 bg-white flex justify-center">
-                          <Button 
-                            variant="ghost" 
-                            className="font-bold text-primary flex items-center gap-2 hover:bg-primary/10"
-                            onClick={() => setVisibleCount(prev => prev + 15)}
-                          >
-                            MOSTRAR MAIS <ChevronDown className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
+              </CardContent>
             </Card>
           );
         })}
       </div>
 
+      {/* >>> MODAL CENTRALIZADO (RENDERIZADO QUANDO UM CARD É CLICADO) <<< */}
+      {expandedRegion && activeRegionData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="bg-slate-50 w-full max-w-7xl max-h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 relative border border-slate-700/20">
+            
+            {/* CABEÇALHO DO MODAL */}
+            <div className="bg-white border-b border-slate-200 p-5 md:p-6 shrink-0 flex flex-col gap-4 relative z-20 shadow-sm">
+              <div className="flex justify-between items-start gap-4">
+                <div className="flex-1 pr-8">
+                  <h2 className="text-xl md:text-2xl font-bold text-slate-800 flex items-center gap-2">
+                    <MapIcon className="w-6 h-6 text-primary" /> 
+                    {activeRegionData.name}
+                  </h2>
+                  <p className="text-xs md:text-sm text-muted-foreground mt-1.5 leading-relaxed line-clamp-2" title={activeRegionData.allCitiesString}>
+                    <span className="font-semibold text-slate-600">Cidades englobadas:</span> {activeRegionData.allCitiesString}
+                  </p>
+                </div>
+                
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => handleExpandRegion(null)} 
+                  className="absolute top-4 right-4 h-8 w-8 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-600 text-slate-600 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {/* PAINEL DE INTELIGÊNCIA E ESTATÍSTICAS NO CABEÇALHO */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-2">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center text-[10px] md:text-xs font-bold bg-slate-100 text-slate-600 px-2.5 py-1.5 rounded-md border border-slate-200">
+                    <Building2 className="w-3.5 h-3.5 mr-1" /> {activeRegionData.currentCitiesCount} Cidades
+                  </span>
+                  <span className={`inline-flex items-center text-[10px] md:text-xs font-bold px-2.5 py-1.5 rounded-md border ${activeRegionData.visibleRanchers.length > 0 ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
+                    <Users className="w-3.5 h-3.5 mr-1" /> {activeRegionData.visibleRanchers.length} Propriedades
+                  </span>
+                  <span className="bg-blue-600 text-white text-[10px] md:text-xs font-bold px-3 py-1.5 rounded-md shadow-sm border border-blue-700">
+                    {formatNumber(activeRegionData.currentTotalComprados)} cab. compradas
+                  </span>
+                </div>
+
+                <div className="relative">
+                  {showAiMenu && (
+                    <div 
+                      className="absolute top-full right-0 mt-2 w-56 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 flex flex-col gap-2 z-[150] animate-in fade-in slide-in-from-top-2"
+                      onClick={(e) => e.stopPropagation()} 
+                    >
+                      <Label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5 mb-1 px-1">
+                        <Sparkles className="w-3 h-3 text-amber-500" /> Foco da Sugestão
+                      </Label>
+                      <Button 
+                        variant={aiMode === 'volume' ? 'default' : 'outline'} size="sm"
+                        className={`justify-start h-8 text-xs font-bold ${aiMode === 'volume' ? 'bg-amber-500 hover:bg-amber-600 text-white border-transparent' : 'text-slate-600 hover:bg-slate-100 border-slate-200'}`}
+                        onClick={() => handleSetAiMode('volume', 'Sugerindo: Parceiros & Volume')}
+                      >
+                        <Trophy className={`w-3.5 h-3.5 mr-2 ${aiMode === 'volume' ? 'text-amber-100' : 'text-amber-500'}`} /> Parceiros & Volume
+                      </Button>
+                      <Button 
+                        variant={aiMode === 'prospeccao' ? 'default' : 'outline'} size="sm"
+                        className={`justify-start h-8 text-xs font-bold ${aiMode === 'prospeccao' ? 'bg-amber-500 hover:bg-amber-600 text-white border-transparent' : 'text-slate-600 hover:bg-slate-100 border-slate-200'}`}
+                        onClick={() => handleSetAiMode('prospeccao', 'Sugerindo: Prospecção (Novos)')}
+                      >
+                        <Target className={`w-3.5 h-3.5 mr-2 ${aiMode === 'prospeccao' ? 'text-amber-100' : 'text-amber-500'}`} /> Prospecção (Novos)
+                      </Button>
+                      <Button 
+                        variant={aiMode === 'logistica' ? 'default' : 'outline'} size="sm"
+                        className={`justify-start h-8 text-xs font-bold ${aiMode === 'logistica' ? 'bg-amber-500 hover:bg-amber-600 text-white border-transparent' : 'text-slate-600 hover:bg-slate-100 border-slate-200'}`}
+                        onClick={() => handleSetAiMode('logistica', 'Sugerindo: Logística Otimizada')}
+                      >
+                        <Truck className={`w-3.5 h-3.5 mr-2 ${aiMode === 'logistica' ? 'text-amber-100' : 'text-amber-500'}`} /> Logística Otimizada
+                      </Button>
+                      
+                      {aiMode && (
+                        <Button 
+                          variant="ghost" size="sm"
+                          className="justify-start h-8 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 mt-1"
+                          onClick={() => handleSetAiMode(null, 'Sugestão Inteligente removida.')}
+                        >
+                          Remover Sugestão
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
+                  <Button 
+                    size="sm"
+                    className={`h-9 text-xs font-bold px-4 ${aiMode ? "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white border-none shadow-md shadow-amber-500/30" : "bg-gradient-to-r from-orange-50 to-amber-50 border border-amber-500 text-amber-600 hover:from-amber-100 hover:to-orange-100"}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAiMenu(!showAiMenu);
+                    }}
+                  >
+                    <Sparkles className={`w-4 h-4 mr-2 ${aiMode ? "text-white" : "text-amber-500"}`} />
+                    {aiMode ? "SUGESTÃO ATIVA" : "SUGERIR VISITAS COM IA"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* CORPO DO MODAL (Filtros fixos no topo e Tabela com rolagem) */}
+            <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/30 relative">
+              
+              {/* BARRA DE FILTROS (Fixa no topo da área de rolagem) */}
+              <div className="bg-white p-4 border-b border-slate-200 flex flex-col md:flex-row flex-wrap gap-3 items-end shrink-0 shadow-sm z-10">
+                <div className="space-y-1.5 flex-1 w-full min-w-[200px]">
+                  <Label className="text-[10px] font-bold text-slate-500 uppercase">Buscar Cidade, Produtor ou Fazenda</Label>
+                  <Input 
+                    placeholder="Digite para buscar..." 
+                    className="h-9 bg-white text-xs border-slate-300"
+                    value={filterText}
+                    onChange={(e) => setFilterText(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5 w-full md:w-28">
+                  <Label className="text-[10px] font-bold text-slate-500 uppercase">CAR</Label>
+                  <select 
+                    className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={filterCar} onChange={(e) => setFilterCar(e.target.value)}
+                  >
+                    <option value="Todos">Todos</option>
+                    <option value="S">Sim</option>
+                    <option value="N">Não</option>
+                  </select>
+                </div>
+                
+                {filterJaVendeu !== "N" && (
+                  <div className="space-y-1.5 w-full md:w-32">
+                    <Label className="text-[10px] font-bold text-slate-500 uppercase">Habilitação</Label>
+                    <select 
+                      className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      value={filterHab} onChange={(e) => setFilterHab(e.target.value)}
+                    >
+                      <option value="Todos">Todos</option>
+                      <option value="China">China</option>
+                      <option value="Não China">Não China</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 w-full md:w-28">
+                  <Label className="text-[10px] font-bold text-slate-500 uppercase">Já Vendeu?</Label>
+                  <select 
+                    className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={filterJaVendeu} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFilterJaVendeu(val);
+                      if (val === "N") {
+                        setFilterHab("Todos");
+                        setFilterRep("Todos");
+                      }
+                    }}
+                  >
+                    <option value="Todos">Todos</option>
+                    <option value="S">Sim</option>
+                    <option value="N">Não</option>
+                  </select>
+                </div>
+
+                {filterJaVendeu !== "N" && (
+                  <div className="space-y-1.5 w-full md:w-32">
+                    <Label className="text-[10px] font-bold text-slate-500 uppercase">Representação?</Label>
+                    <select 
+                      className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      value={filterRep} onChange={(e) => setFilterRep(e.target.value)}
+                    >
+                      <option value="Todos">Todos</option>
+                      <option value="S">Sim</option>
+                      <option value="N">Não</option>
+                    </select>
+                  </div>
+                )}
+
+                <Button 
+                  variant="outline" size="icon" className="h-9 w-9 text-slate-500 hover:text-slate-800 border-slate-300 shrink-0 bg-white"
+                  title="Limpar todos os filtros"
+                  onClick={() => { 
+                    setFilterText(""); 
+                    setFilterCar("Todos"); 
+                    setFilterHab("Todos"); 
+                    setFilterJaVendeu("Todos"); 
+                    setFilterRep("Todos"); 
+                    setSortColumn("quantidade"); 
+                    setSortDirection("desc"); 
+                    setVisibleCount(15); 
+                    setAiMode(null); 
+                    setShowAiMenu(false); 
+                  }}
+                >
+                  <Filter className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {/* ÁREA DA TABELA (COM ROLAGEM INDEPENDENTE) */}
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 relative">
+                {activeRegionData.visibleRanchers.length === 0 ? (
+                  <div className="py-16 text-center text-muted-foreground flex flex-col items-center justify-center">
+                    <div className="bg-white p-4 rounded-full shadow-sm border border-slate-100 mb-4">
+                      <Users className="w-8 h-8 text-slate-300" />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-700">Nenhum pecuarista encontrado</h3>
+                    <p className="text-sm mt-1">Tente remover alguns filtros da barra superior para exibir resultados.</p>
+                  </div>
+                ) : (
+                  <Card className="shadow-sm border-slate-200 overflow-hidden bg-white">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader className="bg-slate-50 border-b border-slate-200">
+                          <TableRow>
+                            <TableHead className="w-[50px] text-center">
+                              <input 
+                                type="checkbox" 
+                                className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer accent-primary"
+                                checked={activeRegionData.visibleRanchers.length > 0 && activeRegionData.visibleRanchers.every(r => selectedRanchers.includes(getUniqueId(r)))}
+                                onChange={() => toggleAllVisible(activeRegionData.visibleRanchers)}
+                              />
+                            </TableHead>
+                            
+                            <TableHead className="text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('cidade')}>
+                              <div className="flex items-center gap-1">Cidade {renderSortIcon('cidade')}</div>
+                            </TableHead>
+                            
+                            <TableHead className="text-xs font-bold text-slate-700">Fazenda / Produtor</TableHead>
+                            
+                            <TableHead className="text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('distancia')}>
+                              <div className="flex items-center gap-1">Distância {renderSortIcon('distancia')}</div>
+                            </TableHead>
+
+                            <TableHead className="text-xs font-bold text-slate-700 text-right cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('quantidade')}>
+                              <div className="flex items-center justify-end gap-1">Comprados (12m) {renderSortIcon('quantidade')}</div>
+                            </TableHead>
+                            
+                            <TableHead className="text-xs font-bold text-slate-700 text-center cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('car')}>
+                              <div className="flex items-center justify-center gap-1">CAR {renderSortIcon('car')}</div>
+                            </TableHead>
+                            
+                            <TableHead className="text-xs font-bold text-slate-700 text-center cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('javendeu')}>
+                              <div className="flex items-center justify-center gap-1">Já Vendeu? {renderSortIcon('javendeu')}</div>
+                            </TableHead>
+
+                            <TableHead className="text-xs font-bold text-slate-700 text-center">Últ. Visita</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {activeRegionData.displayedRanchers.map((r, index) => {
+                            const uniqueId = getUniqueId(r);
+                            const isSelected = selectedRanchers.includes(uniqueId);
+                            const displayQuantidade = getDisplayQuantidade(r);
+
+                            return (
+                              <TableRow 
+                                key={uniqueId} 
+                                className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary/5' : 'hover:bg-slate-50'}`}
+                                onClick={() => toggleRancher(uniqueId)}
+                              >
+                                <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                                  <input 
+                                    type="checkbox" 
+                                    className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer accent-primary"
+                                    checked={isSelected}
+                                    onChange={() => toggleRancher(uniqueId)}
+                                  />
+                                </TableCell>
+                                <TableCell className="text-sm font-medium text-slate-700">
+                                  {aiMode && <span className="inline-block mr-2 bg-amber-500 text-white text-[9px] px-1.5 py-0.5 rounded-full">#{index + 1}</span>}
+                                  {r.MUNICIPIO}
+                                </TableCell>
+                                <TableCell>
+                                  <p className="font-black text-[15px] text-slate-900 uppercase">{r.NOME_FAZENDA}</p>
+                                  <p className="text-[11px] font-bold text-slate-500 mt-0.5">
+                                    {r.NOME_PRODUTOR} <span className="font-normal">(IE: <span className="text-slate-800 font-bold">{r.INSCRICAO || "N/A"}</span>)</span>
+                                  </p>
+                                </TableCell>
+                                <TableCell className="text-sm tabular-nums text-slate-600">{formatNumber(r.DISTANCIA_CADASTRADA)} km</TableCell>
+                                
+                                <TableCell className="text-right text-sm tabular-nums">
+                                  <div className="flex flex-col items-end">
+                                    <span className="font-bold text-blue-700 text-base">{formatNumber(displayQuantidade)}</span>
+                                    {renderCompradosDetalhes(r)}
+                                  </div>
+                                </TableCell>
+
+                                <TableCell className="text-center">
+                                  {r.POSSUI_CAR === "S" 
+                                    ? <span className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded border border-green-200">SIM</span>
+                                    : <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded border border-red-200">NÃO</span>
+                                  }
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  {r.JA_VENDEU === "S" 
+                                    ? <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded border border-blue-200">SIM</span>
+                                    : <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200">NÃO</span>
+                                  }
+                                </TableCell>
+                                <TableCell className="text-center text-xs font-medium text-slate-500">
+                                  {r.DATA_ULTIMA_VISITA ? new Date(r.DATA_ULTIMA_VISITA).toLocaleDateString('pt-BR') : "-"}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {(!aiMode && activeRegionData.visibleRanchers.length > visibleCount) && (
+                      <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-center">
+                        <Button 
+                          variant="outline" 
+                          className="font-bold text-primary flex items-center gap-2 hover:bg-primary hover:text-white transition-colors bg-white"
+                          onClick={() => setVisibleCount(prev => prev + 15)}
+                        >
+                          CARREGAR MAIS RESULTADOS <ChevronDown className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </Card>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BOTÃO FLUTUANTE DE FINALIZAR (Sempre visível acima de tudo quando há seleção) */}
       {selectedRanchers.length > 0 && (
-        <div className="fixed bottom-6 left-0 right-0 z-50 flex justify-center animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-6 left-0 right-0 z-[200] flex justify-center animate-in slide-in-from-bottom-5">
           <div className="bg-slate-900 text-white px-6 py-4 rounded-full shadow-2xl flex items-center gap-6 border border-slate-700">
             <div className="flex items-center gap-2">
               <CheckSquare className="w-5 h-5 text-green-400" />

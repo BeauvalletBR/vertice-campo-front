@@ -1,5 +1,3 @@
-// src/services/api.ts
-
 export interface Visit {
   id: string;
   date: string;
@@ -67,7 +65,6 @@ export interface ApiAgendamento {
   VENDAREPRESENTANTE?: "S" | "N";
 }
 
-// INTERFACE PARA A CONSULTA DE RELATÓRIO DE VISITAS
 export interface ApiVisita {
   ID_VISITA: number;
   ID_AGENDAMENTO: number | null;
@@ -107,7 +104,6 @@ export interface ApiVisita {
   STATUS_90DIAS: string | null;
 }
 
-// --- NOVA INTERFACE: USUÁRIOS ERP ---
 export interface ApiUsuario {
   SEQUSUARIO: number;
   CODUSUARIO: string;
@@ -145,14 +141,12 @@ const getAuthHeaders = (isJson = false) => {
   return headers;
 };
 
-// 👇 FUNÇÃO PARA AVISAR O SISTEMA QUE O TOKEN CAIU 👇
 const checkSessionExpired = (response: Response) => {
   if (response.status === 401) {
     window.dispatchEvent(new Event('sessao-expirada'));
   }
 };
 
-// --- MÓDULO ADMIN: Buscar Pecuaristas ---
 export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise<ApiRancher[]> => {
   if (cachedPecuaristas && cachedPecuaristas.length > 0 && !forceRefresh) {
     return cachedPecuaristas;
@@ -162,9 +156,8 @@ export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise
     const url = import.meta.env.VITE_N8N_WEBHOOK_URL_PECUARISTAS;
     try {
       const response = await fetch(url, { headers: getAuthHeaders() });
-      checkSessionExpired(response); // <-- Checa 401
+      checkSessionExpired(response);
       
-      // TRATAMENTO DA TRAVA DO N8N (Erro 401 ou 403)
       if (response.status === 401 || response.status === 403) {
          console.warn("Acesso Negado: Você não tem permissão no módulo ADMIN.");
          fetchPromise = null; 
@@ -191,12 +184,11 @@ export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise
   return fetchPromise;
 };
 
-// --- MÓDULO OPERACIONAL: Buscar Agendamentos ---
 export const fetchAgendamentosPendentes = async (): Promise<ApiAgendamento[]> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO_CONSULTA;
   try {
     const response = await fetch(url, { headers: getAuthHeaders() });
-    checkSessionExpired(response); // <-- Checa 401
+    checkSessionExpired(response); 
     
     if (response.status === 401 || response.status === 403) {
         console.warn("Acesso Negado: Módulo OPERACIONAL.");
@@ -213,14 +205,13 @@ export const fetchAgendamentosPendentes = async (): Promise<ApiAgendamento[]> =>
   }
 };
 
-// --- MÓDULO RELATORIOS: Consultar Relatório de Visitas ---
 export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA;
   if (!url) return [];
 
   try {
     const response = await fetch(url, { headers: getAuthHeaders() });
-    checkSessionExpired(response); // <-- Checa 401
+    checkSessionExpired(response);
     
     if (response.status === 401 || response.status === 403) return [];
     if (!response.ok) return [];
@@ -235,13 +226,12 @@ export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
   }
 };
 
-// --- MÓDULO RELATORIOS: Consultar Usuários ERP ---
 export const fetchUsuarios = async (): Promise<ApiUsuario[]> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_USUARIOS;
   if (!url) return [];
   try {
     const response = await fetch(url, { headers: getAuthHeaders() });
-    checkSessionExpired(response); // <-- Checa 401
+    checkSessionExpired(response);
 
     if (response.status === 401 || response.status === 403) return [];
     if (!response.ok) return [];
@@ -254,7 +244,6 @@ export const fetchUsuarios = async (): Promise<ApiUsuario[]> => {
   }
 };
 
-// --- MÓDULO ADMIN: Salvar Agendamento Simples ---
 export const saveAgendamento = async (dados: any): Promise<{ success: boolean; message?: string }> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO; 
   try {
@@ -263,14 +252,13 @@ export const saveAgendamento = async (dados: any): Promise<{ success: boolean; m
       headers: getAuthHeaders(true),
       body: JSON.stringify(dados)
     });
-    checkSessionExpired(response); // <-- Checa 401
+    checkSessionExpired(response); 
     
     if (response.status === 403) return { success: false, message: "Acesso Negado (ADMIN)." };
     return { success: response.ok };
   } catch (error) { return { success: false, message: "Erro de rede" }; }
 };
 
-// --- MÓDULO OPERACIONAL: Salvar A Visita De Campo ---
 export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean; message?: string }> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS; 
   if (!url) return { success: false };
@@ -280,14 +268,13 @@ export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean; m
       headers: getAuthHeaders(true),
       body: JSON.stringify(dados)
     });
-    checkSessionExpired(response); // <-- Checa 401
+    checkSessionExpired(response);
     
     if (response.status === 403) return { success: false, message: "Acesso Negado (OPERACIONAL)." };
     return { success: response.ok };
   } catch (error) { return { success: false, message: "Erro de rede" }; }
 };
 
-// --- NOVA FUNÇÃO: VINCULAR PECUARISTA NA VISITA PENDENTE ---
 export const vincularVisitaPecuarista = async (dados: any): Promise<{ success: boolean; message?: string }> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_VINCULAR;
   if (!url) return { success: false, message: "URL de vínculo não configurada no .env" };
@@ -297,7 +284,7 @@ export const vincularVisitaPecuarista = async (dados: any): Promise<{ success: b
       headers: getAuthHeaders(true),
       body: JSON.stringify(dados)
     });
-    checkSessionExpired(response); // <-- Checa 401
+    checkSessionExpired(response);
     
     if (response.status === 403) return { success: false, message: "Acesso Negado (OPERACIONAL)." };
     
@@ -308,6 +295,89 @@ export const vincularVisitaPecuarista = async (dados: any): Promise<{ success: b
   }
 };
 
+export const inativarVisita = async (id_visita: string | number): Promise<{ success: boolean; message?: string }> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_INATIVAR;
+  if (!url) return { success: false, message: "URL de inativação não configurada no .env" };
+  
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify({ id_visita: Number(id_visita) })
+    });
+    checkSessionExpired(response);
+    
+    if (response.status === 403) return { success: false, message: "Acesso Negado." };
+    
+    const data = await response.json();
+    return { success: response.ok && data.success !== false, message: data.message };
+  } catch (error) {
+    return { success: false, message: "Erro de comunicação com o servidor." };
+  }
+};
+
+export const inativarAgendamento = async (id_agendamento: string | number): Promise<{ success: boolean; message?: string }> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO_INATIVAR;
+  if (!url) return { success: false, message: "URL de inativação não configurada no .env" };
+  
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify({ id_agendamento: Number(id_agendamento) })
+    });
+    checkSessionExpired(response);
+    
+    if (response.status === 403) return { success: false, message: "Acesso Negado. Você não tem nível suficiente." };
+    
+    const data = await response.json();
+    return { success: response.ok && data.success !== false, message: data.message };
+  } catch (error) {
+    return { success: false, message: "Erro de comunicação com o servidor." };
+  }
+};
+
+export const editarAgendamento = async (dados: any): Promise<{ success: boolean; message?: string }> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO_EDITAR;
+  if (!url) return { success: false, message: "URL de edição de agendamento não configurada" };
+  
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(dados)
+    });
+    checkSessionExpired(response);
+    
+    if (response.status === 403) return { success: false, message: "Acesso Negado." };
+    
+    const data = await response.json();
+    return { success: response.ok && data.success !== false, message: data.message };
+  } catch (error) {
+    return { success: false, message: "Erro de comunicação." };
+  }
+};
+
+export const editarVisita = async (dados: any): Promise<{ success: boolean; message?: string }> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_EDITAR;
+  if (!url) return { success: false, message: "URL de edição de visita não configurada" };
+  
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(dados)
+    });
+    checkSessionExpired(response);
+    
+    if (response.status === 403) return { success: false, message: "Acesso Negado." };
+    
+    const data = await response.json();
+    return { success: response.ok && data.success !== false, message: data.message };
+  } catch (error) {
+    return { success: false, message: "Erro de comunicação." };
+  }
+};
 
 export interface LoginResponse {
   success: boolean;
@@ -317,12 +387,12 @@ export interface LoginResponse {
     login: string;
     name: string;
     role: "ADMIN" | "COMPRADOR";
-    modulos?: string[]; 
+    modulos?: string[];
+    nivel?: number; 
   };
   access_token?: string; 
 }
 
-// --- ROTA PÚBLICA DE LOGIN ---
 export const realizarLogin = async (login: string, senha: string, empresa: string): Promise<LoginResponse> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_LOGIN; 
   const tokenAPI = import.meta.env.VITE_N8N_SECRET_TOKEN;
@@ -377,5 +447,10 @@ export const api = {
   realizarLogin,
   realizarLogout, 
   getUsuarios: fetchUsuarios, 
-  vincularVisita: vincularVisitaPecuarista 
+  vincularVisita: vincularVisitaPecuarista,
+  inativarVisita,
+  inativarAgendamento, 
+  fetchAgendamentosPendentes,
+  editarAgendamento,
+  editarVisita
 };
