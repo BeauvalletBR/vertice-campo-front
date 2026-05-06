@@ -102,6 +102,10 @@ export interface ApiVisita {
   QTD_90DIAS: number | null;
   SEXO_90DIAS: string | null;
   STATUS_90DIAS: string | null;
+  
+  // 👇 NOVAS COLUNAS ADICIONADAS AQUI 👇
+  IMAGEM?: string | null;
+  OBSERVACOES?: string | null;
 }
 
 export interface ApiUsuario {

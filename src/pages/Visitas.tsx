@@ -32,7 +32,8 @@ import {
   Check,
   Filter,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  ImageIcon 
 } from "lucide-react";
 import { toast } from "sonner";
 import html2canvas from "html2canvas";
@@ -70,6 +71,8 @@ interface CheckinReport {
   distancia: string;
   distanciaRealRaw: number | null;
   statusDatavale: "pendente" | "cadastrado";
+  imagem?: string | null;
+  observacoes?: string | null;
 }
 
 // 👇 FUNÇÃO DEFINITIVA PARA DATA: Pega só a parte da data e ignora o resto
@@ -117,9 +120,15 @@ export default function Pecuaristas() {
   const [isLinking, setIsLinking] = useState(false);
   
   const [isInativando, setIsInativando] = useState<string | null>(null);
-  
-  // 👇 ESTADO DO NOVO MODAL DE CONFIRMAÇÃO DE EXCLUSÃO 👇
   const [visitaParaInativar, setVisitaParaInativar] = useState<string | null>(null);
+
+  // 👇 VARIÁVEL RESTAURADA PARA O MODAL DE ERRO 👇
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
 
   useEffect(() => {
     const carregarVisitas = async () => {
@@ -140,7 +149,7 @@ export default function Pecuaristas() {
           return usuario ? usuario.CODUSUARIO : `ID: ${id}`;
         };
 
-        const mappedData: CheckinReport[] = data.map((v) => ({
+        const mappedData: CheckinReport[] = data.map((v: any) => ({
           id: String(v.ID_VISITA),
           cod_produtor: v.COD_PRODUTOR ? String(v.COD_PRODUTOR) : null,
           nome: v.NOME_PRODUTOR || "N/A", ie: v.INSCRICAO || "", propriedade: v.NOME_FAZENDA || "N/A",
@@ -156,9 +165,11 @@ export default function Pecuaristas() {
           data: v.DATA_REGISTRO_VISITA || "", // Grava no estado o dado sujo exatamente como veio do banco
           id_comprador: v.ID_COMPRADOR,
           visitante: getNomeComprador(v.ID_COMPRADOR), produtorAssinatura: v.ASSINATURA_DIGITAL || "",
-          distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${(v.DISTANCIA_PERCORRIDA_REAL * 2).toFixed(1)} km` : "N/A", // <-- Modificado p/ Relatório
+          distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${(v.DISTANCIA_PERCORRIDA_REAL * 2).toFixed(1)} km` : "N/A", 
           distanciaRealRaw: v.DISTANCIA_PERCORRIDA_REAL,
-          statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente"
+          statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente",
+          imagem: v.IMAGEM || null,
+          observacoes: v.OBSERVACOES || null
         }));
 
         setAllData(mappedData);
@@ -180,7 +191,6 @@ export default function Pecuaristas() {
       const matchFazenda = v.propriedade.toLowerCase().includes(filterFazenda.toLowerCase());
       const matchCidade = filterCidade === "" || v.municipio === filterCidade;
       
-      // Ajuste no filtro de data para funcionar com o dado bruto "2026-05-05T00:00:00.000Z"
       const matchData = filterData === "" || (v.data && v.data.startsWith(filterData)); 
 
       return matchProdutor && matchFazenda && matchCidade && matchData;
@@ -238,7 +248,6 @@ export default function Pecuaristas() {
     }
   };
 
-  // 👇 LÓGICA DE INATIVAÇÃO DA VISITA SEM WINDOW.CONFIRM 👇
   const confirmInativarVisita = async () => {
     if (!visitaParaInativar) return;
     
@@ -248,7 +257,7 @@ export default function Pecuaristas() {
       if (result.success) {
         toast.success("Visita inativada com sucesso!");
         setAllData(prev => prev.filter(v => v.id !== visitaParaInativar)); 
-        setVisitaParaInativar(null); // Fecha o modal
+        setVisitaParaInativar(null); 
       } else {
         toast.error(result.message || "Erro ao inativar visita.");
       }
@@ -297,7 +306,6 @@ export default function Pecuaristas() {
     let gpsKmIdaVolta: number | null = null;
     let isRed = false;
 
-    // Se tem o dado do GPS, multiplica por 2
     if (gpsKmBase !== null) {
       gpsKmIdaVolta = gpsKmBase * 2;
     }
@@ -316,7 +324,7 @@ export default function Pecuaristas() {
     return (
       <TableRow key={`ult-${v.id}`} className="transition-colors hover:bg-slate-50">
         <TableCell className="py-4 text-sm font-medium text-slate-600 whitespace-nowrap">
-           {formatarDataBruta(v.data)} {/* USO DA FUNÇÃO SEGURA */}
+           {formatarDataBruta(v.data)} 
         </TableCell>
         <TableCell className="px-4 py-4">
           <p className="font-bold text-sm text-slate-800 uppercase">{v.nome}</p>
@@ -328,7 +336,6 @@ export default function Pecuaristas() {
           </div>
         </TableCell>
         
-        {/* GPS KM Multiplicado por 2 */}
         <TableCell className="py-4 text-sm text-center">
           <span className="text-blue-700 font-black">{gpsKmIdaVolta !== null ? `${gpsKmIdaVolta.toFixed(1)} km` : '--'}</span>
         </TableCell>
@@ -357,7 +364,6 @@ export default function Pecuaristas() {
               <FileText className="w-3.5 h-3.5 mr-2" /> RELATÓRIO
             </Button>
             
-            {/* 👇 TRAVA DE NÍVEL APLICADA NA LIXEIRINHA DO HISTÓRICO 👇 */}
             {podeExcluir && (
               <Button 
                 size="sm" 
@@ -697,11 +703,33 @@ export default function Pecuaristas() {
           </div>
         )}
 
-        {/* =======================================================
-            MODAL: RELATÓRIO DO CHECK-IN (COMPLETO)
-            ======================================================= */}
+        {/* MODAL DE ALERTAS GERAIS E ERROS */}
+        {alertModal && alertModal.isOpen && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-none rounded-2xl">
+              <div className={`h-2 w-full ${alertModal.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              <CardHeader className="text-center pt-8 pb-2">
+                <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 border ${alertModal.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-500' : 'bg-red-50 border-red-100 text-red-500'}`}>
+                  {alertModal.type === 'success' ? <CheckCircle2 className="w-8 h-8" /> : <AlertCircle className="w-8 h-8" />}
+                </div>
+                <CardTitle className="text-2xl font-black text-slate-800 tracking-tight">{alertModal.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-center pb-8 px-8">
+                <p className="text-slate-500 font-medium leading-relaxed mb-8">{alertModal.message}</p>
+                <Button 
+                  className={`w-full h-14 text-base tracking-wide font-black shadow-lg ${alertModal.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20' : 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/20'}`}
+                  onClick={() => setAlertModal(null)}
+                >
+                  OK, ENTENDIDO
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* MODAL: RELATÓRIO DO CHECK-IN (LEITURA) */}
         {selectedReport && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl border-none rounded-2xl overflow-hidden">
               <div className="h-2 w-full bg-primary" />
               <CardHeader className="border-b bg-white pb-4 shrink-0">
@@ -734,18 +762,36 @@ export default function Pecuaristas() {
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Data da Visita</p>
-                      <p className="text-sm font-black text-slate-800">{formatarDataBruta(selectedReport.data)}</p>
+                      <p className="text-sm font-black text-slate-800">
+                        {selectedReport.data && selectedReport.data !== "-" ? new Date(selectedReport.data).toLocaleDateString("pt-BR") : "-"}
+                      </p>
                     </div>
                   </div>
 
+                  {/* 👇 ROTA E IMAGEM DO CURRAL (LADO A LADO) 👇 */}
                   <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                      <Navigation className="w-4 h-4 text-primary" /> Rota Calculada
-                    </h3>
                     <div className="grid grid-cols-2 gap-y-4 gap-x-6">
+                      {/* Rota */}
                       <div>
+                        <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                          <Navigation className="w-4 h-4 text-primary" /> Rota Calculada
+                        </h3>
                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Distância (Ida e Volta)</p>
                         <p className="font-black text-slate-800 text-xl tabular-nums">{selectedReport.distancia}</p>
+                      </div>
+                      
+                      {/* Imagem (Se houver) */}
+                      <div className="flex flex-col items-end justify-center">
+                        {selectedReport.imagem ? (
+                          <div className="border border-slate-200 bg-white rounded-xl p-1 shadow-sm overflow-hidden h-24 w-auto max-w-[200px]">
+                             <img src={selectedReport.imagem} alt="Foto Capturada" className="h-full w-full object-cover rounded-lg" />
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-slate-300">
+                             <ImageIcon className="w-6 h-6 mb-1 opacity-20" />
+                             <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Sem Imagem</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -825,27 +871,40 @@ export default function Pecuaristas() {
                         <p className="text-xs text-slate-400 font-medium italic">Nenhum lote com previsão de abate a curto prazo.</p>
                       )}
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-8 mt-10">
-                      <div className="border-t border-slate-200 pt-3 text-center">
-                        <p className="font-black text-sm text-slate-800 uppercase">{selectedReport.visitante}</p>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">Comprador (Visitante)</p>
-                      </div>
+                  </div>
 
-                      <div className="border-t border-slate-200 pt-3 text-center flex flex-col items-center">
-                        {selectedReport.produtorAssinatura && selectedReport.produtorAssinatura.startsWith("data:image") ? (
-                          <img 
-                            src={selectedReport.produtorAssinatura} 
-                            alt="Assinatura" 
-                            className="h-16 object-contain mb-1 mix-blend-multiply" 
-                          />
-                        ) : (
-                          <p className="font-bold text-sm text-slate-400 font-serif italic uppercase h-16 flex items-center justify-center">
-                            {selectedReport.produtorAssinatura || "Assinatura Ausente"}
-                          </p>
-                        )}
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-auto">Produtor</p>
+                  {/* 👇 BLOCO D (OBSERVAÇÕES) SÓ APARECE SE TIVER TEXTO 👇 */}
+                  {selectedReport.observacoes && (
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">D. Observações da Negociação</h3>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                        <p className="text-xs font-medium text-slate-700 leading-relaxed uppercase whitespace-pre-wrap">
+                          {selectedReport.observacoes}
+                        </p>
                       </div>
+                    </div>
+                  )}
+                  
+                  {/* ASSINATURAS */}
+                  <div className="grid grid-cols-2 gap-8 mt-10">
+                    <div className="border-t border-slate-200 pt-3 text-center">
+                      <p className="font-black text-sm text-slate-800 uppercase">{selectedReport.visitante}</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">Comprador (Visitante)</p>
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-3 text-center flex flex-col items-center">
+                      {selectedReport.produtorAssinatura && selectedReport.produtorAssinatura.startsWith("data:image") ? (
+                        <img 
+                          src={selectedReport.produtorAssinatura} 
+                          alt="Assinatura" 
+                          className="h-16 object-contain mb-1 mix-blend-multiply" 
+                        />
+                      ) : (
+                        <p className="font-bold text-sm text-slate-400 font-serif italic uppercase h-16 flex items-center justify-center">
+                          {selectedReport.produtorAssinatura || "Assinatura Ausente"}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-auto">Produtor</p>
                     </div>
                   </div>
 

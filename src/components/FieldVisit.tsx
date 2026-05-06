@@ -36,9 +36,10 @@ import {
   Eraser,    
   Check,
   ChevronRight,
-  PenTool,
-  Camera, // <-- ADICIONADO O ÍCONE DA CÂMERA
-  ImagePlus
+  Camera, 
+  ImageIcon, // <-- TROCADO AQUI PARA RESOLVER O ERRO
+  Trash2, 
+  Download 
 } from "lucide-react";
 import { api, fetchPecuaristasAgendamento, fetchAgendamentosPendentes, type ApiRancher, type ApiAgendamento, type ApiUsuario } from "@/services/api";
 
@@ -87,6 +88,8 @@ interface FormData {
   dataVisita: string;
   visitante: string;
   produtorAssinatura: string;
+  observacoes: string;
+  imagem: string;      
 }
 
 interface CheckinReport {
@@ -120,6 +123,8 @@ interface CheckinReport {
   distancia: string;
   distanciaRealRaw: number | null;
   statusDatavale: "pendente" | "cadastrado";
+  observacoes?: string | null; 
+  imagem?: string | null;       
 }
 
 const EMPRESA_COORDS: [number, number] = [-16.3419669, -49.4708347]; 
@@ -132,7 +137,7 @@ const cityToRegionMap: Record<string, string> = {
   "RIO VERDE": "SUDOESTE", "JATAI": "SUDOESTE", "MINEIROS": "SUDOESTE", "QUIRINOPOLIS": "SUDOESTE", "SANTA HELENA DE GOIAS": "SUDOESTE", "SAO SIMAO": "SUDOESTE", "ACREUNA": "SUDOESTE", "MONTIVIDIU": "SUDOESTE", "TURVELANDIA": "SUDOESTE", "CASTELANDIA": "SUDOESTE", "PARANAIGUARA": "SUDOESTE", "CACU": "SUDOESTE", "CACHOEIRA ALTA": "SUDOESTE", "PEROLANDIA": "SUDOESTE", "SANTA RITA DO ARAGUAIA": "SUDOESTE", "SANTO ANTONIO DA BARRA": "SUDOESTE",
   "CATALAO": "SUDESTE", "IPAMERI": "SUDESTE", "PIRES DO RIO": "SUDESTE", "SILVANIA": "SUDESTE", "VIANOPOLIS": "SUDESTE", "ORIZONA": "SUDESTE", "OUVIDOR": "SUDESTE", "TRES RANCHOS": "SUDESTE", "GOIANDIRA": "SUDESTE", "CUMARI": "SUDESTE", "ANHANGUERA": "SUDESTE", "DAVINOPOLIS": "SUDESTE", "CORUMBAIBA": "SUDESTE", "NOVA AURORA": "SUDESTE", "CAMPO ALEGRE DE GOIAS": "SUDESTE", "LEOPOLDO DE BULHOES": "SUDESTE", "GAMELEIRA DE GOIAS": "SUDESTE", "CRISTIANOPOLIS": "SUDESTE", "URUTAI": "SUDESTE", "PALMELO": "SUDESTE", "SANTA CRUZ DE GOIAS": "SUDESTE",
   "PORANGATU": "NORTE", "URUACU": "NORTE", "NIQUELANDIA": "NORTE", "MINACU": "NORTE", "CAMPINORTE": "NORTE", "MARA ROSA": "NORTE", "ALTO HORIZONTE": "NORTE", "NOVA IGUACU DE GOIAS": "NORTE", "CAMPINACU": "NORTE", "MUTUNOPOLIS": "NORTE", "ESTRELA DO NORTE": "NORTE", "SANTA TEREZA DE GOIAS": "NORTE", "TROMBAS": "NORTE", "FORMOSO": "NORTE", "SAO LUIZ DO NORTE": "NORTE", "GUARINOS": "NORTE", "PILAR DE GOIAS": "NORTE", "AMARALINA": "NORTE", "CAMPOS VERDES": "NORTE", "SANTA TEREZINHA DE GOIAS": "NORTE", "UIRAPURU": "NORTE", "HIDROLINA": "NORTE", "BONOPOLIS": "NORTE", "NOVO PLANALTO": "NORTE", "MONTIVIDIU DO NORTE": "NORTE",
-  "POSSE": "NORDESTE", "CAMPOS BELOS": "NORDESTE", "SAO DOMINGOS": "NORDESTE", "ALTO PARAISO DE GOIAS": "NORDESTE", "CAVALCANTE": "NORDESTE", "IACIARA": "NORDESTE", "ALVORADA DO NORTE": "NORDESTE", "SIMOLANDIA": "NORDESTE", "FLORES DE GOIAS": "NORDESTE", "GUARANI DE GOIAS": "NORDESTE", "COLINAS DO SUL": "NORDESTE", "MONTE ALEGRE DE GOIAS": "NORDESTE", "SITIO D ABADIA": "NORDESTE",
+  "POSSE": "NORDESTE", "CAMPOS BELOS": "NORDESTE", "SAO DOMINGOS": "NORDESTE", "ALTO PARAISO DE GOIAS": "NORDESTE", "CAVALCANTE": "NORDESTE", "IACIARA": "NORDESTE", "ALVORADA DO NORTE": "NORDESTE", "SIMOLANDIA": "NORDESTE", "FLORES DE GOIAS": "NORDESTE", "GUARANI DE GOIAS": "NORDESTE", "COLINAS DO SUL": "NORDESTE", "MONTE ALEGRE DE GOIAS": "NORDESTE", "SITIO D ABADIA": "NORDESTE", "DIVINOPOLIS DE GOIAS": "NORDESTE",
   "IPORA": "OESTE", "SAO LUIS DE MONTES BELOS": "OESTE", "PIRANHAS": "OESTE", "CAIAPONIA": "OESTE", "ARAGARCAS": "OESTE", "JUSSARA": "OESTE", "FAZENDA NOVA": "OESTE", "ISRAELANDIA": "OESTE", "IVOLANDIA": "OESTE", "MOIPORA": "OESTE", "CACHOEIRA DE GOIAS": "OESTE", "AURILANDIA": "OESTE", "FIRMINOPOLIS": "OESTE", "TURVANIA": "OESTE", "PALMINOPOLIS": "OESTE", "CEZARINA": "OESTE", "INDIARA": "OESTE", "JANDAIA": "OESTE", "PARAUNA": "OESTE", "SAO JOAO DA PARAUNA": "OESTE", "BALIZA": "OESTE", "BOM JARDIM DE GOIAS": "OESTE", "ARENOPOLIS": "OESTE", "DIORAMA": "OESTE", "MONTES CLAROS DE GOIAS": "OESTE", "DOVERLANDIA": "OESTE", "CORREGO DO OURO": "OESTE", "PALMEIRAS DE GOIAS": "OESTE", "AMORINOPOLIS": "OESTE", "NAZARIO": "OESTE", "VARJAO": "OESTE", "PONTES E LACERDA": "OESTE", "SANTA BARBARA DE GOIAS": "OESTE", "NOVO BRASIL": "OESTE",
   "GOIAS": "NOROESTE", "ITABERAI": "NOROESTE", "ITAPURANGA": "NOROESTE", "ARUANA": "NOROESTE", "NOVA CRIXAS": "NOROESTE", "ARAGUAPAZ": "NOROESTE", "MOZARLANDIA": "NOROESTE", "CRIXAS": "NOROESTE", "SAO MIGUEL DO ARAGUAIA": "NOROESTE", "MUNDO NOVO": "NOROESTE", "MATRINCHA": "NOROESTE", "SANTA FE DE GOIAS": "NOROESTE", "BRITANIA": "NOROESTE", "FAINA": "NOROESTE", "ITAPIRAPUA": "NOROESTE", "SANCLERLANDIA": "NOROESTE", "BURITI DE GOIAS": "NOROESTE", "MOSSAMEDES": "NOROESTE", "ADELANDIA": "NOROESTE", "AMERICANO DO BRASIL": "NOROESTE", "ANICUNS": "NOROESTE", "CAMPESTRE DE GOIAS": "NOROESTE", "GUARAITA": "NOROESTE", "COCALINHO": "NOROESTE", "ARACU": "NOROESTE"
 };
@@ -155,6 +160,8 @@ const emptyForm = (today: string,  userName : string): FormData => ({
   disp90Dias: false, qtd90Dias: "", sexo90Dias: "BOI", status90Dias: "DISPONIVEL",
   
   numAnimais: "", dataVisita: today, visitante: userName, produtorAssinatura: "",
+  observacoes: "", 
+  imagem: "",      
 });
 
 function RouteMapController({ routePath }: { routePath: [number, number][] }) {
@@ -186,6 +193,10 @@ export function FieldVisit() {
   const [isRealLocation, setIsRealLocation] = useState<boolean>(false);
   const [confirmSaveModal, setConfirmSaveModal] = useState<boolean>(false);
 
+  const [selectedReport, setSelectedReport] = useState<CheckinReport | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
+
   const [isSignatureFullscreen, setIsSignatureFullscreen] = useState<boolean>(false);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState({ 
@@ -203,8 +214,10 @@ export function FieldVisit() {
   const [form, setForm] = useState<FormData>(emptyForm(today, userName));
 
   const sigCanvas = useRef<SignatureCanvas>(null);
-  const sigCanvasFullscreen = useRef<SignatureCanvas>(null); // Para o canvas grande (tela cheia)
-  const fileInputRef = useRef<HTMLInputElement>(null); // 👇 REF PARA O INPUT DA CÂMERA 👇
+  const sigCanvasFullscreen = useRef<SignatureCanvas>(null); 
+  
+  const fileInputImageRef = useRef<HTMLInputElement>(null); 
+  const fileInputSignatureRef = useRef<HTMLInputElement>(null); 
 
   const [dateStart, setDateStart] = useState(() => {
     const d = new Date();
@@ -451,8 +464,25 @@ export function FieldVisit() {
   const updateField = (key: keyof FormData, value: any) => setForm(prev => ({ ...prev, [key]: value }));
   const formatToUpper = (val: any) => (val === null || val === undefined) ? "" : typeof val === 'string' ? val.trim().toUpperCase() : String(val).toUpperCase();
 
-  // 👇 LÓGICA DE UPLOAD/CÂMERA 👇
-  const handleCaptureImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCaptureImagePhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (reader.result) {
+          updateField("imagem", reader.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const clearCapturedPhoto = () => {
+    updateField("imagem", "");
+    if (fileInputImageRef.current) fileInputImageRef.current.value = "";
+  };
+
+  const handleCaptureSignaturePhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -465,13 +495,12 @@ export function FieldVisit() {
     }
   };
 
-  // 👇 Usa o Canvas Pequeno 👇
   const limparAssinatura = () => {
     sigCanvas.current?.clear();
     updateField("produtorAssinatura", "");
+    if (fileInputSignatureRef.current) fileInputSignatureRef.current.value = "";
   };
 
-  // 👇 Usa o Canvas Grande 👇
   const limparAssinaturaModal = () => {
     if (sigCanvasFullscreen.current) {
       sigCanvasFullscreen.current.clear();
@@ -479,7 +508,6 @@ export function FieldVisit() {
     }
   };
 
-  // 👇 Usa o Canvas Grande 👇
   const salvarAssinaturaModal = () => {
     if (sigCanvasFullscreen.current && !sigCanvasFullscreen.current.isEmpty()) {
       const assinaturaImg = sigCanvasFullscreen.current.getCanvas().toDataURL('image/png');
@@ -493,6 +521,38 @@ export function FieldVisit() {
   const apagarAssinaturaSalva = () => {
     updateField("produtorAssinatura", "");
   }
+
+  const handleDownloadPDF = async () => {
+    if (!reportRef.current || !selectedReport) return;
+    try {
+      setIsGeneratingPDF(true);
+      const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      let imgWidth = pdfWidth;
+      let imgHeight = (canvas.height * pdfWidth) / canvas.width;
+
+      if (imgHeight > pdfHeight) {
+        const ratio = pdfHeight / imgHeight;
+        imgHeight = pdfHeight;
+        imgWidth = imgWidth * ratio;
+      }
+
+      const xOffset = (pdfWidth - imgWidth) / 2;
+
+      pdf.addImage(imgData, "PNG", xOffset, 0, imgWidth, imgHeight);
+      pdf.save(`Checkin_${selectedReport.nome.replace(/\s+/g, '_')}.pdf`);
+      toast.success("PDF gerado com sucesso!");
+    } catch (error) {
+      toast.error("Erro ao gerar o PDF.");
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
 
   const validateAndProceed = () => {
     const camposObrigatorios: { key: keyof FormData, label: string }[] = [
@@ -532,14 +592,13 @@ export function FieldVisit() {
 
     let assinaturaPronta = form.produtorAssinatura;
     
-    // 👇 Pega do Canvas Pequeno APENAS se o usuário não tiver salvo a tela cheia e nem tirado foto
     if (sigCanvas.current && !sigCanvas.current.isEmpty() && !assinaturaPronta) {
        assinaturaPronta = sigCanvas.current.getCanvas().toDataURL('image/png');
        updateField("produtorAssinatura", assinaturaPronta);
     }
 
     if (!assinaturaPronta) {
-      setAlertModal({ isOpen: true, type: "error", title: "Assinatura Pendente!", message: "O produtor ou recebedor precisa assinar a ficha da visita." });
+      setAlertModal({ isOpen: true, type: "error", title: "Assinatura Pendente!", message: "O produtor ou recebedor precisa assinar a ficha da visita (ou enviar uma foto da assinatura)." });
       return;
     }
 
@@ -590,6 +649,8 @@ export function FieldVisit() {
       visitante: formatToUpper(form.visitante), 
       
       produtorAssinatura: base64Assinatura, 
+      observacoes: form.observacoes, 
+      imagem: form.imagem,           
       
       disp30Dias: form.disp30Dias, qtd30Dias: form.qtd30Dias, sexo30Dias: formatToUpper(form.sexo30Dias), status30Dias: formatToUpper(form.status30Dias),
       disp60Dias: form.disp60Dias, qtd60Dias: form.qtd60Dias, sexo60Dias: formatToUpper(form.sexo60Dias), status60Dias: formatToUpper(form.status60Dias),
@@ -965,8 +1026,58 @@ export function FieldVisit() {
                         <Input disabled value={form.visitante} className="h-12 bg-slate-100 font-bold uppercase" />
                       </div>
                     </div>
+
+                    {/* 👇 OBSERVAÇÕES OPCIONAIS 👇 */}
+                    <div className="space-y-1.5 pt-2">
+                      <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Observações da Visita (Opcional)</Label>
+                      <textarea 
+                        className="w-full h-24 p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary uppercase transition-colors resize-none"
+                        placeholder="Escreva detalhes da negociação, pendências ou características do lote..."
+                        value={form.observacoes}
+                        onChange={(e) => updateField("observacoes", e.target.value)}
+                      />
+                    </div>
+
+                    {/* 👇 FOTO OPCIONAL (CURRAL) 👇 */}
+                    <div className="space-y-1.5 pt-2">
+                      <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Foto do Curral / Propriedade (Opcional)</Label>
+                      
+                      {form.imagem ? (
+                         <div className="flex flex-col items-start gap-3">
+                           <div className="border border-slate-200 bg-slate-50 rounded-xl p-2 w-full max-w-[200px] h-32 flex items-center justify-center overflow-hidden">
+                             <img src={form.imagem} alt="Foto Capturada" className="w-full h-full object-cover rounded-lg" />
+                           </div>
+                           <Button variant="outline" size="sm" className="text-red-500 hover:bg-red-50 hover:text-red-600 border-red-200" onClick={clearCapturedPhoto}>
+                             <Trash2 className="w-4 h-4 mr-2" /> Excluir Foto
+                           </Button>
+                         </div>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            capture="environment" 
+                            className="hidden" 
+                            ref={fileInputImageRef} 
+                            onChange={handleCaptureImagePhoto} 
+                          />
+                          <Button variant="outline" className="w-full sm:w-auto h-12 font-bold text-slate-600 border-slate-200 hover:bg-slate-50" onClick={() => fileInputImageRef.current?.click()}>
+                            <Camera className="w-4 h-4 mr-2" /> TIRAR FOTO
+                          </Button>
+                          <Button variant="outline" className="w-full sm:w-auto h-12 font-bold text-slate-600 border-slate-200 hover:bg-slate-50" onClick={() => {
+                            if (fileInputImageRef.current) {
+                               fileInputImageRef.current.removeAttribute('capture');
+                               fileInputImageRef.current.click();
+                               fileInputImageRef.current.setAttribute('capture', 'environment');
+                            }
+                          }}>
+                            <ImageIcon className="w-4 h-4 mr-2" /> ESCOLHER DA GALERIA
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                     
-                    {/* 👇 MODULO DE ASSINATURA DIGITAL / FOTO 👇 */}
+                    {/* 👇 MODULO DE ASSINATURA DIGITAL (OBRIGATÓRIO) 👇 */}
                     <div className="border-t border-slate-100 pt-6 mt-6">
                       <Label className="text-xs font-bold text-slate-700 uppercase block mb-3 text-center tracking-widest">
                         Assinatura do Produtor / Recebedor
@@ -1012,26 +1123,24 @@ export function FieldVisit() {
                               />
                             </div>
                             
-                            {/* BOTÕES DE AÇÃO ABAIXO DO QUADRO BRANCO */}
-                            <div className="flex gap-2 mt-3 w-[340px]">
+                            {/* BOTOES: LIMPAR OU TIRAR FOTO DA ASSINATURA */}
+                            <div className="flex justify-between mt-3 w-[340px] gap-2">
                               <Button variant="outline" className="flex-1 text-slate-500 font-bold border-slate-200" onClick={limparAssinatura}>
                                 <Eraser className="w-4 h-4 mr-2" /> Limpar
                               </Button>
                               
-                              {/* INPUT INVISÍVEL E BOTÃO DE CÂMERA */}
                               <input 
                                 type="file" 
                                 accept="image/*" 
                                 capture="environment" 
                                 className="hidden" 
-                                ref={fileInputRef} 
-                                onChange={handleCaptureImage} 
+                                ref={fileInputSignatureRef} 
+                                onChange={handleCaptureSignaturePhoto} 
                               />
-                              <Button variant="outline" className="flex-1 text-blue-600 font-bold border-blue-200 hover:bg-blue-50" onClick={() => fileInputRef.current?.click()}>
-                                <Camera className="w-4 h-4 mr-2" /> Tirar Foto
+                              <Button variant="outline" className="flex-1 text-blue-600 font-bold border-blue-200 hover:bg-blue-50" onClick={() => fileInputSignatureRef.current?.click()}>
+                                <Camera className="w-4 h-4 mr-2" /> Foto da Assin.
                               </Button>
                             </div>
-
                           </div>
                         )}
                       </div>
@@ -1229,6 +1338,201 @@ export function FieldVisit() {
             </Card>
           </div>
         )}
+
+        {/* MODAL: RELATÓRIO DO CHECK-IN (LEITURA) */}
+        {selectedReport && (
+          <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl border-none rounded-2xl overflow-hidden">
+              <div className="h-2 w-full bg-primary" />
+              <CardHeader className="border-b bg-white pb-4 shrink-0">
+                <div className="flex justify-between items-center mb-2">
+                  <CardTitle className="text-xl font-black flex items-center gap-2 text-slate-800">
+                    <FileText className="w-6 h-6 text-primary" /> Relatório de Check-in (Visita)
+                  </CardTitle>
+                  <button onClick={() => setSelectedReport(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </CardHeader>
+              
+              <CardContent className="overflow-y-auto p-0 bg-slate-50/50 custom-scrollbar">
+                <div ref={reportRef} className="p-8 space-y-6 bg-white">
+                  
+                  {/* CABEÇALHO DO RELATÓRIO DE PDF */}
+                  <div className="border-b-2 border-primary pb-4 mb-6 flex justify-between items-end">
+                    <div className="flex items-center gap-4">
+                      <img 
+                        src="/logo.png" 
+                        alt="Logo Empresa" 
+                        className="h-14 object-contain" 
+                        crossOrigin="anonymous" 
+                      />
+                      <div>
+                        <h2 className="text-2xl font-black text-primary uppercase tracking-tight">Ficha de Visita</h2>
+                        <p className="text-sm font-bold text-slate-500 mt-1">Originação de Gado - Beauvallet</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Data da Visita</p>
+                      <p className="text-sm font-black text-slate-800">
+                        {selectedReport.data && selectedReport.data !== "-" ? new Date(selectedReport.data).toLocaleDateString("pt-BR") : "-"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 👇 ROTA E IMAGEM DO CURRAL (LADO A LADO) 👇 */}
+                  <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="grid grid-cols-2 gap-y-4 gap-x-6">
+                      {/* Rota */}
+                      <div>
+                        <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                          <Navigation className="w-4 h-4 text-primary" /> Rota Calculada
+                        </h3>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Distância (Ida e Volta)</p>
+                        <p className="font-black text-slate-800 text-xl tabular-nums">{selectedReport.distancia}</p>
+                      </div>
+                      
+                      {/* Imagem (Se houver) */}
+                      <div className="flex flex-col items-end justify-center">
+                        {selectedReport.imagem ? (
+                          <div className="border border-slate-200 bg-white rounded-xl p-1 shadow-sm overflow-hidden h-24 w-auto max-w-[200px]">
+                             <img src={selectedReport.imagem} alt="Foto Capturada" className="h-full w-full object-cover rounded-lg" />
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-slate-300">
+                             <ImageIcon className="w-6 h-6 mb-1 opacity-20" />
+                             <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">Sem Imagem</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BLOCO A */}
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">A. Dados da Propriedade e Contato</h3>
+                    <div className="grid grid-cols-2 gap-y-5 gap-x-6">
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Pecuarista (Nome)</p><p className="font-black text-slate-800 uppercase">{selectedReport.nome}</p></div>
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Natureza da Visita</p><p className="font-black text-primary uppercase">{selectedReport.tipoVisita}</p></div>
+                      
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Inscrição Estadual (I.E.)</p><p className="font-bold text-slate-600 font-mono uppercase">{selectedReport.ie || "Não informada"}</p></div>
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Possui CAR?</p><p className="font-bold text-slate-600 uppercase">{selectedReport.car}</p></div>
+
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Propriedade</p><p className="font-bold text-slate-800 uppercase">{selectedReport.propriedade}</p></div>
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Município</p><p className="font-bold text-slate-800 uppercase">{selectedReport.municipio}</p></div>
+                      
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Telefone</p><p className="font-bold text-slate-800 uppercase">{selectedReport.telefone || "N/A"}</p></div>
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Melhor dia de contato</p><p className="font-bold text-slate-800 uppercase">{selectedReport.melhorDiaContato || "N/A"}</p></div>
+                      
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Contato no Local (Nome)</p><p className="font-bold text-slate-800 uppercase">{selectedReport.nomeRecebedor || selectedReport.proprietario}</p></div>
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Cargo (Contato)</p><p className="font-bold text-slate-800 uppercase">{selectedReport.cargoRecebedor || "Proprietário"}</p></div>
+                    </div>
+                  </div>
+
+                  {/* BLOCO B */}
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">B. Detalhes Comerciais e Atividade</h3>
+                    <div className="grid grid-cols-2 gap-y-5 gap-x-4">
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Frigorífico Costumaz</p><p className="font-bold text-slate-800 uppercase">{selectedReport.frigorificoCostume || "Não informado"}</p></div>
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Abates (Último Ano)</p><p className="font-bold text-slate-800 tabular-nums">{selectedReport.cabecasAbatidasAno || "Não informado"}</p></div>
+                      
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Tipo de Venda</p><p className="font-bold text-slate-800 uppercase">{selectedReport.tipoVenda}</p></div>
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Habilitação</p><p className="font-bold text-slate-800 uppercase">{selectedReport.habilitacao}</p></div>
+
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Tipo de Atividade</p><p className="font-bold text-primary uppercase">{selectedReport.atividade}</p></div>
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Tipo de Terminação</p><p className="font-bold text-primary uppercase">{selectedReport.terminacao}</p></div>
+                    </div>
+                  </div>
+
+                  {/* BLOCO C */}
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">C. Rebanho e Lotes para Abate</h3>
+                    
+                    <div className="mb-6">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Efetivo Total (Propriedade)</p>
+                      <p className="font-black text-blue-700 text-xl tabular-nums mt-1">{selectedReport.numAnimais || "Não informado"} cabeças</p>
+                    </div>
+
+                    <h4 className="text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-wider">Previsão de Abate (Lotes)</h4>
+                    <div className="space-y-3">
+                      {selectedReport.disp30Dias && (
+                        <div className="grid grid-cols-4 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 items-center">
+                          <span className="font-black text-sm text-slate-800">30 Dias</span>
+                          <span className="text-xs text-slate-700 font-bold">{selectedReport.qtd30Dias || 0} cab.</span>
+                          <span className="text-[11px] text-slate-500 font-bold uppercase">{selectedReport.sexo30Dias}</span>
+                          <span className={`text-[11px] font-black uppercase text-right ${selectedReport.status30Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status30Dias}</span>
+                        </div>
+                      )}
+                      {selectedReport.disp60Dias && (
+                        <div className="grid grid-cols-4 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 items-center">
+                          <span className="font-black text-sm text-slate-800">60 Dias</span>
+                          <span className="text-xs text-slate-700 font-bold">{selectedReport.qtd60Dias || 0} cab.</span>
+                          <span className="text-[11px] text-slate-500 font-bold uppercase">{selectedReport.sexo60Dias}</span>
+                          <span className={`text-[11px] font-black uppercase text-right ${selectedReport.status60Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status60Dias}</span>
+                        </div>
+                      )}
+                      {selectedReport.disp90Dias && (
+                        <div className="grid grid-cols-4 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 items-center">
+                          <span className="font-black text-sm text-slate-800">90 Dias</span>
+                          <span className="text-xs text-slate-700 font-bold">{selectedReport.qtd90Dias || 0} cab.</span>
+                          <span className="text-[11px] text-slate-500 font-bold uppercase">{selectedReport.sexo90Dias}</span>
+                          <span className={`text-[11px] font-black uppercase text-right ${selectedReport.status90Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status90Dias}</span>
+                        </div>
+                      )}
+                      {!selectedReport.disp30Dias && !selectedReport.disp60Dias && !selectedReport.disp90Dias && (
+                        <p className="text-xs text-slate-400 font-medium italic">Nenhum lote com previsão de abate a curto prazo.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 👇 BLOCO D (OBSERVAÇÕES) SÓ APARECE SE TIVER TEXTO 👇 */}
+                  {selectedReport.observacoes && (
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                      <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">D. Observações da Negociação</h3>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                        <p className="text-xs font-medium text-slate-700 leading-relaxed uppercase whitespace-pre-wrap">
+                          {selectedReport.observacoes}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* ASSINATURAS */}
+                  <div className="grid grid-cols-2 gap-8 mt-10">
+                    <div className="border-t border-slate-200 pt-3 text-center">
+                      <p className="font-black text-sm text-slate-800 uppercase">{selectedReport.visitante}</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">Comprador (Visitante)</p>
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-3 text-center flex flex-col items-center">
+                      {selectedReport.produtorAssinatura && selectedReport.produtorAssinatura.startsWith("data:image") ? (
+                        <img 
+                          src={selectedReport.produtorAssinatura} 
+                          alt="Assinatura" 
+                          className="h-16 object-contain mb-1 mix-blend-multiply" 
+                        />
+                      ) : (
+                        <p className="font-bold text-sm text-slate-400 font-serif italic uppercase h-16 flex items-center justify-center">
+                          {selectedReport.produtorAssinatura || "Assinatura Ausente"}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-auto">Produtor</p>
+                    </div>
+                  </div>
+
+                </div>
+              </CardContent>
+              
+              <div className="border-t bg-white p-5 flex justify-between items-center">
+                <Button variant="outline" className="font-bold text-primary border-primary hover:bg-primary/10 bg-white shadow-sm h-11" onClick={handleDownloadPDF} disabled={isGeneratingPDF}>
+                  {isGeneratingPDF ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} BAIXAR PDF
+                </Button>
+                <Button onClick={() => setSelectedReport(null)} className="font-bold h-11 bg-slate-800 text-white hover:bg-slate-700">FECHAR RELATÓRIO</Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
       </div>
     </div>
   );

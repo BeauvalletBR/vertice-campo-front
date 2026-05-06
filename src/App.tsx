@@ -39,7 +39,7 @@ function ProtectedLayout() {
               <Route path="/campo" element={<FieldPage />} />
               <Route path="/visitas" element={<Pecuaristas />} />
               
-              {/* 🔴 ROTAS RESTRITAS: O que estiver aqui dentro, SOMENTE ADMIN acessa */}
+              {/* ROTAS RESTRITAS: O que estiver aqui dentro, SOMENTE ADMIN acessa */}
               <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
                 <Route path="/agendamento" element={<Agendamento />} />
                 
