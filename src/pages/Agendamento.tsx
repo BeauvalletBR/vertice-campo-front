@@ -16,11 +16,19 @@ import {
   Map as MapIcon, 
   CheckSquare, ArrowLeft, UserSquare2, CalendarDays,
   ChevronDown, ChevronUp, Building2, Users, Filter, ArrowUpDown, ArrowUp, ArrowDown,
-  Loader2, Sparkles, Trophy, Target, Truck, X
+  Loader2, Sparkles, Trophy, Target, Truck, X, Search
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, fetchPecuaristasAgendamento, saveAgendamento, type ApiRancher, type ApiUsuario } from "@/services/api";
 import { calculateScoreVolume, calculateScoreProspeccao, calculateScoreLogistica } from "@/services/pecuaristas";
+
+// Molde para a pesquisa global (resolve o erro do TypeScript)
+interface GlobalSearchItem {
+  tipo: 'cidade' | 'fazenda';
+  valor: string;
+  produtor?: string;
+  cidade?: string;
+}
 
 const formatNumber = (num: number | string) => {
   if (num === null || num === undefined) return "0";
@@ -53,6 +61,11 @@ export default function Agendamento() {
   const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]); 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  // ESTADOS DA PESQUISA GLOBAL
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [regionFilterAtiva, setRegionFilterAtiva] = useState<string | null>(null);
 
   const [expandedRegion, setExpandedRegion] = useState<string | null>(null);
   const [selectedRanchers, setSelectedRanchers] = useState<string[]>([]); 
@@ -121,9 +134,69 @@ export default function Agendamento() {
     return Object.values(regionsMap);
   }, [apiData]);
 
+  // LÓGICA DA PESQUISA GLOBAL
+  const globalSearchResults = useMemo<GlobalSearchItem[]>(() => {
+    if (globalSearch.length < 2) return [];
+    
+    const search = globalSearch.toLowerCase();
+    
+    // Sugestões de Cidades
+    const todasCidades = Array.from(new Set(apiData.map(r => r.MUNICIPIO)));
+    const cidadesFiltradas: GlobalSearchItem[] = todasCidades
+      .filter(c => c.toLowerCase().includes(search))
+      .map(c => ({ tipo: 'cidade', valor: c }));
+
+    // Sugestões de Fazendas/Produtores
+    const fazendasFiltradas: GlobalSearchItem[] = apiData
+      .filter(r => 
+        r.NOME_FAZENDA.toLowerCase().includes(search) || 
+        r.NOME_PRODUTOR.toLowerCase().includes(search)
+      )
+      .slice(0, 10) 
+      .map(r => ({ tipo: 'fazenda', valor: r.NOME_FAZENDA, produtor: r.NOME_PRODUTOR, cidade: r.MUNICIPIO }));
+
+    return [...cidadesFiltradas.slice(0, 5), ...fazendasFiltradas];
+  }, [globalSearch, apiData]);
+
+  const handleSelectGlobalSearch = (item: GlobalSearchItem) => {
+    const regionId = mapCityToRegion(item.tipo === 'cidade' ? item.valor : (item.cidade || ''));
+    
+    setGlobalSearch("");
+    setIsSearchFocused(false);
+    
+    setRegionFilterAtiva(regionId);
+    setExpandedRegion(null); 
+    
+    // Se a busca era por cidade, preenche cidade. 
+    // Se era por fazenda/produtor, como a nova interface é focada no produtor, eu passo o valor correto pra não bugar:
+    if (item.tipo === 'cidade') {
+      setFilterText(item.valor);
+    } else {
+      // Como item.valor guardou o NOME_FAZENDA e item.produtor o NOME_PRODUTOR, a pesquisa pega os dois.
+      // Vou preencher com o nome do Produtor para combinar com o destaque da tela.
+      setFilterText(item.produtor || item.valor); 
+    }
+
+    setFilterCar("Todos"); 
+    setFilterHab("Todos");
+    setFilterJaVendeu("Todos"); 
+    setFilterRep("Todos");
+    setSortColumn("quantidade"); 
+    setSortDirection("desc");
+    setVisibleCount(15); 
+    setAiMode(null); 
+    setShowAiMenu(false);
+  };
+
+  const handleClearGlobalFilter = () => {
+    setRegionFilterAtiva(null);
+    setFilterText("");
+  };
+
   const handleExpandRegion = (regionId: string | null) => {
     setExpandedRegion(regionId);
-    if (regionId) {
+    
+    if (regionId && regionFilterAtiva !== regionId) {
       setFilterText(""); 
       setFilterCar("Todos"); 
       setFilterHab("Todos");
@@ -134,6 +207,7 @@ export default function Agendamento() {
       setVisibleCount(15); 
       setAiMode(null); 
       setShowAiMenu(false);
+      setRegionFilterAtiva(null); 
     }
   };
 
@@ -146,7 +220,6 @@ export default function Agendamento() {
     return china + naoChina; 
   };
 
-  // <<< NOVO BLOCO: Processamento isolado da Região Ativa para o Modal >>>
   const activeRegionData = useMemo(() => {
     if (!expandedRegion) return null;
     const region = regionsData.find(r => r.id === expandedRegion);
@@ -154,7 +227,6 @@ export default function Agendamento() {
 
     let visibleRanchers = [...region.ranchers];
 
-    // Aplica os filtros
     visibleRanchers = visibleRanchers.filter(r => {
       const searchTerm = filterText.toLowerCase();
       const matchText = filterText === "" || 
@@ -173,7 +245,6 @@ export default function Agendamento() {
       return matchText && matchCar && matchHab && matchJaVendeu && matchRep; 
     });
 
-    // Aplica a Ordenação (IA ou Colunas)
     if (aiMode) {
       visibleRanchers.sort((a, b) => {
         if (aiMode === 'volume') return calculateScoreVolume(b, filterHab) - calculateScoreVolume(a, filterHab);
@@ -390,7 +461,7 @@ export default function Agendamento() {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="font-semibold text-xs">Pecuarista</TableHead>
+                    <TableHead className="font-semibold text-xs">Produtor / Fazenda</TableHead>
                     <TableHead className="font-semibold text-xs">Cidade</TableHead>
                     <TableHead className="font-semibold text-xs text-right">Comprados (12m)</TableHead>
                   </TableRow>
@@ -401,9 +472,9 @@ export default function Agendamento() {
                     return (
                       <TableRow key={uniqueId}>
                         <TableCell>
-                          <p className="font-black text-[15px] text-slate-900 uppercase">{r.NOME_FAZENDA}</p>
+                          <p className="font-black text-[15px] text-slate-900 uppercase">{r.NOME_PRODUTOR}</p>
                           <p className="text-[11px] font-bold text-slate-500 mt-0.5">
-                            {r.NOME_PRODUTOR} <span className="font-normal">(IE: <span className="text-slate-800 font-bold">{r.INSCRICAO || "N/A"}</span>)</span>
+                            {r.NOME_FAZENDA} <span className="font-normal">(IE: <span className="text-slate-800 font-bold">{r.INSCRICAO || "N/A"}</span>)</span>
                           </p>
                         </TableCell>
                         <TableCell className="text-sm font-medium">{r.MUNICIPIO}</TableCell>
@@ -425,26 +496,104 @@ export default function Agendamento() {
     );
   }
 
+  const displayedRegionsCards = regionFilterAtiva 
+    ? regionsData.filter(r => r.id === regionFilterAtiva)
+    : regionsData;
+
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-fade-in relative pb-24">
-      <header className="border-b border-border pb-4">
-        <h1 className="text-2xl lg:text-3xl font-bold text-primary flex items-center gap-2">
-          <CalendarPlus className="w-7 h-7" /> Agendamento de Visitas
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Selecione as regiões para explorar a base de pecuaristas e gerar rotas otimizadas.
-        </p>
+      
+      <header className="border-b border-border pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-bold text-primary flex items-center gap-2">
+            <CalendarPlus className="w-7 h-7" /> Agendamento de Visitas
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Selecione as regiões para explorar a base de pecuaristas e gerar rotas otimizadas.
+          </p>
+        </div>
+
+        <div className="relative w-full md:w-80 lg:w-96 z-40">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input 
+              placeholder="Pesquisar Cidade, Produtor ou Fazenda..." 
+              className="pl-9 h-11 bg-white border-slate-300 shadow-sm font-medium focus-visible:ring-primary"
+              value={globalSearch}
+              onChange={(e) => setGlobalSearch(e.target.value)}
+              onFocus={() => setIsSearchFocused(true)}
+            />
+            {globalSearch && (
+              <button 
+                onClick={() => { setGlobalSearch(""); setIsSearchFocused(false); }} 
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          
+          {isSearchFocused && globalSearch.length >= 2 && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 shadow-xl rounded-xl overflow-hidden animate-in fade-in slide-in-from-top-2 max-h-80 overflow-y-auto">
+              {globalSearchResults.length === 0 ? (
+                <div className="p-4 text-center text-slate-500 text-sm">Nenhum resultado encontrado.</div>
+              ) : (
+                <div className="py-2">
+                  {globalSearchResults.map((item, i) => (
+                    <div 
+                      key={i} 
+                      className="px-4 py-2.5 hover:bg-slate-50 cursor-pointer flex items-center gap-3 border-b border-slate-50 last:border-0"
+                      onClick={() => handleSelectGlobalSearch(item)}
+                    >
+                      {item.tipo === 'cidade' ? (
+                        <Building2 className="w-4 h-4 text-blue-500 shrink-0" />
+                      ) : (
+                        <UserSquare2 className="w-4 h-4 text-green-500 shrink-0" />
+                      )}
+                      <div>
+                        <p className="text-sm font-bold text-slate-700 uppercase leading-none">
+                          {item.tipo === 'cidade' ? item.valor : item.produtor}
+                        </p>
+                        <p className="text-[10px] font-medium text-slate-400 mt-1 uppercase">
+                          {item.tipo === 'cidade' ? 'FILTRAR POR CIDADE' : `${item.valor} • ${item.cidade}`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </header>
 
-      {/* >>> GRID DE CARDS (VISUAL LIMPO, APENAS O RESUMO) <<< */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 relative">
-        {regionsData.map((region) => {
+      {isSearchFocused && (
+        <div className="fixed inset-0 z-30" onClick={() => setIsSearchFocused(false)} />
+      )}
+
+      {regionFilterAtiva && (
+        <div className="flex items-center justify-between bg-blue-50 border border-blue-200 p-4 rounded-xl">
+          <div className="flex items-center gap-3">
+            <Search className="w-5 h-5 text-blue-500" />
+            <div>
+              <p className="text-sm font-bold text-blue-800">Mostrando apenas a região que contém sua busca.</p>
+              <p className="text-xs text-blue-600 font-medium">Você pesquisou por: <strong className="uppercase">{filterText}</strong></p>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleClearGlobalFilter} className="bg-white hover:bg-blue-100 text-blue-700 border-blue-200">
+            Limpar Busca
+          </Button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 relative z-10">
+        {displayedRegionsCards.map((region) => {
           if (region.id === "outros" && region.ranchers.length === 0) return null;
 
           return (
             <Card 
               key={region.id} 
-              className="cursor-pointer border-slate-200 hover:border-primary/50 hover:shadow-lg transition-all duration-200 flex flex-col group bg-white"
+              className={`cursor-pointer border-slate-200 hover:border-primary/50 hover:shadow-lg transition-all duration-200 flex flex-col group ${regionFilterAtiva ? 'bg-blue-50/30 ring-2 ring-blue-500/20' : 'bg-white'}`}
               onClick={() => handleExpandRegion(region.id)}
             >
               <CardContent className="p-5 flex-grow flex flex-col">
@@ -469,12 +618,10 @@ export default function Agendamento() {
         })}
       </div>
 
-      {/* >>> MODAL CENTRALIZADO (RENDERIZADO QUANDO UM CARD É CLICADO) <<< */}
       {expandedRegion && activeRegionData && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 sm:p-6 animate-in fade-in duration-200">
           <div className="bg-slate-50 w-full max-w-7xl max-h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 relative border border-slate-700/20">
             
-            {/* CABEÇALHO DO MODAL */}
             <div className="bg-white border-b border-slate-200 p-5 md:p-6 shrink-0 flex flex-col gap-4 relative z-20 shadow-sm">
               <div className="flex justify-between items-start gap-4">
                 <div className="flex-1 pr-8">
@@ -497,7 +644,6 @@ export default function Agendamento() {
                 </Button>
               </div>
 
-              {/* PAINEL DE INTELIGÊNCIA E ESTATÍSTICAS NO CABEÇALHO */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-2">
                 <div className="flex items-center gap-3">
                   <span className="inline-flex items-center text-[10px] md:text-xs font-bold bg-slate-100 text-slate-600 px-2.5 py-1.5 rounded-md border border-slate-200">
@@ -569,16 +715,14 @@ export default function Agendamento() {
               </div>
             </div>
 
-            {/* CORPO DO MODAL (Filtros fixos no topo e Tabela com rolagem) */}
             <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/30 relative">
               
-              {/* BARRA DE FILTROS (Fixa no topo da área de rolagem) */}
               <div className="bg-white p-4 border-b border-slate-200 flex flex-col md:flex-row flex-wrap gap-3 items-end shrink-0 shadow-sm z-10">
                 <div className="space-y-1.5 flex-1 w-full min-w-[200px]">
-                  <Label className="text-[10px] font-bold text-slate-500 uppercase">Buscar Cidade, Produtor ou Fazenda</Label>
+                  <Label className="text-[10px] font-bold text-slate-500 uppercase">Buscar Produtor, Fazenda ou Cidade</Label>
                   <Input 
-                    placeholder="Digite para buscar..." 
-                    className="h-9 bg-white text-xs border-slate-300"
+                    placeholder="Digite para buscar nesta região..." 
+                    className="h-9 bg-white text-xs border-slate-300 focus-visible:ring-primary"
                     value={filterText}
                     onChange={(e) => setFilterText(e.target.value)}
                   />
@@ -663,7 +807,6 @@ export default function Agendamento() {
                 </Button>
               </div>
 
-              {/* ÁREA DA TABELA (COM ROLAGEM INDEPENDENTE) */}
               <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 relative">
                 {activeRegionData.visibleRanchers.length === 0 ? (
                   <div className="py-16 text-center text-muted-foreground flex flex-col items-center justify-center">
@@ -692,7 +835,8 @@ export default function Agendamento() {
                               <div className="flex items-center gap-1">Cidade {renderSortIcon('cidade')}</div>
                             </TableHead>
                             
-                            <TableHead className="text-xs font-bold text-slate-700">Fazenda / Produtor</TableHead>
+                            {/* TÍTULO DA COLUNA ALTERADO: PRODUTOR VEM ANTES */}
+                            <TableHead className="text-xs font-bold text-slate-700">Produtor / Fazenda</TableHead>
                             
                             <TableHead className="text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('distancia')}>
                               <div className="flex items-center gap-1">Distância {renderSortIcon('distancia')}</div>
@@ -738,9 +882,10 @@ export default function Agendamento() {
                                   {r.MUNICIPIO}
                                 </TableCell>
                                 <TableCell>
-                                  <p className="font-black text-[15px] text-slate-900 uppercase">{r.NOME_FAZENDA}</p>
+                                  {/* 👇 INVERTIDO: NOME_PRODUTOR EM CIMA E NOME_FAZENDA EMBAIXO 👇 */}
+                                  <p className="font-black text-[15px] text-slate-900 uppercase">{r.NOME_PRODUTOR}</p>
                                   <p className="text-[11px] font-bold text-slate-500 mt-0.5">
-                                    {r.NOME_PRODUTOR} <span className="font-normal">(IE: <span className="text-slate-800 font-bold">{r.INSCRICAO || "N/A"}</span>)</span>
+                                    {r.NOME_FAZENDA} <span className="font-normal">(IE: <span className="text-slate-800 font-bold">{r.INSCRICAO || "N/A"}</span>)</span>
                                   </p>
                                 </TableCell>
                                 <TableCell className="text-sm tabular-nums text-slate-600">{formatNumber(r.DISTANCIA_CADASTRADA)} km</TableCell>
@@ -793,7 +938,6 @@ export default function Agendamento() {
         </div>
       )}
 
-      {/* BOTÃO FLUTUANTE DE FINALIZAR (Sempre visível acima de tudo quando há seleção) */}
       {selectedRanchers.length > 0 && (
         <div className="fixed bottom-6 left-0 right-0 z-[200] flex justify-center animate-in slide-in-from-bottom-5">
           <div className="bg-slate-900 text-white px-6 py-4 rounded-full shadow-2xl flex items-center gap-6 border border-slate-700">

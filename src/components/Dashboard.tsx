@@ -214,7 +214,7 @@ export function Dashboard() {
     numAnimais: v.EFETIVO_TOTAL_ANIMAIS ? String(v.EFETIVO_TOTAL_ANIMAIS) : "",
     data: v.DATA_REGISTRO_VISITA ? v.DATA_REGISTRO_VISITA.split('T')[0] : "",
     visitante: getNomeComprador(v.ID_COMPRADOR), produtorAssinatura: v.ASSINATURA_DIGITAL || "",
-    distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${v.DISTANCIA_PERCORRIDA_REAL} km` : "DISTÂNCIA NÃO COLETADA",
+    distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${(v.DISTANCIA_PERCORRIDA_REAL * 2).toFixed(1)} km (Ida e Volta)` : "DISTÂNCIA NÃO COLETADA", // <-- Modificado p/ Relatório
     statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente"
   });
 
@@ -284,10 +284,12 @@ export function Dashboard() {
         const pecuaristaERP = pecuaristas.find(p => p.COD_PRODUTOR === v.COD_PRODUTOR);
         if (pecuaristaERP && pecuaristaERP.DISTANCIA_CADASTRADA) {
            const distErp = Number(pecuaristaERP.DISTANCIA_CADASTRADA);
-           const distGps = Number(v.DISTANCIA_PERCORRIDA_REAL);
-           const divergencia = distErp - distGps;
+           // 👇 AQUI: Multiplica o GPS bruto por 2
+           const distGpsIdaVolta = Number(v.DISTANCIA_PERCORRIDA_REAL) * 2;
+           const divergencia = distErp - distGpsIdaVolta;
+           
            if (divergencia > 3) { 
-             alertasFrete.push({ id: v.ID_VISITA, data: v.DATA_REGISTRO_VISITA, produtor: v.NOME_PRODUTOR, fazenda: v.NOME_FAZENDA, erp: distErp, gps: distGps, diff: divergencia });
+             alertasFrete.push({ id: v.ID_VISITA, data: v.DATA_REGISTRO_VISITA, produtor: v.NOME_PRODUTOR, fazenda: v.NOME_FAZENDA, erp: distErp, gps: distGpsIdaVolta, diff: divergencia });
            }
         }
       }
@@ -519,7 +521,7 @@ export function Dashboard() {
                   <TableHeader className="bg-slate-50/50">
                     <TableRow>
                       <TableHead className="font-bold text-xs text-slate-500 uppercase tracking-wider">Pecuarista</TableHead>
-                      <TableHead className="font-bold text-xs text-right text-slate-500 uppercase tracking-wider">GPS</TableHead>
+                      <TableHead className="font-bold text-xs text-right text-slate-500 uppercase tracking-wider" title="GPS * 2">GPS (Ida e Volta)</TableHead>
                       <TableHead className="font-bold text-xs text-right text-slate-500 uppercase tracking-wider">ERP</TableHead>
                       <TableHead className="font-bold text-xs text-right text-slate-500 uppercase tracking-wider">Divergência</TableHead>
                     </TableRow>
@@ -684,7 +686,9 @@ export function Dashboard() {
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-slate-500 font-bold uppercase">Data da Visita</p>
-                    <p className="text-sm font-bold text-slate-800">{new Date(selectedReport.data).toLocaleDateString("pt-BR")}</p>
+                    <p className="text-sm font-bold text-slate-800">
+                      {selectedReport.data && selectedReport.data !== "-" ? new Date(selectedReport.data).toLocaleDateString("pt-BR") : "-"}
+                    </p>
                   </div>
                 </div>
 
@@ -694,7 +698,7 @@ export function Dashboard() {
                   </h3>
                   <div className="grid grid-cols-2 gap-y-4 gap-x-6">
                     <div>
-                      <p className="text-[10px] text-slate-500 font-semibold uppercase">Distância (Kilometragem)</p>
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase">Distância (Ida e Volta)</p>
                       <p className="font-bold text-primary text-lg">{selectedReport.distancia}</p>
                     </div>
                   </div>

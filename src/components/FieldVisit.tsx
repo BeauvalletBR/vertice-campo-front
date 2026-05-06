@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
   Table,
@@ -36,7 +36,9 @@ import {
   Eraser,    
   Check,
   ChevronRight,
-  PenTool
+  PenTool,
+  Camera, // <-- ADICIONADO O ÍCONE DA CÂMERA
+  ImagePlus
 } from "lucide-react";
 import { api, fetchPecuaristasAgendamento, fetchAgendamentosPendentes, type ApiRancher, type ApiAgendamento, type ApiUsuario } from "@/services/api";
 
@@ -44,6 +46,8 @@ import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import SignatureCanvas from 'react-signature-canvas';
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 type Step = "idle" | "routing" | "form";
 
@@ -83,6 +87,39 @@ interface FormData {
   dataVisita: string;
   visitante: string;
   produtorAssinatura: string;
+}
+
+interface CheckinReport {
+  id: string;
+  cod_produtor: string | null;
+  nome: string;
+  ie: string;
+  propriedade: string;
+  car: string;
+  municipio: string;
+  telefone: string;
+  melhorDiaContato: string;
+  proprietario: string;
+  tipoVisita: string;
+  nomeRecebedor: string;
+  cargoRecebedor: string;
+  frigorificoCostume: string;
+  cabecasAbatidasAno: string;
+  tipoVenda: string;
+  atividade: string; 
+  habilitacao: string;
+  terminacao: string; 
+  disp30Dias: boolean; qtd30Dias: string; sexo30Dias: string; status30Dias: string;
+  disp60Dias: boolean; qtd60Dias: string; sexo60Dias: string; status60Dias: string;
+  disp90Dias: boolean; qtd90Dias: string; sexo90Dias: string; status90Dias: string;
+  numAnimais: string; 
+  data: string; 
+  id_comprador: number;
+  visitante: string;
+  produtorAssinatura: string;
+  distancia: string;
+  distanciaRealRaw: number | null;
+  statusDatavale: "pendente" | "cadastrado";
 }
 
 const EMPRESA_COORDS: [number, number] = [-16.3419669, -49.4708347]; 
@@ -167,6 +204,7 @@ export function FieldVisit() {
 
   const sigCanvas = useRef<SignatureCanvas>(null);
   const sigCanvasFullscreen = useRef<SignatureCanvas>(null); // Para o canvas grande (tela cheia)
+  const fileInputRef = useRef<HTMLInputElement>(null); // 👇 REF PARA O INPUT DA CÂMERA 👇
 
   const [dateStart, setDateStart] = useState(() => {
     const d = new Date();
@@ -413,6 +451,20 @@ export function FieldVisit() {
   const updateField = (key: keyof FormData, value: any) => setForm(prev => ({ ...prev, [key]: value }));
   const formatToUpper = (val: any) => (val === null || val === undefined) ? "" : typeof val === 'string' ? val.trim().toUpperCase() : String(val).toUpperCase();
 
+  // 👇 LÓGICA DE UPLOAD/CÂMERA 👇
+  const handleCaptureImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (reader.result) {
+          updateField("produtorAssinatura", reader.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   // 👇 Usa o Canvas Pequeno 👇
   const limparAssinatura = () => {
     sigCanvas.current?.clear();
@@ -480,8 +532,8 @@ export function FieldVisit() {
 
     let assinaturaPronta = form.produtorAssinatura;
     
-    // 👇 Pega do Canvas Pequeno APENAS se o usuário não tiver salvo a tela cheia
-    if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
+    // 👇 Pega do Canvas Pequeno APENAS se o usuário não tiver salvo a tela cheia e nem tirado foto
+    if (sigCanvas.current && !sigCanvas.current.isEmpty() && !assinaturaPronta) {
        assinaturaPronta = sigCanvas.current.getCanvas().toDataURL('image/png');
        updateField("produtorAssinatura", assinaturaPronta);
     }
@@ -914,17 +966,17 @@ export function FieldVisit() {
                       </div>
                     </div>
                     
-                    {/* 👇 MODULO DE ASSINATURA DIGITAL 👇 */}
+                    {/* 👇 MODULO DE ASSINATURA DIGITAL / FOTO 👇 */}
                     <div className="border-t border-slate-100 pt-6 mt-6">
                       <Label className="text-xs font-bold text-slate-700 uppercase block mb-3 text-center tracking-widest">
-                        Assinatura do Produtor
+                        Assinatura do Produtor / Recebedor
                       </Label>
 
                       <div className="flex flex-col items-center">
                         {form.produtorAssinatura ? (
                           <div className="flex flex-col items-center">
-                            <div className="border border-slate-200 bg-white rounded-xl p-4 shadow-sm relative group">
-                              <img src={form.produtorAssinatura} alt="Assinatura salva" className="h-24 w-auto object-contain mix-blend-multiply" />
+                            <div className="border border-slate-200 bg-white rounded-xl p-4 shadow-sm relative group overflow-hidden w-full max-w-[340px] flex justify-center">
+                              <img src={form.produtorAssinatura} alt="Assinatura salva" className="max-h-32 w-auto object-contain mix-blend-multiply" />
                             </div>
                             <div className="flex gap-2 mt-4">
                               <Button variant="outline" size="sm" className="font-bold text-slate-600 border-slate-200 hover:bg-slate-100" onClick={apagarAssinaturaSalva}>
@@ -959,9 +1011,27 @@ export function FieldVisit() {
                                 }} 
                               />
                             </div>
-                            <Button variant="ghost" className="mt-3 text-slate-500 font-bold" onClick={limparAssinatura}>
-                              Limpar Assinatura
-                            </Button>
+                            
+                            {/* BOTÕES DE AÇÃO ABAIXO DO QUADRO BRANCO */}
+                            <div className="flex gap-2 mt-3 w-[340px]">
+                              <Button variant="outline" className="flex-1 text-slate-500 font-bold border-slate-200" onClick={limparAssinatura}>
+                                <Eraser className="w-4 h-4 mr-2" /> Limpar
+                              </Button>
+                              
+                              {/* INPUT INVISÍVEL E BOTÃO DE CÂMERA */}
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                capture="environment" 
+                                className="hidden" 
+                                ref={fileInputRef} 
+                                onChange={handleCaptureImage} 
+                              />
+                              <Button variant="outline" className="flex-1 text-blue-600 font-bold border-blue-200 hover:bg-blue-50" onClick={() => fileInputRef.current?.click()}>
+                                <Camera className="w-4 h-4 mr-2" /> Tirar Foto
+                              </Button>
+                            </div>
+
                           </div>
                         )}
                       </div>

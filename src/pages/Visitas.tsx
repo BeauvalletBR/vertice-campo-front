@@ -72,6 +72,24 @@ interface CheckinReport {
   statusDatavale: "pendente" | "cadastrado";
 }
 
+// 👇 FUNÇÃO DEFINITIVA PARA DATA: Pega só a parte da data e ignora o resto
+const formatarDataBruta = (dataString: string | null | undefined) => {
+  if (!dataString) return "-";
+  
+  // Pega só o que tem antes do "T" (ex: "2026-05-05")
+  const dataApenas = dataString.split('T')[0]; 
+  
+  // Divide o "2026-05-05" nos hífens
+  const partes = dataApenas.split('-');
+  
+  if (partes.length === 3) {
+    // Retorna formatado "05/05/2026"
+    return `${partes[2]}/${partes[1]}/${partes[0]}`;
+  }
+  
+  return dataString; // Fallback caso venha num formato muito louco
+};
+
 export default function Pecuaristas() {
   const { user } = useAuth();
   
@@ -135,10 +153,10 @@ export default function Pecuaristas() {
           disp60Dias: v.QTD_60DIAS !== null, qtd60Dias: v.QTD_60DIAS ? String(v.QTD_60DIAS) : "", sexo60Dias: v.SEXO_60DIAS || "", status60Dias: v.STATUS_60DIAS || "",
           disp90Dias: v.QTD_90DIAS !== null, qtd90Dias: v.QTD_90DIAS ? String(v.QTD_90DIAS) : "", sexo90Dias: v.SEXO_90DIAS || "", status90Dias: v.STATUS_90DIAS || "",
           numAnimais: v.EFETIVO_TOTAL_ANIMAIS ? String(v.EFETIVO_TOTAL_ANIMAIS) : "",
-          data: v.DATA_REGISTRO_VISITA ? v.DATA_REGISTRO_VISITA.split('T')[0] : "",
+          data: v.DATA_REGISTRO_VISITA || "", // Grava no estado o dado sujo exatamente como veio do banco
           id_comprador: v.ID_COMPRADOR,
           visitante: getNomeComprador(v.ID_COMPRADOR), produtorAssinatura: v.ASSINATURA_DIGITAL || "",
-          distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${v.DISTANCIA_PERCORRIDA_REAL} km` : "N/A",
+          distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${(v.DISTANCIA_PERCORRIDA_REAL * 2).toFixed(1)} km` : "N/A", // <-- Modificado p/ Relatório
           distanciaRealRaw: v.DISTANCIA_PERCORRIDA_REAL,
           statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente"
         }));
@@ -161,7 +179,10 @@ export default function Pecuaristas() {
       const matchProdutor = v.nome.toLowerCase().includes(filterProdutor.toLowerCase());
       const matchFazenda = v.propriedade.toLowerCase().includes(filterFazenda.toLowerCase());
       const matchCidade = filterCidade === "" || v.municipio === filterCidade;
-      const matchData = filterData === "" || v.data === filterData;
+      
+      // Ajuste no filtro de data para funcionar com o dado bruto "2026-05-05T00:00:00.000Z"
+      const matchData = filterData === "" || (v.data && v.data.startsWith(filterData)); 
+
       return matchProdutor && matchFazenda && matchCidade && matchData;
     });
   };
@@ -261,7 +282,7 @@ export default function Pecuaristas() {
       const xOffset = (pdfWidth - imgWidth) / 2;
 
       pdf.addImage(imgData, "PNG", xOffset, 0, imgWidth, imgHeight);
-      pdf.save(`Checkin_${selectedReport.nome.replace(/\s+/g, '_')}_${selectedReport.data}.pdf`);
+      pdf.save(`Checkin_${selectedReport.nome.replace(/\s+/g, '_')}_${formatarDataBruta(selectedReport.data).replace(/\//g, '-')}.pdf`);
       toast.success("PDF gerado com sucesso!");
     } catch (error) {
       toast.error("Erro ao gerar o PDF.");
@@ -272,16 +293,22 @@ export default function Pecuaristas() {
 
   const renderLogisticaRow = (v: CheckinReport) => {
     let erpKm: number | null = null;
-    let gpsKm: number | null = v.distanciaRealRaw;
+    let gpsKmBase: number | null = v.distanciaRealRaw;
+    let gpsKmIdaVolta: number | null = null;
     let isRed = false;
+
+    // Se tem o dado do GPS, multiplica por 2
+    if (gpsKmBase !== null) {
+      gpsKmIdaVolta = gpsKmBase * 2;
+    }
 
     if (v.cod_produtor) {
       const pec = pecuaristas.find(p => String(p.COD_PRODUTOR) === v.cod_produtor);
       if (pec && pec.DISTANCIA_CADASTRADA) erpKm = Number(pec.DISTANCIA_CADASTRADA);
     }
 
-    if (erpKm !== null && gpsKm !== null) {
-      const diferenca = Math.abs(erpKm - gpsKm);
+    if (erpKm !== null && gpsKmIdaVolta !== null) {
+      const diferenca = Math.abs(erpKm - gpsKmIdaVolta);
       const porcentagemErro = (diferenca / erpKm) * 100;
       if (porcentagemErro > 10) isRed = true;
     }
@@ -289,7 +316,7 @@ export default function Pecuaristas() {
     return (
       <TableRow key={`ult-${v.id}`} className="transition-colors hover:bg-slate-50">
         <TableCell className="py-4 text-sm font-medium text-slate-600 whitespace-nowrap">
-           {new Date(v.data).toLocaleDateString("pt-BR")}
+           {formatarDataBruta(v.data)} {/* USO DA FUNÇÃO SEGURA */}
         </TableCell>
         <TableCell className="px-4 py-4">
           <p className="font-bold text-sm text-slate-800 uppercase">{v.nome}</p>
@@ -300,13 +327,15 @@ export default function Pecuaristas() {
             <User className="w-3 h-3 text-slate-400" /> {v.visitante}
           </div>
         </TableCell>
+        
+        {/* GPS KM Multiplicado por 2 */}
         <TableCell className="py-4 text-sm text-center">
-          <span className="text-blue-700 font-black">{gpsKm !== null ? `${gpsKm.toFixed(1)} km` : '--'}</span>
+          <span className="text-blue-700 font-black">{gpsKmIdaVolta !== null ? `${gpsKmIdaVolta.toFixed(1)} km` : '--'}</span>
         </TableCell>
         
         <TableCell className="py-4 text-sm text-center">
           {isRed ? (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700 font-bold text-[11px] whitespace-nowrap mx-auto shadow-sm" title="Divergência superior a 10% entre ERP e GPS">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700 font-bold text-[11px] whitespace-nowrap mx-auto shadow-sm" title="Divergência superior a 10% entre ERP e GPS (Ida e Volta)">
               <AlertTriangle className="w-3.5 h-3.5" />
               {erpKm !== null ? `${erpKm.toFixed(1)} km` : '--'}
             </div>
@@ -464,7 +493,7 @@ export default function Pecuaristas() {
                           <div className="flex items-center gap-1.5 text-slate-600 font-bold uppercase"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {p.municipio}</div>
                         </TableCell>
                         <TableCell className="py-4 text-sm whitespace-nowrap">
-                          <div className="flex items-center gap-1.5 font-bold text-slate-600"><Calendar className="w-3.5 h-3.5 text-slate-400" /> {new Date(p.data).toLocaleDateString("pt-BR")}</div>
+                          <div className="flex items-center gap-1.5 font-bold text-slate-600"><Calendar className="w-3.5 h-3.5 text-slate-400" /> {formatarDataBruta(p.data)}</div>
                         </TableCell>
                         <TableCell className="text-right px-6 py-4">
                           <div className="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap">
@@ -530,7 +559,7 @@ export default function Pecuaristas() {
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 px-4">Data</TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 px-4 min-w-[200px]">Pecuarista / Fazenda</TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500">Comprador</TableHead>
-                  <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center whitespace-nowrap">KM da Visita (GPS)</TableHead>
+                  <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center whitespace-nowrap">KM Visita (Ida e Volta)</TableHead>
                   <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center whitespace-nowrap">KM Sistema (ERP)</TableHead>
                   <TableHead className="text-right font-bold text-xs uppercase tracking-wider text-slate-500 px-4">Ações</TableHead>
                 </TableRow>
@@ -705,7 +734,7 @@ export default function Pecuaristas() {
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Data da Visita</p>
-                      <p className="text-sm font-black text-slate-800">{new Date(selectedReport.data).toLocaleDateString("pt-BR")}</p>
+                      <p className="text-sm font-black text-slate-800">{formatarDataBruta(selectedReport.data)}</p>
                     </div>
                   </div>
 
@@ -715,7 +744,7 @@ export default function Pecuaristas() {
                     </h3>
                     <div className="grid grid-cols-2 gap-y-4 gap-x-6">
                       <div>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Distância (Kilometragem)</p>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Distância (Ida e Volta)</p>
                         <p className="font-black text-slate-800 text-xl tabular-nums">{selectedReport.distancia}</p>
                       </div>
                     </div>
