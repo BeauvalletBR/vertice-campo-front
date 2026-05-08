@@ -43,6 +43,7 @@ export interface ApiRancher {
   JA_VENDEU: "S" | "N";
   DATA_ULTIMA_VISITA?: string | null; 
   VENDAREPRESENTANTE: "S" | "N";
+  NOME_REPRESENTANTE?: string | null; 
 }
 
 export interface ApiAgendamento {
@@ -102,8 +103,6 @@ export interface ApiVisita {
   QTD_90DIAS: number | null;
   SEXO_90DIAS: string | null;
   STATUS_90DIAS: string | null;
-  
-  // 👇 NOVAS COLUNAS ADICIONADAS AQUI 👇
   IMAGEM?: string | null;
   OBSERVACOES?: string | null;
 }
@@ -111,6 +110,16 @@ export interface ApiVisita {
 export interface ApiUsuario {
   SEQUSUARIO: number;
   CODUSUARIO: string;
+}
+
+// 👇 INTERFACE PARA O HISTÓRICO DE COMPRAS 👇
+export interface ApiHistoricoCompra {
+  COD_PRODUTOR: number;
+  SEQ_PROPRIEDADE: number;
+  MES_ANO: string;
+  QTD_CHINA: number;
+  QTD_NAO_CHINA: number;
+  TOTAL_COMPRADO: number;
 }
 
 const mockStats: DashboardStats[] = [
@@ -124,6 +133,10 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let cachedPecuaristas: ApiRancher[] | null = null;
 let fetchPromise: Promise<ApiRancher[]> | null = null;
+
+// 👇 CACHE PARA O HISTÓRICO DE COMPRAS 👇
+let cachedHistorico: ApiHistoricoCompra[] | null = null;
+let fetchHistoricoPromise: Promise<ApiHistoricoCompra[]> | null = null;
 
 const getAuthHeaders = (isJson = false) => {
   const tokenAPI = import.meta.env.VITE_N8N_SECRET_TOKEN;
@@ -186,6 +199,45 @@ export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise
 
   fetchPromise = loadFromApi();
   return fetchPromise;
+};
+
+// 👇 FUNÇÃO PARA BUSCAR O HISTÓRICO DE COMPRAS 👇
+export const fetchHistoricoCompras = async (forceRefresh = false): Promise<ApiHistoricoCompra[]> => {
+  if (cachedHistorico && cachedHistorico.length > 0 && !forceRefresh) {
+    return cachedHistorico;
+  }
+
+  const loadFromApi = async () => {
+    const url = import.meta.env.VITE_N8N_WEBHOOK_URL_PECUARISTAS_HISTORICO;
+    if (!url) return [];
+
+    try {
+      const response = await fetch(url, { headers: getAuthHeaders() });
+      checkSessionExpired(response);
+      
+      if (response.status === 401 || response.status === 403) {
+         fetchHistoricoPromise = null; 
+         return [];
+      }
+      
+      const data = await response.json();
+      
+      if (data.success === false) {
+          return [];
+      }
+
+      if (Array.isArray(data) && data.length > 0) {
+          cachedHistorico = data;
+      }
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      fetchHistoricoPromise = null;
+      return [];
+    }
+  };
+
+  fetchHistoricoPromise = loadFromApi();
+  return fetchHistoricoPromise;
 };
 
 export const fetchAgendamentosPendentes = async (): Promise<ApiAgendamento[]> => {
@@ -456,5 +508,6 @@ export const api = {
   inativarAgendamento, 
   fetchAgendamentosPendentes,
   editarAgendamento,
-  editarVisita
+  editarVisita,
+  fetchHistoricoCompras 
 };

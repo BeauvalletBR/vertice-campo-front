@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { useState, useRef, useMemo, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -11,18 +11,75 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/AuthContext";
 import { 
-  CalendarPlus, 
-  Map as MapIcon, 
-  CheckSquare, ArrowLeft, UserSquare2, CalendarDays,
-  ChevronDown, ChevronUp, Building2, Users, Filter, ArrowUpDown, ArrowUp, ArrowDown,
-  Loader2, Sparkles, Trophy, Target, Truck, X, Search
+  Clock, 
+  MapPin, 
+  FileText, 
+  ChevronDown, 
+  ChevronUp,
+  X,
+  Calendar,
+  CalendarPlus,
+  Download,
+  Loader2,
+  Navigation,
+  FilterX,
+  CheckCircle2,
+  AlertTriangle,
+  User,
+  Link as LinkIcon,
+  Search,
+  Check,
+  Filter,
+  Trash2,
+  AlertCircle,
+  ImageIcon,
+  ArrowLeft,
+  CalendarDays,
+  UserSquare2,
+  Building2,
+  Users,
+  Map as MapIcon,
+  CheckSquare,
+  Sparkles,
+  Trophy,
+  Target,
+  Truck,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import { toast } from "sonner";
-import { api, fetchPecuaristasAgendamento, saveAgendamento, type ApiRancher, type ApiUsuario } from "@/services/api";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import { api, fetchPecuaristasAgendamento, saveAgendamento, type ApiUsuario, type ApiHistoricoCompra } from "@/services/api";
 import { calculateScoreVolume, calculateScoreProspeccao, calculateScoreLogistica } from "@/services/pecuaristas";
 
-// Molde para a pesquisa global (resolve o erro do TypeScript)
+// 👇 ATUALIZADO: Inclui nome_representante e as novas métricas de histórico 👇
+export interface ApiRancher {
+  COD_PRODUTOR: number;
+  NOME_PRODUTOR: string;
+  NOME_FAZENDA: string;
+  MUNICIPIO: string;
+  UF_FAZENDA: string;
+  INSCRICAO: string;
+  NUMERO1: string | null;
+  POSSUI_CAR: "S" | "N";
+  DISTANCIA_CADASTRADA: number;
+  QTD_COMPRADA_12M_CHINA: number;
+  QTD_COMPRADA_12M_NAO_CHINA: number;
+  JA_VENDEU: "S" | "N";
+  DATA_ULTIMA_VISITA?: string | null; 
+  VENDAREPRESENTANTE: "S" | "N";
+  NOME_REPRESENTANTE?: string | null; 
+  
+  // Criado dinamicamente no Front-end após calcular o histórico
+  totalCompradoCalculado?: number;
+  totalChinaCalculado?: number;
+  totalNaoChinaCalculado?: number;
+}
+
 interface GlobalSearchItem {
   tipo: 'cidade' | 'fazenda';
   valor: string;
@@ -57,7 +114,10 @@ const mapCityToRegion = (city: string): string => {
 const getUniqueId = (r: ApiRancher) => `${r.COD_PRODUTOR}-${r.INSCRICAO || 'sn'}-${r.NOME_FAZENDA}-${r.MUNICIPIO}`;
 
 export default function Agendamento() {
-  const [apiData, setApiData] = useState<ApiRancher[]>([]);
+  const { user } = useAuth();
+  
+  const [apiDataBruto, setApiDataBruto] = useState<ApiRancher[]>([]);
+  const [historicoData, setHistoricoData] = useState<ApiHistoricoCompra[]>([]);
   const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]); 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -72,11 +132,17 @@ export default function Agendamento() {
   const [isSchedulingMode, setIsSchedulingMode] = useState(false);
   const [visibleCount, setVisibleCount] = useState(15); 
   
+  // 👇 ESTADOS DOS FILTROS INTERNOS 👇
   const [filterText, setFilterText] = useState("");
   const [filterCar, setFilterCar] = useState("Todos");
   const [filterHab, setFilterHab] = useState("Todos"); 
   const [filterJaVendeu, setFilterJaVendeu] = useState("Todos"); 
-  const [filterRep, setFilterRep] = useState("Todos"); 
+  const [filterRepStatus, setFilterRepStatus] = useState("Todos"); 
+  const [filterNomeRep, setFilterNomeRep] = useState(""); 
+  
+  // 👇 ESTADOS DA TIMELINE (12, 24, 36, 48, 60+) 👇
+  const [mesesFiltro, setMesesFiltro] = useState<number>(12); 
+  const [flashAnimation, setFlashAnimation] = useState<boolean>(false);
   
   const [sortColumn, setSortColumn] = useState<string | null>("quantidade");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>("desc");
@@ -91,25 +157,73 @@ export default function Agendamento() {
     const loadData = async () => {
       setIsLoading(true);
       
-      const [dataPecuaristas, dataUsuarios] = await Promise.all([
+      const [dataPecuaristas, dataUsuarios, dataHistorico] = await Promise.all([
         fetchPecuaristasAgendamento(),
-        api.getUsuarios()
+        api.getUsuarios(),
+        api.fetchHistoricoCompras() // <-- BATE NA API DO HISTÓRICO
       ]);
       
       const uniqueDataMap = new Map();
-      dataPecuaristas.forEach(item => {
+      dataPecuaristas.forEach((item: any) => {
         const uid = getUniqueId(item);
         if (!uniqueDataMap.has(uid)) {
           uniqueDataMap.set(uid, item);
         }
       });
       
-      setApiData(Array.from(uniqueDataMap.values()));
+      setApiDataBruto(Array.from(uniqueDataMap.values()));
       setUsuariosData(dataUsuarios);
+      setHistoricoData(dataHistorico);
       setIsLoading(false);
     };
     loadData();
   }, []);
+
+  // 👇 LÓGICA DE CRUZAMENTO DE DADOS (Pecuarista + Histórico por Meses) 👇
+  const apiDataComHistorico = useMemo(() => {
+    if (!apiDataBruto.length) return [];
+    
+    const hoje = new Date();
+    // Calcula a data de corte baseada no filtro selecionado (ex: 24 meses atrás)
+    const dataCorte = new Date(hoje.setMonth(hoje.getMonth() - mesesFiltro));
+    const dataCorteString = dataCorte.toISOString().split('T')[0].substring(0, 7); // Formato YYYY-MM
+
+    return apiDataBruto.map(rancher => {
+      // Se for 12 meses (padrão da View do Oracle), não precisa recalcular
+      if (mesesFiltro === 12) {
+        return {
+          ...rancher,
+          totalChinaCalculado: Number(rancher.QTD_COMPRADA_12M_CHINA) || 0,
+          totalNaoChinaCalculado: Number(rancher.QTD_COMPRADA_12M_NAO_CHINA) || 0,
+          totalCompradoCalculado: (Number(rancher.QTD_COMPRADA_12M_CHINA) || 0) + (Number(rancher.QTD_COMPRADA_12M_NAO_CHINA) || 0)
+        };
+      }
+
+      // Se o usuário selecionou 24, 36, 48, etc., a gente soma cruzando com a tabela de Histórico
+      const historicoFazenda = historicoData.filter(h => 
+        h.COD_PRODUTOR === rancher.COD_PRODUTOR && 
+        // Compara ignorando os limites de tempo caso seja "60+" (pra 60+ a gente soma a vida toda)
+        (mesesFiltro === 60 ? true : h.MES_ANO >= dataCorteString)
+      );
+
+      const chinaSomado = historicoFazenda.reduce((acc, curr) => acc + (Number(curr.QTD_CHINA) || 0), 0);
+      const naoChinaSomado = historicoFazenda.reduce((acc, curr) => acc + (Number(curr.QTD_NAO_CHINA) || 0), 0);
+
+      return {
+        ...rancher,
+        totalChinaCalculado: chinaSomado,
+        totalNaoChinaCalculado: naoChinaSomado,
+        totalCompradoCalculado: chinaSomado + naoChinaSomado
+      };
+    });
+  }, [apiDataBruto, historicoData, mesesFiltro]);
+
+  // Animação de Flash quando troca os meses
+  useEffect(() => {
+    setFlashAnimation(true);
+    const timer = setTimeout(() => setFlashAnimation(false), 800);
+    return () => clearTimeout(timer);
+  }, [mesesFiltro]);
 
   const regionsData = useMemo(() => {
     const regionsMap: Record<string, { id: string, name: string, description: string, ranchers: ApiRancher[] }> = {
@@ -126,28 +240,25 @@ export default function Agendamento() {
       "outros": { id: "outros", name: "Outras Regiões / Não Mapeadas", description: "Cidades fora do mapeamento padrão de Goiás.", ranchers: [] }
     };
 
-    apiData.forEach(rancher => {
+    apiDataComHistorico.forEach(rancher => {
       const regionId = mapCityToRegion(rancher.MUNICIPIO);
       regionsMap[regionId].ranchers.push(rancher);
     });
 
     return Object.values(regionsMap);
-  }, [apiData]);
+  }, [apiDataComHistorico]);
 
-  // LÓGICA DA PESQUISA GLOBAL
   const globalSearchResults = useMemo<GlobalSearchItem[]>(() => {
     if (globalSearch.length < 2) return [];
     
     const search = globalSearch.toLowerCase();
     
-    // Sugestões de Cidades
-    const todasCidades = Array.from(new Set(apiData.map(r => r.MUNICIPIO)));
+    const todasCidades = Array.from(new Set(apiDataComHistorico.map(r => r.MUNICIPIO)));
     const cidadesFiltradas: GlobalSearchItem[] = todasCidades
       .filter(c => c.toLowerCase().includes(search))
       .map(c => ({ tipo: 'cidade', valor: c }));
 
-    // Sugestões de Fazendas/Produtores
-    const fazendasFiltradas: GlobalSearchItem[] = apiData
+    const fazendasFiltradas: GlobalSearchItem[] = apiDataComHistorico
       .filter(r => 
         r.NOME_FAZENDA.toLowerCase().includes(search) || 
         r.NOME_PRODUTOR.toLowerCase().includes(search)
@@ -156,31 +267,27 @@ export default function Agendamento() {
       .map(r => ({ tipo: 'fazenda', valor: r.NOME_FAZENDA, produtor: r.NOME_PRODUTOR, cidade: r.MUNICIPIO }));
 
     return [...cidadesFiltradas.slice(0, 5), ...fazendasFiltradas];
-  }, [globalSearch, apiData]);
+  }, [globalSearch, apiDataComHistorico]);
 
   const handleSelectGlobalSearch = (item: GlobalSearchItem) => {
     const regionId = mapCityToRegion(item.tipo === 'cidade' ? item.valor : (item.cidade || ''));
     
     setGlobalSearch("");
     setIsSearchFocused(false);
-    
     setRegionFilterAtiva(regionId);
     setExpandedRegion(null); 
     
-    // Se a busca era por cidade, preenche cidade. 
-    // Se era por fazenda/produtor, como a nova interface é focada no produtor, eu passo o valor correto pra não bugar:
     if (item.tipo === 'cidade') {
       setFilterText(item.valor);
     } else {
-      // Como item.valor guardou o NOME_FAZENDA e item.produtor o NOME_PRODUTOR, a pesquisa pega os dois.
-      // Vou preencher com o nome do Produtor para combinar com o destaque da tela.
       setFilterText(item.produtor || item.valor); 
     }
 
     setFilterCar("Todos"); 
     setFilterHab("Todos");
     setFilterJaVendeu("Todos"); 
-    setFilterRep("Todos");
+    setFilterRepStatus("Todos");
+    setFilterNomeRep("");
     setSortColumn("quantidade"); 
     setSortDirection("desc");
     setVisibleCount(15); 
@@ -201,7 +308,8 @@ export default function Agendamento() {
       setFilterCar("Todos"); 
       setFilterHab("Todos");
       setFilterJaVendeu("Todos"); 
-      setFilterRep("Todos");
+      setFilterRepStatus("Todos");
+      setFilterNomeRep("");
       setSortColumn("quantidade"); 
       setSortDirection("desc");
       setVisibleCount(15); 
@@ -211,9 +319,10 @@ export default function Agendamento() {
     }
   };
 
+  // 👇 LÓGICA DE EXIBIÇÃO DE QUANTIDADE (Usa os campos calculados agora) 👇
   const getDisplayQuantidade = (r: ApiRancher) => {
-    const china = Number(r.QTD_COMPRADA_12M_CHINA) || 0;
-    const naoChina = Number(r.QTD_COMPRADA_12M_NAO_CHINA) || 0;
+    const china = r.totalChinaCalculado || 0;
+    const naoChina = r.totalNaoChinaCalculado || 0;
     
     if (filterHab === "China") return china;
     if (filterHab === "Não China") return naoChina;
@@ -236,13 +345,16 @@ export default function Agendamento() {
 
       const matchCar = filterCar === "Todos" || r.POSSUI_CAR === filterCar;
       const matchHab = filterHab === "Todos" || 
-        (filterHab === "China" && Number(r.QTD_COMPRADA_12M_CHINA) > 0) ||
-        (filterHab === "Não China" && Number(r.QTD_COMPRADA_12M_NAO_CHINA) > 0);
+        (filterHab === "China" && (r.totalChinaCalculado || 0) > 0) ||
+        (filterHab === "Não China" && (r.totalNaoChinaCalculado || 0) > 0);
       
       const matchJaVendeu = filterJaVendeu === "Todos" || r.JA_VENDEU === filterJaVendeu;
-      const matchRep = filterRep === "Todos" || r.VENDAREPRESENTANTE === filterRep;
+      const matchRepStatus = filterRepStatus === "Todos" || r.VENDAREPRESENTANTE === filterRepStatus;
+      
+      const matchNomeRep = filterNomeRep === "" || 
+        (r.NOME_REPRESENTANTE && r.NOME_REPRESENTANTE.toLowerCase().includes(filterNomeRep.toLowerCase()));
 
-      return matchText && matchCar && matchHab && matchJaVendeu && matchRep; 
+      return matchText && matchCar && matchHab && matchJaVendeu && matchRepStatus && matchNomeRep; 
     });
 
     if (aiMode) {
@@ -261,6 +373,7 @@ export default function Agendamento() {
         else if (sortColumn === 'quantidade') { valA = getDisplayQuantidade(a); valB = getDisplayQuantidade(b); }
         else if (sortColumn === 'car') { valA = a.POSSUI_CAR; valB = b.POSSUI_CAR; }
         else if (sortColumn === 'javendeu') { valA = a.JA_VENDEU; valB = b.JA_VENDEU; }
+        else if (sortColumn === 'representante') { valA = a.NOME_REPRESENTANTE || ""; valB = b.NOME_REPRESENTANTE || ""; }
 
         if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
         if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
@@ -282,7 +395,7 @@ export default function Agendamento() {
       currentTotalComprados,
       displayedRanchers
     };
-  }, [expandedRegion, regionsData, filterText, filterCar, filterHab, filterJaVendeu, filterRep, aiMode, sortColumn, sortDirection, visibleCount]);
+  }, [expandedRegion, regionsData, filterText, filterCar, filterHab, filterJaVendeu, filterRepStatus, filterNomeRep, aiMode, sortColumn, sortDirection, visibleCount, mesesFiltro]);
 
   const handleSort = (column: string) => {
     setAiMode(null); 
@@ -315,7 +428,7 @@ export default function Agendamento() {
     }
   };
 
-  const selectedRanchersData = useMemo(() => apiData.filter(r => selectedRanchers.includes(getUniqueId(r))), [selectedRanchers, apiData]);
+  const selectedRanchersData = useMemo(() => apiDataComHistorico.filter(r => selectedRanchers.includes(getUniqueId(r))), [selectedRanchers, apiDataComHistorico]);
 
   const handleConfirmSchedule = async () => {
     if (!scheduleDate || !searchUser) {
@@ -374,8 +487,8 @@ export default function Agendamento() {
 
   const renderCompradosDetalhes = (r: ApiRancher) => {
     if (filterHab !== "Todos") return null;
-    const china = Number(r.QTD_COMPRADA_12M_CHINA) || 0;
-    const naoChina = Number(r.QTD_COMPRADA_12M_NAO_CHINA) || 0;
+    const china = r.totalChinaCalculado || 0;
+    const naoChina = r.totalNaoChinaCalculado || 0;
     const total = china + naoChina;
     if (total === 0) return null;
     const pctChina = Math.round((china / total) * 100);
@@ -463,7 +576,7 @@ export default function Agendamento() {
                   <TableRow>
                     <TableHead className="font-semibold text-xs">Produtor / Fazenda</TableHead>
                     <TableHead className="font-semibold text-xs">Cidade</TableHead>
-                    <TableHead className="font-semibold text-xs text-right">Comprados (12m)</TableHead>
+                    <TableHead className="font-semibold text-xs text-right">Comprados ({mesesFiltro}m)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -754,17 +867,14 @@ export default function Agendamento() {
                 )}
 
                 <div className="space-y-1.5 w-full md:w-28">
-                  <Label className="text-[10px] font-bold text-slate-500 uppercase">Já Vendeu?</Label>
+                  <Label className="text-[10px] font-bold text-slate-500 uppercase">Já Compramos?</Label>
                   <select 
                     className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
                     value={filterJaVendeu} 
                     onChange={(e) => {
                       const val = e.target.value;
                       setFilterJaVendeu(val);
-                      if (val === "N") {
-                        setFilterHab("Todos");
-                        setFilterRep("Todos");
-                      }
+                      // Tirei a limpeza de dados aqui para os filtros não sumirem e o cara ficar travado
                     }}
                   >
                     <option value="Todos">Todos</option>
@@ -773,18 +883,36 @@ export default function Agendamento() {
                   </select>
                 </div>
 
+                {/* 👇 FILTROS DO REPRESENTANTE 👇 */}
                 {filterJaVendeu !== "N" && (
-                  <div className="space-y-1.5 w-full md:w-32">
-                    <Label className="text-[10px] font-bold text-slate-500 uppercase">Representação?</Label>
-                    <select 
-                      className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                      value={filterRep} onChange={(e) => setFilterRep(e.target.value)}
-                    >
-                      <option value="Todos">Todos</option>
-                      <option value="S">Sim</option>
-                      <option value="N">Não</option>
-                    </select>
-                  </div>
+                  <>
+                    <div className="space-y-1.5 w-full md:w-32">
+                      <Label className="text-[10px] font-bold text-slate-500 uppercase">Representação?</Label>
+                      <select 
+                        className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        value={filterRepStatus} 
+                        onChange={(e) => {
+                          setFilterRepStatus(e.target.value);
+                          if (e.target.value !== "S") setFilterNomeRep(""); 
+                        }}
+                      >
+                        <option value="Todos">Todos</option>
+                        <option value="S">Sim</option>
+                        <option value="N">Não</option>
+                      </select>
+                    </div>
+                    {filterRepStatus === "S" && (
+                      <div className="space-y-1.5 w-full md:w-40 animate-in fade-in">
+                        <Label className="text-[10px] font-bold text-slate-500 uppercase">Nome Representante</Label>
+                        <Input 
+                          placeholder="Buscar rep..." 
+                          className="h-9 bg-white text-xs border-slate-300 focus-visible:ring-primary"
+                          value={filterNomeRep}
+                          onChange={(e) => setFilterNomeRep(e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <Button 
@@ -795,7 +923,9 @@ export default function Agendamento() {
                     setFilterCar("Todos"); 
                     setFilterHab("Todos"); 
                     setFilterJaVendeu("Todos"); 
-                    setFilterRep("Todos"); 
+                    setFilterRepStatus("Todos"); 
+                    setFilterNomeRep("");
+                    setMesesFiltro(12);
                     setSortColumn("quantidade"); 
                     setSortDirection("desc"); 
                     setVisibleCount(15); 
@@ -842,8 +972,27 @@ export default function Agendamento() {
                               <div className="flex items-center gap-1">Distância {renderSortIcon('distancia')}</div>
                             </TableHead>
 
-                            <TableHead className="text-xs font-bold text-slate-700 text-right cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('quantidade')}>
-                              <div className="flex items-center justify-end gap-1">Comprados (12m) {renderSortIcon('quantidade')}</div>
+                            {/* 👇 COLUNA DA QUANTIDADE COM SELETOR DE MESES TRAVADO 👇 */}
+                            <TableHead className="text-xs font-bold text-slate-700 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <div 
+                                  className="cursor-pointer hover:bg-slate-200 px-2 py-1 rounded flex items-center gap-1 select-none transition-colors" 
+                                  onClick={() => handleSort('quantidade')}
+                                >
+                                  Comprados {renderSortIcon('quantidade')}
+                                </div>
+                                <select 
+                                  className="h-7 w-20 text-[10px] font-black rounded-md border border-slate-300 bg-white px-1.5 shadow-sm focus:outline-none focus:ring-1 focus:ring-primary text-slate-600"
+                                  value={mesesFiltro} 
+                                  onChange={(e) => setMesesFiltro(Number(e.target.value))}
+                                >
+                                  <option value={12}>12 M</option>
+                                  <option value={24}>24 M</option>
+                                  <option value={36}>36 M</option>
+                                  <option value={48}>48 M</option>
+                                  <option value={60}>60+ M</option>
+                                </select>
+                              </div>
                             </TableHead>
                             
                             <TableHead className="text-xs font-bold text-slate-700 text-center cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('car')}>
@@ -851,10 +1000,17 @@ export default function Agendamento() {
                             </TableHead>
                             
                             <TableHead className="text-xs font-bold text-slate-700 text-center cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('javendeu')}>
-                              <div className="flex items-center justify-center gap-1">Já Vendeu? {renderSortIcon('javendeu')}</div>
+                              <div className="flex items-center justify-center gap-1">Já Compramos? {renderSortIcon('javendeu')}</div>
                             </TableHead>
 
+                            {/* 👇 COLUNA DE ÚLTIMA VISITA 👇 */}
                             <TableHead className="text-xs font-bold text-slate-700 text-center">Últ. Visita</TableHead>
+                            
+                            {/* 👇 COLUNA DO REPRESENTANTE 👇 */}
+                            <TableHead className="text-xs font-bold text-slate-700 text-center cursor-pointer hover:bg-slate-200 select-none transition-colors" onClick={() => handleSort('representante')}>
+                              <div className="flex items-center justify-center gap-1">Nome Representante {renderSortIcon('representante')}</div>
+                            </TableHead>
+
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -890,7 +1046,8 @@ export default function Agendamento() {
                                 </TableCell>
                                 <TableCell className="text-sm tabular-nums text-slate-600">{formatNumber(r.DISTANCIA_CADASTRADA)} km</TableCell>
                                 
-                                <TableCell className="text-right text-sm tabular-nums">
+                                {/* 👇 CÉLULA DA QUANTIDADE (COM O FLASH AZUL) 👇 */}
+                                <TableCell className={`text-right tabular-nums text-sm font-bold text-blue-700 transition-colors duration-500 ${flashAnimation ? 'bg-blue-100/80' : ''}`}>
                                   <div className="flex flex-col items-end">
                                     <span className="font-bold text-blue-700 text-base">{formatNumber(displayQuantidade)}</span>
                                     {renderCompradosDetalhes(r)}
@@ -909,9 +1066,17 @@ export default function Agendamento() {
                                     : <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200">NÃO</span>
                                   }
                                 </TableCell>
+
+                                {/* 👇 CÉLULA DA DATA DA ÚLTIMA VISITA 👇 */}
                                 <TableCell className="text-center text-xs font-medium text-slate-500">
                                   {r.DATA_ULTIMA_VISITA ? new Date(r.DATA_ULTIMA_VISITA).toLocaleDateString('pt-BR') : "-"}
                                 </TableCell>
+                                
+                                {/* 👇 CÉLULA DO REPRESENTANTE (VERMELHO CLARO) 👇 */}
+                                <TableCell className={`text-center text-[11px] font-black uppercase ${r.NOME_REPRESENTANTE ? 'bg-red-50 text-red-700' : 'text-slate-400'}`}>
+                                  {r.NOME_REPRESENTANTE || "-"}
+                                </TableCell>
+
                               </TableRow>
                             );
                           })}
