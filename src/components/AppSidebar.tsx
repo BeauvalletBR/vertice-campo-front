@@ -29,8 +29,13 @@ export function AppSidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const userModules = (user as any)?.modulos || [];
+  
+  // 👇 PEGANDO O NÍVEL DO USUÁRIO 👇
+  const userNivel = (user as any)?.nivel || 0; 
+  
   const isAgendamentoActive = location.pathname.startsWith('/agendamento');
   const [isAgendamentoOpen, setIsAgendamentoOpen] = useState(isAgendamentoActive);
+  
   useEffect(() => {
     if (isAgendamentoActive && !collapsed) {
       setIsAgendamentoOpen(true);
@@ -43,6 +48,8 @@ export function AppSidebar() {
       title: "Agendamentos", 
       icon: CalendarPlus, 
       reqModule: "ADMIN",
+      // 👇 Adicionado tag de nível mínimo para liberar essa aba inteira
+      minNivel: 3, 
       subItems: [
         { title: "Agendar", url: "/agendamento", icon: PlusCircle },
         { title: "Gerenciar", url: "/agendamento/gerenciar", icon: ListTodo }
@@ -53,6 +60,11 @@ export function AppSidebar() {
   ];
 
   const filteredItems = items.filter((item) => {
+    // 👇 NOVA REGRA: Se a aba exige um módulo, mas o cara tem o Nível Mínimo exigido, ele entra! 👇
+    if (item.minNivel && userNivel >= item.minNivel) {
+      return true;
+    }
+
     if (item.reqModule && !userModules.includes(item.reqModule)) {
       return false; 
     }
@@ -91,7 +103,6 @@ export function AppSidebar() {
                             onClick={() => {
                               if (!collapsed) setIsAgendamentoOpen(!isAgendamentoOpen);
                             }}
-                            // 👇 CSS ALTERADO AQUI: Ele nunca fica branco, sempre mantém o hover suave! 👇
                             className="flex items-center justify-between w-full px-3 py-2.5 rounded-lg transition-all font-medium select-none text-white/70 hover:bg-white/10 hover:text-white"
                           >
                             <div className="flex items-center">
@@ -109,7 +120,6 @@ export function AppSidebar() {
                       {isAgendamentoOpen && !collapsed && (
                         <div className="pl-9 pr-2 py-1 space-y-1 animate-in slide-in-from-top-1 fade-in duration-200">
                           {item.subItems.map((subItem) => {
-                            // Verifica se a URL atual bate exato com o submenu
                             const isSubActive = location.pathname === subItem.url;
                             
                             return (
@@ -117,7 +127,6 @@ export function AppSidebar() {
                                 key={subItem.title}
                                 to={subItem.url}
                                 end
-                                // 👇 CSS DO FILHO: Esse sim fica branco se estiver ativo! 👇
                                 className={`flex items-center w-full px-3 py-2 rounded-md text-sm transition-all
                                   ${isSubActive ? 'bg-white !text-slate-900 font-bold shadow-sm' : 'text-white/60 hover:text-white hover:bg-white/10'}`}
                               >
@@ -187,4 +196,4 @@ export function AppSidebar() {
       </SidebarFooter>
     </Sidebar>
   );
-} 
+}

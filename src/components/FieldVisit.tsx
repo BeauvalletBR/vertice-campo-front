@@ -92,41 +92,6 @@ interface FormData {
   imagem: string;      
 }
 
-interface CheckinReport {
-  id: string;
-  cod_produtor: string | null;
-  nome: string;
-  ie: string;
-  propriedade: string;
-  car: string;
-  municipio: string;
-  telefone: string;
-  melhorDiaContato: string;
-  proprietario: string;
-  tipoVisita: string;
-  nomeRecebedor: string;
-  cargoRecebedor: string;
-  frigorificoCostume: string;
-  cabecasAbatidasAno: string;
-  tipoVenda: string;
-  atividade: string; 
-  habilitacao: string;
-  terminacao: string; 
-  disp30Dias: boolean; qtd30Dias: string; sexo30Dias: string; status30Dias: string;
-  disp60Dias: boolean; qtd60Dias: string; sexo60Dias: string; status60Dias: string;
-  disp90Dias: boolean; qtd90Dias: string; sexo90Dias: string; status90Dias: string;
-  numAnimais: string; 
-  data: string; 
-  id_comprador: number;
-  visitante: string;
-  produtorAssinatura: string;
-  distancia: string;
-  distanciaRealRaw: number | null;
-  statusDatavale: "pendente" | "cadastrado";
-  observacoes?: string | null; 
-  imagem?: string | null;       
-}
-
 const EMPRESA_COORDS: [number, number] = [-16.3419669, -49.4708347]; 
 
 const cityToRegionMap: Record<string, string> = {
@@ -192,10 +157,6 @@ export function FieldVisit() {
   
   const [isRealLocation, setIsRealLocation] = useState<boolean>(false);
   const [confirmSaveModal, setConfirmSaveModal] = useState<boolean>(false);
-
-  const [selectedReport, setSelectedReport] = useState<CheckinReport | null>(null);
-  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
-  const reportRef = useRef<HTMLDivElement>(null);
 
   const [isSignatureFullscreen, setIsSignatureFullscreen] = useState<boolean>(false);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
@@ -401,7 +362,8 @@ export function FieldVisit() {
       NOME_PRODUTOR: ag.NOME_PRODUTOR,
       NOME_FAZENDA: ag.NOME_FAZENDA,
       MUNICIPIO: ag.MUNICIPIO,
-      INSCRICAO: ag.INSCRICAO
+      INSCRICAO: ag.INSCRICAO,
+      DISTANCIA_CADASTRADA: ag.DISTANCIA_CADASTRADA // Importante para puxar o KM
     }); 
     
     setForm({
@@ -522,39 +484,9 @@ export function FieldVisit() {
     updateField("produtorAssinatura", "");
   }
 
-  const handleDownloadPDF = async () => {
-    if (!reportRef.current || !selectedReport) return;
-    try {
-      setIsGeneratingPDF(true);
-      const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true });
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("p", "mm", "a4");
-      
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      
-      let imgWidth = pdfWidth;
-      let imgHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      if (imgHeight > pdfHeight) {
-        const ratio = pdfHeight / imgHeight;
-        imgHeight = pdfHeight;
-        imgWidth = imgWidth * ratio;
-      }
-
-      const xOffset = (pdfWidth - imgWidth) / 2;
-
-      pdf.addImage(imgData, "PNG", xOffset, 0, imgWidth, imgHeight);
-      pdf.save(`Checkin_${selectedReport.nome.replace(/\s+/g, '_')}.pdf`);
-      toast.success("PDF gerado com sucesso!");
-    } catch (error) {
-      toast.error("Erro ao gerar o PDF.");
-    } finally {
-      setIsGeneratingPDF(false);
-    }
-  };
-
   const validateAndProceed = () => {
+    console.log("CLICOU EM SALVAR", form); 
+
     const camposObrigatorios: { key: keyof FormData, label: string }[] = [
       { key: "nome", label: "Nome do Produtor" }, { key: "propriedade", label: "Propriedade" },
       { key: "telefone", label: "Telefone" }, { key: "melhorDiaContato", label: "Melhor dia de contato" },
@@ -614,58 +546,62 @@ export function FieldVisit() {
     setConfirmSaveModal(false);
     setSaving(true);
     
-    const base64Assinatura = assinaturaForcada || form.produtorAssinatura;
-
-    const lotes = [];
-    if (form.disp30Dias) lotes.push({ prazo_dias: 30, quantidade_cabecas: form.qtd30Dias || 0, sexo_animal: formatToUpper(form.sexo30Dias), status_lote: formatToUpper(form.status30Dias) });
-    if (form.disp60Dias) lotes.push({ prazo_dias: 60, quantidade_cabecas: form.qtd60Dias || 0, sexo_animal: formatToUpper(form.sexo60Dias), status_lote: formatToUpper(form.status60Dias) });
-    if (form.disp90Dias) lotes.push({ prazo_dias: 90, quantidade_cabecas: form.qtd90Dias || 0, sexo_animal: formatToUpper(form.sexo90Dias), status_lote: formatToUpper(form.status90Dias) });
-
-    const payload = {
-      id_agendamento: form.id_agendamento, 
-      cod_produtor: form.cod_produtor, 
-      tipo_registro: form.cod_produtor ? "CADASTRADO" : "S_CADASTRO", 
-      nome: formatToUpper(form.nome), 
-      propriedade: formatToUpper(form.propriedade), 
-      municipio: formatToUpper(form.municipio),
-      regiao: formatToUpper(mapCityToRegion(form.municipio)), 
-      telefone: formatToUpper(form.telefone), 
-      car: formatToUpper(form.car), 
-      ie: formatToUpper(form.ie),
-      inscricao: formatToUpper(form.ie), 
-      melhorDiaContato: formatToUpper(form.melhorDiaContato), 
-      proprietario: formatToUpper(form.proprietario),
-      tipoVisita: formatToUpper(form.tipoVisita), 
-      nomeRecebedor: formatToUpper(form.nomeRecebedor), 
-      cargoRecebedor: formatToUpper(form.cargoRecebedor),
-      frigorificoCostume: formatToUpper(form.frigorificoCostume), 
-      cabecasAbatidasAno: form.cabecasAbatidasAno, 
-      tipoVenda: formatToUpper(form.tipoVenda),
-      tipoAtividade: formatToUpper(form.tipoAtividade), 
-      habilitacao: formatToUpper(form.habilitacao), 
-      tipoTerminacao: formatToUpper(form.tipoTerminacao),
-      numAnimais: form.numAnimais, 
-      dataVisita: form.dataVisita, 
-      visitante: formatToUpper(form.visitante), 
-      
-      produtorAssinatura: base64Assinatura, 
-      observacoes: form.observacoes, 
-      imagem: form.imagem,           
-      
-      disp30Dias: form.disp30Dias, qtd30Dias: form.qtd30Dias, sexo30Dias: formatToUpper(form.sexo30Dias), status30Dias: formatToUpper(form.status30Dias),
-      disp60Dias: form.disp60Dias, qtd60Dias: form.qtd60Dias, sexo60Dias: formatToUpper(form.sexo60Dias), status60Dias: formatToUpper(form.status60Dias),
-      disp90Dias: form.disp90Dias, qtd90Dias: form.qtd90Dias, sexo90Dias: formatToUpper(form.sexo90Dias), status90Dias: formatToUpper(form.status90Dias),
-      
-      gps_latitude: userLocation ? userLocation[0] : null, 
-      gps_longitude: userLocation ? userLocation[1] : null,
-      distancia_percorrida_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 
-      distancia_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 
-      
-      id_comprador: (user as any)?.id, 
-      lotes
-    };
-
     try {
+      const base64Assinatura = assinaturaForcada || form.produtorAssinatura;
+
+      const lotes = [];
+      if (form.disp30Dias) lotes.push({ prazo_dias: 30, quantidade_cabecas: form.qtd30Dias || 0, sexo_animal: formatToUpper(form.sexo30Dias), status_lote: formatToUpper(form.status30Dias) });
+      if (form.disp60Dias) lotes.push({ prazo_dias: 60, quantidade_cabecas: form.qtd60Dias || 0, sexo_animal: formatToUpper(form.sexo60Dias), status_lote: formatToUpper(form.status60Dias) });
+      if (form.disp90Dias) lotes.push({ prazo_dias: 90, quantidade_cabecas: form.qtd90Dias || 0, sexo_animal: formatToUpper(form.sexo90Dias), status_lote: formatToUpper(form.status90Dias) });
+
+      const payload = {
+        id_agendamento: form.id_agendamento, 
+        cod_produtor: form.cod_produtor, 
+        tipo_registro: form.cod_produtor ? "CADASTRADO" : "S_CADASTRO", 
+        nome: formatToUpper(form.nome), 
+        propriedade: formatToUpper(form.propriedade), 
+        municipio: formatToUpper(form.municipio),
+        regiao: formatToUpper(mapCityToRegion(form.municipio)), 
+        telefone: formatToUpper(form.telefone), 
+        car: formatToUpper(form.car), 
+        ie: formatToUpper(form.ie),
+        inscricao: formatToUpper(form.ie), 
+        melhorDiaContato: formatToUpper(form.melhorDiaContato), 
+        proprietario: formatToUpper(form.proprietario),
+        tipoVisita: formatToUpper(form.tipoVisita), 
+        nomeRecebedor: formatToUpper(form.nomeRecebedor), 
+        cargoRecebedor: formatToUpper(form.cargoRecebedor),
+        frigorificoCostume: formatToUpper(form.frigorificoCostume), 
+        cabecasAbatidasAno: form.cabecasAbatidasAno, 
+        tipoVenda: formatToUpper(form.tipoVenda),
+        tipoAtividade: formatToUpper(form.tipoAtividade), 
+        habilitacao: formatToUpper(form.habilitacao), 
+        tipoTerminacao: formatToUpper(form.tipoTerminacao),
+        numAnimais: form.numAnimais, 
+        dataVisita: form.dataVisita, 
+        visitante: formatToUpper(form.visitante), 
+        
+        produtorAssinatura: base64Assinatura, 
+        observacoes: form.observacoes, 
+        imagem: form.imagem,           
+        
+        disp30Dias: form.disp30Dias, qtd30Dias: form.qtd30Dias, sexo30Dias: formatToUpper(form.sexo30Dias), status30Dias: formatToUpper(form.status30Dias),
+        disp60Dias: form.disp60Dias, qtd60Dias: form.qtd60Dias, sexo60Dias: formatToUpper(form.sexo60Dias), status60Dias: formatToUpper(form.status60Dias),
+        disp90Dias: form.disp90Dias, qtd90Dias: form.qtd90Dias, sexo90Dias: formatToUpper(form.sexo90Dias), status90Dias: formatToUpper(form.status90Dias),
+        
+        gps_latitude: userLocation ? userLocation[0] : null, 
+        gps_longitude: userLocation ? userLocation[1] : null,
+        distancia_percorrida_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 
+        distancia_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 
+        
+        distancia_sistema: selectedRancher ? Number(selectedRancher.DISTANCIA_CADASTRADA) || 0 : 0,
+        
+        id_comprador: (user as any)?.id, 
+        lotes: lotes 
+      };
+
+      console.log("PAYLOAD ENVIADO PARA N8N:", payload);
+
       const result = await api.saveVisit(payload);
       if (result.success) {
         setAlertModal({ isOpen: true, type: "success", title: "Sucesso!", message: "A visita foi salva e sincronizada com o banco de dados." });
@@ -676,6 +612,7 @@ export function FieldVisit() {
         setAlertModal({ isOpen: true, type: "error", title: "Erro na Sincronização", message: "Ocorreu um problema ao enviar para o banco de dados. A visita NÃO foi salva." });
       }
     } catch (error) {
+      console.error("ERRO CRÍTICO AO SALVAR:", error);
       setAlertModal({ isOpen: true, type: "error", title: "Erro Crítico", message: "Falha na comunicação com o sistema. Verifique sua internet e tente novamente." });
     } finally {
       setSaving(false);
@@ -1237,6 +1174,112 @@ export function FieldVisit() {
                 <Check className="w-5 h-5 mr-2" /> CONFIRMAR
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* MODAL DE BUSCA */}
+        {isSearchModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl border-none rounded-2xl overflow-hidden">
+              <CardHeader className="border-b bg-slate-50 pb-4 shrink-0">
+                <div className="flex justify-between items-center mb-4">
+                  <CardTitle className="text-lg font-black flex items-center gap-2 text-slate-800">
+                    <Search className="w-5 h-5 text-primary" /> Buscar Pecuarista no ERP
+                  </CardTitle>
+                  <button onClick={() => setIsSearchModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input autoFocus placeholder="Filtrar por nome, município ou fazenda..." value={modalSearchTerm} onChange={(e) => setModalSearchTerm(e.target.value)} className="pl-10 h-12 text-sm font-bold text-slate-700 bg-white" />
+                </div>
+              </CardHeader>
+              
+              <CardContent className="overflow-y-auto p-0 bg-white">
+                <Table>
+                  <TableHeader className="bg-slate-50/80 sticky top-0 shadow-sm backdrop-blur-sm">
+                    <TableRow>
+                      <TableHead className="font-bold text-[11px] uppercase tracking-wider text-slate-500">Pecuarista</TableHead>
+                      <TableHead className="font-bold text-[11px] uppercase tracking-wider text-slate-500">Local</TableHead>
+                      <TableHead className="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 w-24">Ação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRanchers.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-10 text-slate-400 font-medium">Nenhum registro encontrado na base.</TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredRanchers.map((r, index) => {
+                        const uniqueKey = `${r.COD_PRODUTOR}-${r.INSCRICAO || 'sn'}-${r.NOME_FAZENDA}-${r.MUNICIPIO}-${index}`;
+                        return (
+                          <TableRow key={uniqueKey} className="hover:bg-slate-50 cursor-pointer transition-colors" onClick={() => selectRancher(r)}>
+                            <TableCell className="py-4">
+                              <p className="font-black text-sm text-slate-800 uppercase">{r.NOME_PRODUTOR}</p>
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">CÓD: {r.COD_PRODUTOR} • IE: {r.INSCRICAO}</p>
+                            </TableCell>
+                            <TableCell className="py-4">
+                              <p className="text-xs font-bold text-slate-700 uppercase">{r.NOME_FAZENDA}</p>
+                              <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500 mt-0.5"><MapPin className="w-3 h-3" /> {r.MUNICIPIO}</div>
+                            </TableCell>
+                            <TableCell className="text-right py-4 pr-4">
+                             <Button size="sm" className="text-[10px] h-8 bg-slate-800 text-white hover:bg-slate-700 font-bold tracking-wider rounded-md">USAR DADOS</Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* MODAL DE ALERTA DE GPS FALTANDO */}
+        {confirmSaveModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-none rounded-2xl">
+              <div className="h-2 w-full bg-amber-500" />
+              <CardHeader className="text-center pt-8 pb-2">
+                <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-amber-50 border border-amber-100 text-amber-500">
+                  <MapPinOff className="w-8 h-8" />
+                </div>
+                <CardTitle className="text-2xl font-black text-slate-800">Atenção ao GPS!</CardTitle>
+              </CardHeader>
+              <CardContent className="text-center pb-8 px-8">
+                <p className="text-slate-500 font-medium leading-relaxed mb-8">A localização real do seu dispositivo não foi coletada. Se você salvar agora, o relatório ficará registrado com a localização de simulação (Sede). Tem certeza que deseja continuar?</p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button variant="outline" className="flex-1 font-bold h-12 border-slate-200 text-slate-600 hover:bg-slate-50" onClick={() => setConfirmSaveModal(false)}>VOLTAR</Button>
+                  <Button className="flex-1 font-bold h-12 bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20" onClick={() => executeSavePayload()}>SIM, GRAVAR ASSIM</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* MODAL DE ALERTAS GERAIS E ERROS */}
+        {alertModal && alertModal.isOpen && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-none rounded-2xl">
+              <div className={`h-2 w-full ${alertModal.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              <CardHeader className="text-center pt-8 pb-2">
+                <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 border ${alertModal.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-500' : 'bg-red-50 border-red-100 text-red-500'}`}>
+                  {alertModal.type === 'success' ? <CheckCircle2 className="w-8 h-8" /> : <AlertCircle className="w-8 h-8" />}
+                </div>
+                <CardTitle className="text-2xl font-black text-slate-800 tracking-tight">{alertModal.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-center pb-8 px-8">
+                <p className="text-slate-500 font-medium leading-relaxed mb-8">{alertModal.message}</p>
+                <Button 
+                  className={`w-full h-14 text-base tracking-wide font-black shadow-lg ${alertModal.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20' : 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/20'}`}
+                  onClick={() => setAlertModal(null)}
+                >
+                  OK, ENTENDIDO
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         )}
 

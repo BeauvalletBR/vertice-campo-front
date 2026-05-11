@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, Outlet } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -12,10 +12,23 @@ import LoginPage from "./pages/LoginPage";
 import Pecuaristas from "./pages/Visitas";
 import Agendamento from "./pages/Agendamento"; 
 import AgendamentoGerenciador from "./pages/AgendamentoGerenciador"; 
-
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 const queryClient = new QueryClient();
+
+// 👇 NOVO "GUARDA-COSTAS" PERSONALIZADO PARA O AGENDAMENTO 👇
+// Ele deixa passar se for ADMIN *OU* se o nível for 3 ou maior.
+function AgendamentoGuard() {
+  const { user } = useAuth();
+  
+  const userModules = (user as any)?.modulos || [];
+  const userNivel = (user as any)?.nivel || 0;
+  
+  const hasAccess = userModules.includes("ADMIN") || userNivel >= 3;
+
+  // Se tiver acesso, renderiza as rotas filhas. Se não, chuta pro dashboard.
+  return hasAccess ? <Outlet /> : <Navigate to="/dashboard" replace />;
+}
 
 function ProtectedLayout() {
   const { user } = useAuth();
@@ -39,11 +52,9 @@ function ProtectedLayout() {
               <Route path="/campo" element={<FieldPage />} />
               <Route path="/visitas" element={<Pecuaristas />} />
               
-              {/* ROTAS RESTRITAS: O que estiver aqui dentro, SOMENTE ADMIN acessa */}
-              <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
+              {/* 👇 ROTAS DO AGENDAMENTO (Usando o nosso novo guarda-costas) 👇 */}
+              <Route element={<AgendamentoGuard />}>
                 <Route path="/agendamento" element={<Agendamento />} />
-                
-                {/* 👇 2. ADICIONADA A NOVA ROTA DE GERENCIAMENTO AQUI 👇 */}
                 <Route path="/agendamento/gerenciar" element={<AgendamentoGerenciador />} />
               </Route>
               
