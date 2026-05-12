@@ -105,6 +105,8 @@ export interface ApiVisita {
   STATUS_90DIAS: string | null;
   IMAGEM?: string | null;
   OBSERVACOES?: string | null;
+  DISTANCIAERP?: number | null;
+  NROPEDIDO?: string | null;
 }
 
 export interface ApiUsuario {
@@ -112,7 +114,6 @@ export interface ApiUsuario {
   CODUSUARIO: string;
 }
 
-// 👇 INTERFACE PARA O HISTÓRICO DE COMPRAS 👇
 export interface ApiHistoricoCompra {
   COD_PRODUTOR: number;
   SEQ_PROPRIEDADE: number;
@@ -134,7 +135,6 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let cachedPecuaristas: ApiRancher[] | null = null;
 let fetchPromise: Promise<ApiRancher[]> | null = null;
 
-// 👇 CACHE PARA O HISTÓRICO DE COMPRAS 👇
 let cachedHistorico: ApiHistoricoCompra[] | null = null;
 let fetchHistoricoPromise: Promise<ApiHistoricoCompra[]> | null = null;
 
@@ -201,7 +201,6 @@ export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise
   return fetchPromise;
 };
 
-// 👇 FUNÇÃO PARA BUSCAR O HISTÓRICO DE COMPRAS 👇
 export const fetchHistoricoCompras = async (forceRefresh = false): Promise<ApiHistoricoCompra[]> => {
   if (cachedHistorico && cachedHistorico.length > 0 && !forceRefresh) {
     return cachedHistorico;
@@ -315,7 +314,7 @@ export const saveAgendamento = async (dados: any): Promise<{ success: boolean; m
   } catch (error) { return { success: false, message: "Erro de rede" }; }
 };
 
-export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean; message?: string }> => {
+export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean; message?: string, id_visita?: number }> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS; 
   if (!url) return { success: false };
   try {
@@ -327,8 +326,39 @@ export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean; m
     checkSessionExpired(response);
     
     if (response.status === 403) return { success: false, message: "Acesso Negado (OPERACIONAL)." };
-    return { success: response.ok };
+    
+    let idVisitaSalva = undefined;
+    try {
+      const resJson = await response.json();
+      if (resJson.id_visita) idVisitaSalva = resJson.id_visita;
+    } catch(e) {} // Se não for JSON, ignora
+
+    return { success: response.ok, id_visita: idVisitaSalva };
   } catch (error) { return { success: false, message: "Erro de rede" }; }
+};
+
+export const savePedidoVisita = async (id_visita: string | number, numero_pedido: string | number): Promise<{ success: boolean; message?: string }> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_PEDIDO_INSERT; // Ex: /pedidos/insert
+  if (!url) return { success: false, message: "URL de inserção de pedido não configurada" };
+  
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify({ 
+        id_visita: Number(id_visita), 
+        numero_pedido: Number(numero_pedido) 
+      })
+    });
+    checkSessionExpired(response);
+    
+    if (response.status === 403) return { success: false, message: "Acesso Negado." };
+    
+    const data = await response.json();
+    return { success: response.ok && data.success !== false, message: data.message };
+  } catch (error) {
+    return { success: false, message: "Erro de comunicação com o servidor." };
+  }
 };
 
 export const vincularVisitaPecuarista = async (dados: any): Promise<{ success: boolean; message?: string }> => {
@@ -509,5 +539,6 @@ export const api = {
   fetchAgendamentosPendentes,
   editarAgendamento,
   editarVisita,
-  fetchHistoricoCompras 
+  fetchHistoricoCompras,
+  savePedidoVisita 
 };

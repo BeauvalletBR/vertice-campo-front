@@ -33,7 +33,11 @@ import {
   Filter,
   Trash2,
   AlertCircle,
-  ImageIcon 
+  ImageIcon,
+  Plus,
+  ShoppingCart,
+  TrendingDown,
+  TrendingUp
 } from "lucide-react";
 import { toast } from "sonner";
 import html2canvas from "html2canvas";
@@ -73,30 +77,23 @@ interface CheckinReport {
   statusDatavale: "pendente" | "cadastrado";
   imagem?: string | null;
   observacoes?: string | null;
+  nropedido?: string | null; 
+  distanciaerp?: number | null; 
 }
 
-// 👇 FUNÇÃO DEFINITIVA PARA DATA: Pega só a parte da data e ignora o resto
 const formatarDataBruta = (dataString: string | null | undefined) => {
   if (!dataString) return "-";
-  
-  // Pega só o que tem antes do "T" (ex: "2026-05-05")
   const dataApenas = dataString.split('T')[0]; 
-  
-  // Divide o "2026-05-05" nos hífens
   const partes = dataApenas.split('-');
-  
   if (partes.length === 3) {
-    // Retorna formatado "05/05/2026"
     return `${partes[2]}/${partes[1]}/${partes[0]}`;
   }
-  
-  return dataString; // Fallback caso venha num formato muito louco
+  return dataString; 
 };
 
 export default function Pecuaristas() {
   const { user } = useAuth();
   
-  // 👇 VERIFICAÇÃO DE NÍVEL PARA EXIBIR A LIXEIRINHA 👇
   const podeExcluir = user && (user as any).nivel > 3;
 
   const [isPendingOpen, setIsPendingOpen] = useState(true);
@@ -113,6 +110,10 @@ export default function Pecuaristas() {
   const [filterFazenda, setFilterFazenda] = useState("");
   const [filterCidade, setFilterCidade] = useState("");
   const [filterData, setFilterData] = useState("");
+  const [filterGerouCompra, setFilterGerouCompra] = useState("Todos"); 
+  const [filterComprador, setFilterComprador] = useState(""); 
+  
+  const [filterStatusFrete, setFilterStatusFrete] = useState<"Todos" | "Economia" | "Desvio">("Todos");
 
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [visitToLink, setVisitToLink] = useState<CheckinReport | null>(null);
@@ -122,7 +123,12 @@ export default function Pecuaristas() {
   const [isInativando, setIsInativando] = useState<string | null>(null);
   const [visitaParaInativar, setVisitaParaInativar] = useState<string | null>(null);
 
-  // 👇 VARIÁVEL RESTAURADA PARA O MODAL DE ERRO 👇
+  const [isPedidoModalOpen, setIsPedidoModalOpen] = useState(false);
+  const [visitToLinkPedido, setVisitToLinkPedido] = useState<CheckinReport | null>(null);
+  const [pedidoInput, setPedidoInput] = useState("");
+  const [pedidosList, setPedidosList] = useState<string[]>([]);
+  const [isSavingPedidos, setIsSavingPedidos] = useState(false);
+
   const [alertModal, setAlertModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -162,14 +168,18 @@ export default function Pecuaristas() {
           disp60Dias: v.QTD_60DIAS !== null, qtd60Dias: v.QTD_60DIAS ? String(v.QTD_60DIAS) : "", sexo60Dias: v.SEXO_60DIAS || "", status60Dias: v.STATUS_60DIAS || "",
           disp90Dias: v.QTD_90DIAS !== null, qtd90Dias: v.QTD_90DIAS ? String(v.QTD_90DIAS) : "", sexo90Dias: v.SEXO_90DIAS || "", status90Dias: v.STATUS_90DIAS || "",
           numAnimais: v.EFETIVO_TOTAL_ANIMAIS ? String(v.EFETIVO_TOTAL_ANIMAIS) : "",
-          data: v.DATA_REGISTRO_VISITA || "", // Grava no estado o dado sujo exatamente como veio do banco
+          data: v.DATA_REGISTRO_VISITA || "", 
           id_comprador: v.ID_COMPRADOR,
           visitante: getNomeComprador(v.ID_COMPRADOR), produtorAssinatura: v.ASSINATURA_DIGITAL || "",
           distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${(v.DISTANCIA_PERCORRIDA_REAL * 2).toFixed(1)} km` : "N/A", 
-          distanciaRealRaw: v.DISTANCIA_PERCORRIDA_REAL,
+          
+          distanciaRealRaw: v.DISTANCIA_PERCORRIDA_REAL !== null && v.DISTANCIA_PERCORRIDA_REAL !== undefined ? Number(v.DISTANCIA_PERCORRIDA_REAL) : null,
+          distanciaerp: v.DISTANCIAERP !== null && v.DISTANCIAERP !== undefined ? Number(v.DISTANCIAERP) : null,
+          
           statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente",
           imagem: v.IMAGEM || null,
-          observacoes: v.OBSERVACOES || null
+          observacoes: v.OBSERVACOES || null,
+          nropedido: v.NROPEDIDO || v.nropedido || null
         }));
 
         setAllData(mappedData);
@@ -184,25 +194,76 @@ export default function Pecuaristas() {
   }, []);
 
   const uniqueCities = useMemo(() => Array.from(new Set(allData.map(v => v.municipio))).sort(), [allData]);
+  const uniqueCompradores = useMemo(() => {
+    const comp = allData.map(v => v.visitante).filter(Boolean);
+    return Array.from(new Set(comp)).sort();
+  }, [allData]);
 
-  const applyFilters = (data: CheckinReport[]) => {
-    return data.filter(v => {
+  const filteredBaseData = useMemo(() => {
+    return allData.filter(v => {
       const matchProdutor = v.nome.toLowerCase().includes(filterProdutor.toLowerCase());
       const matchFazenda = v.propriedade.toLowerCase().includes(filterFazenda.toLowerCase());
       const matchCidade = filterCidade === "" || v.municipio === filterCidade;
-      
       const matchData = filterData === "" || (v.data && v.data.startsWith(filterData)); 
+      const matchComprador = filterComprador === "" || v.visitante === filterComprador;
+      const matchGerouCompra = filterGerouCompra === "Todos" ||
+          (filterGerouCompra === "S" && !!v.nropedido) ||
+          (filterGerouCompra === "N" && !v.nropedido);
 
-      return matchProdutor && matchFazenda && matchCidade && matchData;
+      return matchProdutor && matchFazenda && matchCidade && matchData && matchGerouCompra && matchComprador;
     });
-  };
+  }, [filterProdutor, filterFazenda, filterCidade, filterData, filterGerouCompra, filterComprador, allData]);
 
-  const filteredPendentes = useMemo(() => applyFilters(allData.filter(v => v.statusDatavale === "pendente")), [filterProdutor, filterFazenda, filterCidade, filterData, allData]);
+  const filteredPendentes = useMemo(() => filteredBaseData.filter(v => v.statusDatavale === "pendente"), [filteredBaseData]);
+
+  const historicoBaseParaCalculo = useMemo(() => filteredBaseData.filter(v => v.statusDatavale === "cadastrado"), [filteredBaseData]);
+
+  const freteStats = useMemo(() => {
+    let kmEconomizado = 0;
+    let kmExcedente = 0;
+
+    historicoBaseParaCalculo.forEach(v => {
+      if (v.distanciaRealRaw !== null && v.distanciaerp !== null) {
+        const erpKm = Number(v.distanciaerp);
+        const gpsKmIdaVolta = v.distanciaRealRaw * 2;
+        const diferenca = erpKm - gpsKmIdaVolta;
+
+        if (diferenca >= 1) kmEconomizado += diferenca;
+        if (diferenca <= -1) kmExcedente += Math.abs(diferenca);
+      }
+    });
+
+    return { kmEconomizado, kmExcedente };
+  }, [historicoBaseParaCalculo]);
 
   const filteredHistorico = useMemo(() => {
-    const historico = applyFilters(allData.filter(v => v.statusDatavale === "cadastrado"));
-    return historico.sort((a, b) => Number(b.id) - Number(a.id));
-  }, [filterProdutor, filterFazenda, filterCidade, filterData, allData]);
+    let result = historicoBaseParaCalculo;
+
+    if (filterStatusFrete !== "Todos") {
+      result = result.filter(v => {
+        if (v.distanciaRealRaw === null || v.distanciaerp === null) return false;
+        const diferenca = Number(v.distanciaerp) - (v.distanciaRealRaw * 2);
+        
+        if (filterStatusFrete === "Economia") return diferenca >= 1;
+        if (filterStatusFrete === "Desvio") return diferenca <= -1;
+        return true;
+      });
+    }
+
+    return result.sort((a, b) => Number(b.id) - Number(a.id));
+  }, [historicoBaseParaCalculo, filterStatusFrete]);
+
+  const totalFiltrados = filteredPendentes.length + filteredHistorico.length;
+
+  const handleClearFilters = () => {
+    setFilterProdutor(""); 
+    setFilterFazenda(""); 
+    setFilterCidade(""); 
+    setFilterData(""); 
+    setFilterGerouCompra("Todos"); 
+    setFilterComprador("");
+    setFilterStatusFrete("Todos");
+  };
 
   const handleVincularPecuarista = async (rancher: ApiRancher) => {
     if (!visitToLink) return;
@@ -250,7 +311,6 @@ export default function Pecuaristas() {
 
   const confirmInativarVisita = async () => {
     if (!visitaParaInativar) return;
-    
     setIsInativando(visitaParaInativar);
     try {
       const result = await api.inativarVisita(visitaParaInativar);
@@ -265,6 +325,59 @@ export default function Pecuaristas() {
       toast.error("Erro de comunicação com o servidor.");
     } finally {
       setIsInativando(null);
+    }
+  };
+
+  const handleAddPedido = () => {
+    const limpo = pedidoInput.trim();
+    if (!limpo) return;
+    if (!pedidosList.includes(limpo)) {
+       setPedidosList([...pedidosList, limpo]);
+    } else {
+       toast.error("Este pedido já está na lista para ser salvo.");
+    }
+    setPedidoInput("");
+  };
+
+  const handleRemovePedido = (p: string) => {
+    setPedidosList(pedidosList.filter(item => item !== p));
+  };
+
+  const handleSavePedidos = async () => {
+    if (!visitToLinkPedido) return;
+    if (pedidosList.length === 0) {
+      toast.error("Adicione pelo menos um pedido.");
+      return;
+    }
+    
+    setIsSavingPedidos(true);
+    try {
+      let salvos = 0;
+      for (const num of pedidosList) {
+        const res = await api.savePedidoVisita(visitToLinkPedido.id, num);
+        if (res.success) salvos++;
+      }
+      
+      if (salvos > 0) {
+        toast.success(`${salvos} pedido(s) vinculado(s) com sucesso!`);
+        
+        setAllData(prev => prev.map(v => {
+          if (v.id === visitToLinkPedido.id) {
+             const existing = v.nropedido ? v.nropedido.split(', ') : [];
+             const updated = Array.from(new Set([...existing, ...pedidosList])).join(', ');
+             return { ...v, nropedido: updated };
+          }
+          return v;
+        }));
+        
+        setIsPedidoModalOpen(false);
+      } else {
+        toast.error("Nenhum pedido foi salvo. Verifique a conexão.");
+      }
+    } catch (e) {
+      toast.error("Erro Crítico ao salvar os pedidos.");
+    } finally {
+      setIsSavingPedidos(false);
     }
   };
 
@@ -289,7 +402,6 @@ export default function Pecuaristas() {
       }
 
       const xOffset = (pdfWidth - imgWidth) / 2;
-
       pdf.addImage(imgData, "PNG", xOffset, 0, imgWidth, imgHeight);
       pdf.save(`Checkin_${selectedReport.nome.replace(/\s+/g, '_')}_${formatarDataBruta(selectedReport.data).replace(/\//g, '-')}.pdf`);
       toast.success("PDF gerado com sucesso!");
@@ -301,24 +413,19 @@ export default function Pecuaristas() {
   };
 
   const renderLogisticaRow = (v: CheckinReport) => {
-    let erpKm: number | null = null;
-    let gpsKmBase: number | null = v.distanciaRealRaw;
-    let gpsKmIdaVolta: number | null = null;
-    let isRed = false;
-
-    if (gpsKmBase !== null) {
-      gpsKmIdaVolta = gpsKmBase * 2;
-    }
-
+    let erpAtualKm: number | null = null;
     if (v.cod_produtor) {
       const pec = pecuaristas.find(p => String(p.COD_PRODUTOR) === v.cod_produtor);
-      if (pec && pec.DISTANCIA_CADASTRADA) erpKm = Number(pec.DISTANCIA_CADASTRADA);
+      if (pec && pec.DISTANCIA_CADASTRADA) erpAtualKm = Number(pec.DISTANCIA_CADASTRADA);
     }
 
-    if (erpKm !== null && gpsKmIdaVolta !== null) {
-      const diferenca = Math.abs(erpKm - gpsKmIdaVolta);
-      const porcentagemErro = (diferenca / erpKm) * 100;
-      if (porcentagemErro > 10) isRed = true;
+    const gpsKmIdaVolta = v.distanciaRealRaw !== null ? v.distanciaRealRaw * 2 : null;
+    const erpVisitaKm = v.distanciaerp !== null && v.distanciaerp !== undefined ? Number(v.distanciaerp) : null;
+
+    let isRed = false;
+    if (erpAtualKm !== null && gpsKmIdaVolta !== null) {
+      const diferencaAtual = Math.abs(erpAtualKm - gpsKmIdaVolta);
+      if ((diferencaAtual / erpAtualKm) * 100 > 10) isRed = true;
     }
 
     return (
@@ -341,41 +448,99 @@ export default function Pecuaristas() {
         </TableCell>
         
         <TableCell className="py-4 text-sm text-center">
-          {isRed ? (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700 font-bold text-[11px] whitespace-nowrap mx-auto shadow-sm" title="Divergência superior a 10% entre ERP e GPS (Ida e Volta)">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              {erpKm !== null ? `${erpKm.toFixed(1)} km` : '--'}
-            </div>
-          ) : (
-            <span className="text-slate-500 font-semibold">
-              {erpKm !== null ? `${erpKm.toFixed(1)} km` : '--'}
-            </span>
-          )}
+          <div className="flex flex-col items-center gap-1">
+            {isRed ? (
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700 font-bold text-[11px] whitespace-nowrap mx-auto shadow-sm" title="Divergência superior a 10% entre ERP Atual e GPS">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                {erpAtualKm !== null ? `${erpAtualKm.toFixed(1)} km` : '--'}
+              </div>
+            ) : (
+              <span className="text-slate-500 font-semibold">
+                {erpAtualKm !== null ? `${erpAtualKm.toFixed(1)} km` : '--'}
+              </span>
+            )}
+            
+            {erpVisitaKm !== null && gpsKmIdaVolta !== null && (
+              (() => {
+                const diferencaFrete = erpVisitaKm - gpsKmIdaVolta;
+                if (Math.abs(diferencaFrete) < 1) return null; 
+                
+                if (diferencaFrete > 0) {
+                  return (
+                    <span className="bg-emerald-100 text-emerald-700 text-[9px] font-black px-2 py-0.5 rounded uppercase shadow-sm" title="KM Poupado em relação ao ERP no dia da visita">
+                      Economizou {diferencaFrete.toFixed(1)} km
+                    </span>
+                  );
+                } else {
+                  return (
+                    <span className="bg-amber-100 text-amber-700 text-[9px] font-black px-2 py-0.5 rounded uppercase shadow-sm" title="Desvio de rota em relação ao ERP no dia da visita">
+                      Desviou {Math.abs(diferencaFrete).toFixed(1)} km
+                    </span>
+                  );
+                }
+              })()
+            )}
+          </div>
         </TableCell>
         
-        <TableCell className="text-right px-4 py-4">
-          <div className="flex items-center justify-end gap-2">
-            <Button 
-              size="sm" 
-              variant="outline" 
-              className="text-[11px] h-8 font-bold shadow-sm border-slate-200 text-slate-600 hover:bg-slate-100 transition-all rounded-lg" 
-              onClick={() => setSelectedReport(v)}
-            >
-              <FileText className="w-3.5 h-3.5 mr-2" /> RELATÓRIO
-            </Button>
+        {/* 👇 CÉLULA DE AÇÕES: AJUSTE DO BOTÃO GEROU COMPRA NA PARTE INFERIOR 👇 */}
+        <TableCell className="text-right px-4 py-4 align-middle">
+          <div className="flex flex-col items-end justify-center gap-2 min-w-[200px]">
             
-            {podeExcluir && (
+            {/* LINHA DE CIMA: BOTÕES */}
+            <div className="flex items-center justify-end gap-2 w-full">
+              {v.statusDatavale === "cadastrado" && (
+                 <Button
+                   size="sm"
+                   variant="outline"
+                   className="h-8 w-10 sm:w-auto px-0 sm:px-3 text-[11px] font-bold shadow-sm border-blue-200 text-blue-700 hover:bg-blue-50 transition-all rounded-lg flex justify-center shrink-0"
+                   onClick={() => {
+                     setVisitToLinkPedido(v);
+                     setPedidosList([]); 
+                     setPedidoInput("");
+                     setIsPedidoModalOpen(true);
+                   }}
+                   title="Adicionar Pedido"
+                 >
+                   <ShoppingCart className="w-4 h-4 sm:mr-1.5" /> <span className="hidden sm:inline">ADD PEDIDO</span>
+                 </Button>
+              )}
+
               <Button 
                 size="sm" 
                 variant="outline" 
-                className="h-8 w-8 p-0 border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200 transition-all rounded-lg shadow-sm" 
-                onClick={() => setVisitaParaInativar(v.id)}
-                disabled={isInativando === v.id}
-                title="Inativar Visita"
+                className="h-8 w-10 sm:w-auto px-0 sm:px-3 text-[11px] font-bold shadow-sm border-slate-200 text-slate-600 hover:bg-slate-100 transition-all rounded-lg flex justify-center shrink-0" 
+                onClick={() => setSelectedReport(v)}
+                title="Ver Relatório"
               >
-                {isInativando === v.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <FileText className="w-4 h-4 sm:mr-1.5" /> <span className="hidden sm:inline">RELATÓRIO</span>
               </Button>
+              
+              {podeExcluir && (
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-8 w-10 p-0 border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200 transition-all rounded-lg shadow-sm shrink-0 flex items-center justify-center" 
+                  onClick={() => setVisitaParaInativar(v.id)}
+                  disabled={isInativando === v.id}
+                  title="Inativar Visita"
+                >
+                  {isInativando === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </Button>
+              )}
+            </div>
+
+            {/* LINHA DE BAIXO: SELO GEROU COMPRA (Largo e centralizado) */}
+            {v.nropedido && (
+              <div 
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-900 border border-slate-200 text-white rounded-lg shadow-sm h-8 w-full max-w-[210px] ml-auto" 
+                title={`Pedidos: ${v.nropedido}`}
+              >
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span className="text-[10px] font-bold uppercase whitespace-nowrap">Gerou Compra</span>
+              </div>
             )}
+
           </div>
         </TableCell>
       </TableRow>
@@ -398,6 +563,8 @@ export default function Pecuaristas() {
            p.NOME_FAZENDA.toLowerCase().includes(searchTerm);
   }).slice(0, 30); 
 
+  const mostrarCardsFrete = freteStats.kmEconomizado > 0 || freteStats.kmExcedente > 0 || filterStatusFrete !== "Todos";
+
   return (
     <div className="min-h-screen bg-slate-50 p-6 lg:p-8 animate-fade-in relative pb-24">
       <div className="max-w-[1400px] mx-auto space-y-8">
@@ -411,12 +578,50 @@ export default function Pecuaristas() {
           </div>
         </header>
 
+        {mostrarCardsFrete && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card 
+              className={`bg-emerald-50 border-emerald-200 shadow-sm cursor-pointer hover:bg-emerald-100/50 transition-colors ${filterStatusFrete === "Economia" ? 'ring-2 ring-emerald-500 ring-offset-2' : ''}`}
+              onClick={() => filterStatusFrete === "Economia" ? setFilterStatusFrete("Todos") : setFilterStatusFrete("Economia")}
+            >
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Economia de Frete (KMs Salvos)</p>
+                  <p className="text-2xl font-black text-emerald-700 mt-1">{freteStats.kmEconomizado.toFixed(1)} km</p>
+                </div>
+                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600">
+                  <TrendingDown className="w-5 h-5" /> 
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card 
+              className={`bg-amber-50 border-amber-200 shadow-sm cursor-pointer hover:bg-amber-100/50 transition-colors ${filterStatusFrete === "Desvio" ? 'ring-2 ring-amber-500 ring-offset-2' : ''}`}
+              onClick={() => filterStatusFrete === "Desvio" ? setFilterStatusFrete("Todos") : setFilterStatusFrete("Desvio")}
+            >
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Desvio / Excesso de Rota</p>
+                  <p className="text-2xl font-black text-amber-700 mt-1">+{freteStats.kmExcedente.toFixed(1)} km</p>
+                </div>
+                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-600">
+                  <TrendingUp className="w-5 h-5" /> 
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         <Card className="bg-white border-slate-200 shadow-sm rounded-xl">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 mb-4 text-slate-800 font-bold">
               <Filter className="w-4 h-4 text-primary" /> Filtros de Pesquisa
+              <span className="ml-2 flex items-center justify-center bg-blue-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm transition-all duration-300">
+                {totalFiltrados} VISITAS
+              </span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4 items-end">
               <div className="space-y-1.5">
                 <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nome Produtor</Label>
                 <Input placeholder="Escreva o nome..." className="h-10 bg-slate-50 border-slate-200 uppercase font-bold text-slate-700" value={filterProdutor} onChange={(e) => setFilterProdutor(e.target.value)} />
@@ -436,60 +641,78 @@ export default function Pecuaristas() {
                   {uniqueCities.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
+              
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Comprador</Label>
+                <select 
+                  className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-primary uppercase"
+                  value={filterComprador}
+                  onChange={(e) => setFilterComprador(e.target.value)}
+                >
+                  <option value="">TODOS</option>
+                  {uniqueCompradores.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
               <div className="space-y-1.5">
                 <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Data da Visita</Label>
                 <Input type="date" className="h-10 bg-slate-50 border-slate-200 text-xs font-bold text-slate-700" value={filterData} onChange={(e) => setFilterData(e.target.value)} />
               </div>
-              <Button variant="outline" size="sm" className="h-10 text-slate-600 font-bold border-slate-200 hover:bg-slate-100" onClick={() => {setFilterProdutor(""); setFilterFazenda(""); setFilterCidade(""); setFilterData("");}}>
-                <FilterX className="w-4 h-4 mr-2 text-slate-400" /> LIMPAR FILTROS
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Gerou Compra?</Label>
+                <select 
+                  className="flex h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-primary uppercase"
+                  value={filterGerouCompra}
+                  onChange={(e) => setFilterGerouCompra(e.target.value)}
+                >
+                  <option value="Todos">TODAS</option>
+                  <option value="S">SIM (COM PEDIDO)</option>
+                  <option value="N">NÃO (SEM PEDIDO)</option>
+                </select>
+              </div>
+              <Button variant="outline" size="sm" className="h-10 text-slate-600 font-bold border-slate-200 hover:bg-slate-100" onClick={handleClearFilters}>
+                <FilterX className="w-4 h-4 mr-2 text-slate-400" /> LIMPAR 
               </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* 1. SEÇÃO: PENDENTES DE CADASTRO */}
-        <Card className="border border-amber-200 shadow-sm overflow-hidden transition-all duration-300 rounded-xl bg-white">
-          <div 
-            onClick={() => setIsPendingOpen(!isPendingOpen)}
-            className={`flex items-center justify-between p-5 cursor-pointer select-none transition-colors hover:bg-amber-50/50 ${isPendingOpen ? 'bg-amber-50/30 border-b border-amber-100' : 'bg-white'}`}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-amber-600" />
+        {filteredPendentes.length > 0 && (
+          <Card className="border border-amber-200 shadow-sm overflow-hidden transition-all duration-300 rounded-xl bg-white">
+            <div 
+              onClick={() => setIsPendingOpen(!isPendingOpen)}
+              className={`flex items-center justify-between p-5 cursor-pointer select-none transition-colors hover:bg-amber-50/50 ${isPendingOpen ? 'bg-amber-50/30 border-b border-amber-100' : 'bg-white'}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-800">Pendentes de Vínculo</h2>
+                  <p className="text-xs font-medium text-slate-500">Visitas aguardando ligação com cadastro no ERP</p>
+                </div>
+                <span className="ml-2 flex items-center justify-center bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm">
+                  {filteredPendentes.length} Pendentes
+                </span>
               </div>
-              <div>
-                <h2 className="text-lg font-black text-slate-800">Pendentes de Vínculo</h2>
-                <p className="text-xs font-medium text-slate-500">Visitas aguardando ligação com cadastro no ERP</p>
+              <div className="text-slate-400 bg-slate-50 border border-slate-200 p-2 rounded-lg">
+                {isPendingOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
               </div>
-              <span className="ml-2 flex items-center justify-center bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm">
-                {filteredPendentes.length} Pendentes
-              </span>
             </div>
-            <div className="text-slate-400 bg-slate-50 border border-slate-200 p-2 rounded-lg">
-              {isPendingOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-            </div>
-          </div>
 
-          {isPendingOpen && (
-            <CardContent className="p-0 animate-in slide-in-from-top-2 duration-200 overflow-x-auto bg-white">
-              <Table>
-                <TableHeader className="bg-amber-50/30">
-                  <TableRow>
-                    <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 px-6">Informado na Visita</TableHead>
-                    <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500">Localização</TableHead>
-                    <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500">Data</TableHead>
-                    <TableHead className="text-right font-bold text-xs uppercase tracking-wider text-slate-500 px-6">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredPendentes.length === 0 ? (
+            {isPendingOpen && (
+              <CardContent className="p-0 animate-in slide-in-from-top-2 duration-200 overflow-x-auto bg-white">
+                <Table>
+                  <TableHeader className="bg-amber-50/30">
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-10 text-slate-400 font-medium">
-                        Nenhum registro pendente encontrado com esses filtros.
-                      </TableCell>
+                      <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 px-6">Informado na Visita</TableHead>
+                      <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500">Localização</TableHead>
+                      <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500">Data</TableHead>
+                      <TableHead className="text-right font-bold text-xs uppercase tracking-wider text-slate-500 px-6">Ações</TableHead>
                     </TableRow>
-                  ) : (
-                    filteredPendentes.map((p) => (
+                  </TableHeader>
+                  <TableBody>
+                    {filteredPendentes.map((p) => (
                       <TableRow key={`pend-${p.id}`} className="hover:bg-amber-50/20 transition-colors">
                         <TableCell className="px-6 py-4">
                           <p className="font-black text-sm text-slate-800 uppercase line-clamp-1">{p.nome}</p>
@@ -513,24 +736,23 @@ export default function Pecuaristas() {
                                 setSearchRancher("");
                               }}
                             >
-                              <LinkIcon className="w-3.5 h-3.5 mr-1.5" /> VINCULAR AO ERP
+                              <LinkIcon className="w-3.5 h-3.5 sm:mr-1.5" /> <span className="hidden sm:inline">VINCULAR AO ERP</span>
                             </Button>
 
                             <Button 
                               size="sm" 
                               variant="outline" 
-                              className="text-[11px] h-8 text-slate-600 border-slate-200 hover:bg-slate-100 font-bold transition-all shadow-sm rounded-lg" 
+                              className="text-[11px] h-8 text-slate-600 border-slate-200 hover:bg-slate-100 font-bold transition-all shadow-sm rounded-lg w-10 sm:w-auto px-0 sm:px-3 flex justify-center shrink-0" 
                               onClick={() => setSelectedReport(p)}
                             >
-                              <FileText className="w-3.5 h-3.5 mr-1.5 text-slate-400" /> RELATÓRIO
+                              <FileText className="w-3.5 h-3.5 sm:mr-1.5 text-slate-400" /> <span className="hidden sm:inline">RELATÓRIO</span>
                             </Button>
 
-                            {/* 👇 TRAVA DE NÍVEL APLICADA NA LIXEIRINHA DE PENDENTES 👇 */}
                             {podeExcluir && (
                               <Button 
                                 size="sm" 
                                 variant="outline" 
-                                className="h-8 w-8 p-0 border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200 transition-all rounded-lg shadow-sm" 
+                                className="h-8 w-8 p-0 border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200 transition-all rounded-lg shadow-sm shrink-0 flex items-center justify-center" 
                                 onClick={() => setVisitaParaInativar(p.id)}
                                 disabled={isInativando === p.id}
                                 title="Inativar Visita"
@@ -538,25 +760,23 @@ export default function Pecuaristas() {
                                 {isInativando === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                               </Button>
                             )}
-
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          )}
-        </Card>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            )}
+          </Card>
+        )}
 
-        {/* 2. SEÇÃO: ARQUIVO GERAL (COM AUDITORIA) */}
         <Card className="border border-slate-200 shadow-sm overflow-hidden rounded-xl bg-white">
           <CardHeader className="bg-slate-50 pb-5 border-b border-slate-100">
             <CardTitle className="text-xl font-black flex items-center gap-3 text-slate-800 tracking-tight">
               <CheckCircle2 className="w-6 h-6 text-primary" /> Histórico & Auditoria Logística
             </CardTitle>
-            <CardDescription className="font-medium text-slate-500 mt-1">Acompanhamento das visitas vinculadas e validação do desvio de rota do GPS.</CardDescription>
+            <CardDescription className="font-medium text-slate-500 mt-1">Acompanhamento das visitas vinculadas, inserção de pedidos e validação do desvio de rota.</CardDescription>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto bg-white">
             <Table>
@@ -585,9 +805,77 @@ export default function Pecuaristas() {
           </CardContent>
         </Card>
 
-        {/* =======================================================
-            MODAL DE CONFIRMAÇÃO DE EXCLUSÃO (NOVO E CUSTOMIZADO)
-            ======================================================= */}
+        {isPedidoModalOpen && visitToLinkPedido && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-none rounded-2xl">
+              <div className="h-2 w-full bg-blue-600" />
+              <CardHeader className="bg-slate-50 border-b pb-4">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-lg font-black flex items-center gap-2 text-slate-800">
+                    <ShoppingCart className="w-5 h-5 text-blue-600" /> Vincular Pedidos
+                  </CardTitle>
+                  <button onClick={() => setIsPedidoModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <CardDescription className="font-medium text-xs mt-1">
+                  Vincule os números dos pedidos gerados na visita a <b>{visitToLinkPedido.propriedade}</b>.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 bg-white space-y-4">
+                {visitToLinkPedido.nropedido && (
+                  <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                    <p className="text-[10px] font-bold text-blue-500 uppercase">Pedidos já vinculados no sistema:</p>
+                    <p className="text-sm font-black text-blue-800 mt-1">{visitToLinkPedido.nropedido}</p>
+                  </div>
+                )}
+                
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Número do Pedido</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                      type="number"
+                      placeholder="Ex: 10254" 
+                      className="h-11 bg-slate-50 border-slate-200 font-bold text-slate-700" 
+                      value={pedidoInput} 
+                      onChange={(e) => setPedidoInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleAddPedido(); }}
+                    />
+                    <Button type="button" onClick={handleAddPedido} className="h-11 bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 shadow-sm">
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {pedidosList.length > 0 && (
+                  <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Pedidos na fila para salvar:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {pedidosList.map(p => (
+                        <div key={p} className="flex items-center gap-1 bg-white border border-slate-300 px-2.5 py-1 rounded-md shadow-sm">
+                          <span className="text-xs font-black text-slate-700">{p}</span>
+                          <button onClick={() => handleRemovePedido(p)} className="text-red-500 hover:text-red-700 ml-1 bg-red-50 rounded-full p-0.5">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <Button 
+                  className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-black mt-4 shadow-lg shadow-blue-600/20" 
+                  onClick={handleSavePedidos}
+                  disabled={isSavingPedidos || pedidosList.length === 0}
+                >
+                  {isSavingPedidos ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Check className="w-5 h-5 mr-2" />}
+                  SALVAR PEDIDOS
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {visitaParaInativar && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-md shadow-2xl overflow-hidden border-none rounded-2xl">
@@ -624,9 +912,6 @@ export default function Pecuaristas() {
           </div>
         )}
 
-        {/* =======================================================
-            MODAL: VINCULAR PECUARISTA
-            ======================================================= */}
         {isLinkModalOpen && visitToLink && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-2xl flex flex-col shadow-2xl border-none rounded-2xl overflow-hidden max-h-[85vh]">
@@ -703,7 +988,6 @@ export default function Pecuaristas() {
           </div>
         )}
 
-        {/* MODAL DE ALERTAS GERAIS E ERROS */}
         {alertModal && alertModal.isOpen && (
           <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-md shadow-2xl overflow-hidden border-none rounded-2xl">
@@ -727,7 +1011,6 @@ export default function Pecuaristas() {
           </div>
         )}
 
-        {/* MODAL: RELATÓRIO DO CHECK-IN (LEITURA) */}
         {selectedReport && (
           <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl border-none rounded-2xl overflow-hidden">
@@ -746,7 +1029,6 @@ export default function Pecuaristas() {
               <CardContent className="overflow-y-auto p-0 bg-slate-50/50 custom-scrollbar">
                 <div ref={reportRef} className="p-8 space-y-6 bg-white">
                   
-                  {/* CABEÇALHO DO RELATÓRIO DE PDF */}
                   <div className="border-b-2 border-primary pb-4 mb-6 flex justify-between items-end">
                     <div className="flex items-center gap-4">
                       <img 
@@ -768,10 +1050,8 @@ export default function Pecuaristas() {
                     </div>
                   </div>
 
-                  {/* 👇 ROTA E IMAGEM DO CURRAL (LADO A LADO) 👇 */}
                   <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 shadow-sm">
                     <div className="grid grid-cols-2 gap-y-4 gap-x-6">
-                      {/* Rota */}
                       <div>
                         <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
                           <Navigation className="w-4 h-4 text-primary" /> Rota Calculada
@@ -780,7 +1060,6 @@ export default function Pecuaristas() {
                         <p className="font-black text-slate-800 text-xl tabular-nums">{selectedReport.distancia}</p>
                       </div>
                       
-                      {/* Imagem (Se houver) */}
                       <div className="flex flex-col items-end justify-center">
                         {selectedReport.imagem ? (
                           <div className="border border-slate-200 bg-white rounded-xl p-1 shadow-sm overflow-hidden h-24 w-auto max-w-[200px]">
@@ -796,7 +1075,6 @@ export default function Pecuaristas() {
                     </div>
                   </div>
 
-                  {/* BLOCO A */}
                   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                     <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">A. Dados da Propriedade e Contato</h3>
                     <div className="grid grid-cols-2 gap-y-5 gap-x-6">
@@ -806,7 +1084,7 @@ export default function Pecuaristas() {
                       <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Inscrição Estadual (I.E.)</p><p className="font-bold text-slate-600 font-mono uppercase">{selectedReport.ie || "Não informada"}</p></div>
                       <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Possui CAR?</p><p className="font-bold text-slate-600 uppercase">{selectedReport.car}</p></div>
 
-                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Propriedade</p><p className="font-bold text-slate-800 uppercase">{selectedReport.propriedade}</p></div>
+                      <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Propriedade</p><p className="font-bold text-slate-800 uppercase">{selectedReport.proprietario}</p></div>
                       <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Município</p><p className="font-bold text-slate-800 uppercase">{selectedReport.municipio}</p></div>
                       
                       <div><p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Telefone</p><p className="font-bold text-slate-800 uppercase">{selectedReport.telefone || "N/A"}</p></div>
@@ -817,7 +1095,6 @@ export default function Pecuaristas() {
                     </div>
                   </div>
 
-                  {/* BLOCO B */}
                   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                     <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">B. Detalhes Comerciais e Atividade</h3>
                     <div className="grid grid-cols-2 gap-y-5 gap-x-4">
@@ -832,7 +1109,6 @@ export default function Pecuaristas() {
                     </div>
                   </div>
 
-                  {/* BLOCO C */}
                   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                     <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">C. Rebanho e Lotes para Abate</h3>
                     
@@ -873,19 +1149,22 @@ export default function Pecuaristas() {
                     </div>
                   </div>
 
-                  {/* 👇 BLOCO D (OBSERVAÇÕES) SÓ APARECE SE TIVER TEXTO 👇 */}
-                  {selectedReport.observacoes && (
-                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                      <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">D. Observações da Negociação</h3>
-                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                  {/* 👇 AJUSTE AQUI: Mostrar as Observações ou 'SEM OBSERVAÇÕES' 👇 */}
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">D. Observações da Negociação</h3>
+                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                      {selectedReport.observacoes && selectedReport.observacoes !== "undefined" && selectedReport.observacoes.trim() !== "" ? (
                         <p className="text-xs font-medium text-slate-700 leading-relaxed uppercase whitespace-pre-wrap">
                           {selectedReport.observacoes}
                         </p>
-                      </div>
+                      ) : (
+                        <p className="text-xs font-medium text-slate-400 italic uppercase">
+                          SEM OBSERVAÇÕES
+                        </p>
+                      )}
                     </div>
-                  )}
+                  </div>
                   
-                  {/* ASSINATURAS */}
                   <div className="grid grid-cols-2 gap-8 mt-10">
                     <div className="border-t border-slate-200 pt-3 text-center">
                       <p className="font-black text-sm text-slate-800 uppercase">{selectedReport.visitante}</p>
@@ -921,6 +1200,18 @@ export default function Pecuaristas() {
           </div>
         )}
 
+      </div>
+    </div>
+  );
+}
+
+function FieldInput({ label, icon, className, value, onChange, ...props }: { label: string; icon?: React.ReactNode; value?: string; onChange?: (value: string) => void; } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "value">) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</Label>
+      <div className="relative">
+        {icon && <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>}
+        <Input {...props} value={value} onChange={(e) => onChange?.(e.target.value)} className={`h-12 bg-slate-50 font-bold text-slate-700 border-slate-200 focus:bg-white focus:border-primary focus:ring-1 focus:ring-primary uppercase transition-colors ${icon ? "pl-10" : ""} ${className || ""}`} />
       </div>
     </div>
   );
