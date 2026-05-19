@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from "react";
+import React, { useState, useRef, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Table,
@@ -37,12 +37,20 @@ import {
   Plus,
   ShoppingCart,
   TrendingDown,
-  TrendingUp
+  TrendingUp,
+  ClipboardCheck
 } from "lucide-react";
 import { toast } from "sonner";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import { api, fetchPecuaristasAgendamento, type ApiRancher, type ApiUsuario } from "@/services/api";
+import { api, fetchPecuaristasAgendamento, type ApiRancher, type ApiUsuario, type ApiAuditoria } from "@/services/api";
+
+import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import SignatureCanvas from 'react-signature-canvas';
+
+type Step = "idle" | "routing" | "form";
 
 interface CheckinReport {
   id: string;
@@ -79,6 +87,7 @@ interface CheckinReport {
   observacoes?: string | null;
   nropedido?: string | null; 
   distanciaerp?: number | null; 
+  statusAuditoria?: string | null;
 }
 
 const formatarDataBruta = (dataString: string | null | undefined) => {
@@ -98,6 +107,18 @@ export default function Pecuaristas() {
 
   const [isPendingOpen, setIsPendingOpen] = useState(true);
   const [selectedReport, setSelectedReport] = useState<CheckinReport | null>(null);
+  
+  // 👇 ESTADOS PARA A AUDITORIA E RELATÓRIO PDF 👇
+  const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
+  const [selectedAuditVisit, setSelectedAuditVisit] = useState<CheckinReport | null>(null);
+  const [auditAnswers, setAuditAnswers] = useState<ApiAuditoria[]>([]);
+  const [isFetchingAudit, setIsFetchingAudit] = useState(false);
+  const [isGeneratingAuditPDF, setIsGeneratingAuditPDF] = useState(false);
+  
+  // Refs para as duas partes da auditoria (para gerar duas páginas em Paisagem)
+  const auditPart1Ref = useRef<HTMLDivElement>(null);
+  const auditPart2Ref = useRef<HTMLDivElement>(null);
+
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -134,6 +155,7 @@ export default function Pecuaristas() {
     title: string;
     message: string;
     type: "success" | "error";
+    onCloseAction?: () => void;
   } | null>(null);
 
   useEffect(() => {
@@ -155,32 +177,36 @@ export default function Pecuaristas() {
           return usuario ? usuario.CODUSUARIO : `ID: ${id}`;
         };
 
-        const mappedData: CheckinReport[] = data.map((v: any) => ({
-          id: String(v.ID_VISITA),
-          cod_produtor: v.COD_PRODUTOR ? String(v.COD_PRODUTOR) : null,
-          nome: v.NOME_PRODUTOR || "N/A", ie: v.INSCRICAO || "", propriedade: v.NOME_FAZENDA || "N/A",
-          car: v.POSSUI_CAR || "N/A", municipio: v.MUNICIPIO || "N/A", telefone: v.TELEFONE || "",
-          melhorDiaContato: v.MELHOR_DIA_CONTATO || "", proprietario: v.NOME_PRODUTOR || "N/A",
-          tipoVisita: v.NATUREZA_VISITA || "", nomeRecebedor: v.NOME_RECEBEDOR || "", cargoRecebedor: v.CARGO_RECEBEDOR || "",
-          frigorificoCostume: v.FRIGORIFICO_COSTUME || "", cabecasAbatidasAno: v.CABECAS_ABATIDAS_ANO ? String(v.CABECAS_ABATIDAS_ANO) : "",
-          tipoVenda: v.TIPO_VENDA || "", atividade: v.TIPO_ATIVIDADE || "", habilitacao: v.HABILITACAO || "", terminacao: v.TIPO_TERMINACAO || "",
-          disp30Dias: v.QTD_30DIAS !== null, qtd30Dias: v.QTD_30DIAS ? String(v.QTD_30DIAS) : "", sexo30Dias: v.SEXO_30DIAS || "", status30Dias: v.STATUS_30DIAS || "",
-          disp60Dias: v.QTD_60DIAS !== null, qtd60Dias: v.QTD_60DIAS ? String(v.QTD_60DIAS) : "", sexo60Dias: v.SEXO_60DIAS || "", status60Dias: v.STATUS_60DIAS || "",
-          disp90Dias: v.QTD_90DIAS !== null, qtd90Dias: v.QTD_90DIAS ? String(v.QTD_90DIAS) : "", sexo90Dias: v.SEXO_90DIAS || "", status90Dias: v.STATUS_90DIAS || "",
-          numAnimais: v.EFETIVO_TOTAL_ANIMAIS ? String(v.EFETIVO_TOTAL_ANIMAIS) : "",
-          data: v.DATA_REGISTRO_VISITA || "", 
-          id_comprador: v.ID_COMPRADOR,
-          visitante: getNomeComprador(v.ID_COMPRADOR), produtorAssinatura: v.ASSINATURA_DIGITAL || "",
-          distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${(v.DISTANCIA_PERCORRIDA_REAL * 2).toFixed(1)} km` : "N/A", 
-          
-          distanciaRealRaw: v.DISTANCIA_PERCORRIDA_REAL !== null && v.DISTANCIA_PERCORRIDA_REAL !== undefined ? Number(v.DISTANCIA_PERCORRIDA_REAL) : null,
-          distanciaerp: v.DISTANCIAERP !== null && v.DISTANCIAERP !== undefined ? Number(v.DISTANCIAERP) : null,
-          
-          statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente",
-          imagem: v.IMAGEM || null,
-          observacoes: v.OBSERVACOES || null,
-          nropedido: v.NROPEDIDO || v.nropedido || null
-        }));
+        // 👇 TRAVA FILTRO: Só mapeia se tiver ID_VISITA e não for "AUDITORIA AVULSA" 👇
+        const mappedData: CheckinReport[] = data
+          .filter((v: any) => v.ID_VISITA !== null && v.ID_VISITA !== undefined && String(v.ID_VISITA).trim() !== "" && String(v.ID_VISITA) !== "null" && v.NATUREZA_VISITA !== "AUDITORIA AVULSA")
+          .map((v: any) => ({
+            id: String(v.ID_VISITA),
+            cod_produtor: v.COD_PRODUTOR ? String(v.COD_PRODUTOR) : null,
+            nome: v.NOME_PRODUTOR || "N/A", ie: v.INSCRICAO || "", propriedade: v.NOME_FAZENDA || "N/A",
+            car: v.POSSUI_CAR || "N/A", municipio: v.MUNICIPIO || "N/A", telefone: v.TELEFONE || "",
+            melhorDiaContato: v.MELHOR_DIA_CONTATO || "", proprietario: v.NOME_PRODUTOR || "N/A",
+            tipoVisita: v.NATUREZA_VISITA || "", nomeRecebedor: v.NOME_RECEBEDOR || "", cargoRecebedor: v.CARGO_RECEBEDOR || "",
+            frigorificoCostume: v.FRIGORIFICO_COSTUME || "", cabecasAbatidasAno: v.CABECAS_ABATIDAS_ANO ? String(v.CABECAS_ABATIDAS_ANO) : "",
+            tipoVenda: v.TIPO_VENDA || "", atividade: v.TIPO_ATIVIDADE || "", habilitacao: v.HABILITACAO || "", terminacao: v.TIPO_TERMINACAO || "",
+            disp30Dias: v.QTD_30DIAS !== null, qtd30Dias: v.QTD_30DIAS ? String(v.QTD_30DIAS) : "", sexo30Dias: v.SEXO_30DIAS || "", status30Dias: v.STATUS_30DIAS || "",
+            disp60Dias: v.QTD_60DIAS !== null, qtd60Dias: v.QTD_60DIAS ? String(v.QTD_60DIAS) : "", sexo60Dias: v.SEXO_60DIAS || "", status60Dias: v.STATUS_60DIAS || "",
+            disp90Dias: v.QTD_90DIAS !== null, qtd90Dias: v.QTD_90DIAS ? String(v.QTD_90DIAS) : "", sexo90Dias: v.SEXO_90DIAS || "", status90Dias: v.STATUS_90DIAS || "",
+            numAnimais: v.EFETIVO_TOTAL_ANIMAIS ? String(v.EFETIVO_TOTAL_ANIMAIS) : "",
+            data: v.DATA_REGISTRO_VISITA || "", 
+            id_comprador: v.ID_COMPRADOR,
+            visitor: getNomeComprador(v.ID_COMPRADOR), visitante: getNomeComprador(v.ID_COMPRADOR), produtorAssinatura: v.ASSINATURA_DIGITAL || "",
+            distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${(v.DISTANCIA_PERCORRIDA_REAL * 2).toFixed(1)} km` : "N/A", 
+            
+            distanciaRealRaw: v.DISTANCIA_PERCORRIDA_REAL !== null && v.DISTANCIA_PERCORRIDA_REAL !== undefined ? Number(v.DISTANCIA_PERCORRIDA_REAL) : null,
+            distanciaerp: v.DISTANCIAERP !== null && v.DISTANCIAERP !== undefined ? Number(v.DISTANCIAERP) : null,
+            statusAuditoria: v.STATUS_AUDITORIA || null,
+            
+            statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente",
+            imagem: v.IMAGEM || null,
+            observacoes: v.OBSERVACOES || null,
+            nropedido: v.NROPEDIDO || v.nropedido || null
+          }));
 
         setAllData(mappedData);
       } catch (error) {
@@ -252,6 +278,25 @@ export default function Pecuaristas() {
 
     return result.sort((a, b) => Number(b.id) - Number(a.id));
   }, [historicoBaseParaCalculo, filterStatusFrete]);
+
+  // 👇 AGRUPAMENTO DA AUDITORIA PARA 2 PÁGINAS 👇
+  const auditParts = useMemo(() => {
+    const part1: Record<string, ApiAuditoria[]> = {};
+    const part2: Record<string, ApiAuditoria[]> = {};
+
+    auditAnswers.forEach(ans => {
+      const firstChar = ans.REQUISITO.trim().charAt(0);
+      if (['4', '5', '6', '7'].includes(firstChar)) {
+        if (!part2[ans.REQUISITO]) part2[ans.REQUISITO] = [];
+        part2[ans.REQUISITO].push(ans);
+      } else {
+        if (!part1[ans.REQUISITO]) part1[ans.REQUISITO] = [];
+        part1[ans.REQUISITO].push(ans);
+      }
+    });
+
+    return { part1, part2 };
+  }, [auditAnswers]);
 
   const totalFiltrados = filteredPendentes.length + filteredHistorico.length;
 
@@ -412,6 +457,50 @@ export default function Pecuaristas() {
     }
   };
 
+  const handleOpenAudit = async (v: CheckinReport) => {
+    setIsFetchingAudit(true);
+    setSelectedAuditVisit(v); 
+    try {
+      const res = await api.fetchAuditoriaVisita(v.id);
+      setAuditAnswers(res);
+    } catch (e) {
+      toast.error("Erro ao buscar dados da auditoria.");
+    } finally {
+      setIsFetchingAudit(false);
+    }
+  };
+
+  const handleDownloadAuditPDF = async () => {
+    if (!auditPart1Ref.current || !auditPart2Ref.current || !selectedAuditVisit) return;
+    try {
+      setIsGeneratingAuditPDF(true);
+      
+      const pdf = new jsPDF("l", "mm", "a4"); 
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      
+      // Captura Parte 1
+      const canvas1 = await html2canvas(auditPart1Ref.current, { scale: 2, useCORS: true, logging: false });
+      const imgData1 = canvas1.toDataURL("image/png");
+      const imgHeight1 = (canvas1.height * pdfWidth) / canvas1.width;
+      pdf.addImage(imgData1, 'PNG', 0, 0, pdfWidth, imgHeight1);
+
+      // Adiciona Página para Parte 2 (Tipo de Trato oferecido em diante)
+      pdf.addPage();
+      const canvas2 = await html2canvas(auditPart2Ref.current, { scale: 2, useCORS: true, logging: false });
+      const imgData2 = canvas2.toDataURL("image/png");
+      const imgHeight2 = (canvas2.height * pdfWidth) / canvas2.width;
+      pdf.addImage(imgData2, 'PNG', 0, 0, pdfWidth, imgHeight2);
+
+      pdf.save(`Auditoria_${selectedAuditVisit.nome.replace(/\s+/g, '_')}_${formatarDataBruta(selectedAuditVisit.data).replace(/\//g, '-')}.pdf`);
+      toast.success("PDF da Auditoria gerado com sucesso!");
+    } catch (error) {
+      console.error("Erro PDF:", error);
+      toast.error("Erro ao gerar o PDF da Auditoria.");
+    } finally {
+      setIsGeneratingAuditPDF(false);
+    }
+  };
+
   const renderLogisticaRow = (v: CheckinReport) => {
     let erpAtualKm: number | null = null;
     if (v.cod_produtor) {
@@ -423,9 +512,27 @@ export default function Pecuaristas() {
     const erpVisitaKm = v.distanciaerp !== null && v.distanciaerp !== undefined ? Number(v.distanciaerp) : null;
 
     let isRed = false;
-    if (erpAtualKm !== null && gpsKmIdaVolta !== null) {
-      const diferencaAtual = Math.abs(erpAtualKm - gpsKmIdaVolta);
-      if ((diferencaAtual / erpAtualKm) * 100 > 10) isRed = true;
+    let desvioKm = 0;
+    let economiaKm = 0;
+    
+    if (erpAtualKm !== null && erpVisitaKm !== null && gpsKmIdaVolta !== null) {
+      if (erpAtualKm !== erpVisitaKm) {
+        const diferenca = erpVisitaKm - gpsKmIdaVolta;
+
+        if (diferenca > 0) {
+          economiaKm = diferenca;
+        } else if (diferenca < 0) {
+          desvioKm = Math.abs(diferenca);
+        }
+      }
+    }
+
+    const hasTag = economiaKm > 0 || desvioKm > 0;
+
+    if (!hasTag && erpAtualKm !== null && gpsKmIdaVolta !== null) {
+      if (erpAtualKm > gpsKmIdaVolta) {
+        isRed = true;
+      }
     }
 
     return (
@@ -444,50 +551,39 @@ export default function Pecuaristas() {
         </TableCell>
         
         <TableCell className="py-4 text-sm text-center">
-          <span className="text-blue-700 font-black">{gpsKmIdaVolta !== null ? `${gpsKmIdaVolta.toFixed(1)} km` : '--'}</span>
+          <span className={`font-black ${isRed ? 'text-red-600' : 'text-slate-800'}`}>{gpsKmIdaVolta !== null ? `${gpsKmIdaVolta.toFixed(1)} km` : '--'}</span>
         </TableCell>
         
         <TableCell className="py-4 text-sm text-center">
           <div className="flex flex-col items-center gap-1">
             {isRed ? (
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700 font-bold text-[11px] whitespace-nowrap mx-auto shadow-sm" title="Divergência superior a 10% entre ERP Atual e GPS">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700 font-bold text-[11px] whitespace-nowrap mx-auto shadow-sm" title="ERP possui KM maior que o GPS">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 {erpAtualKm !== null ? `${erpAtualKm.toFixed(1)} km` : '--'}
               </div>
             ) : (
-              <span className="text-slate-500 font-semibold">
+              <span className="text-slate-800 font-semibold">
                 {erpAtualKm !== null ? `${erpAtualKm.toFixed(1)} km` : '--'}
               </span>
             )}
             
-            {erpVisitaKm !== null && gpsKmIdaVolta !== null && (
-              (() => {
-                const diferencaFrete = erpVisitaKm - gpsKmIdaVolta;
-                if (Math.abs(diferencaFrete) < 1) return null; 
-                
-                if (diferencaFrete > 0) {
-                  return (
-                    <span className="bg-emerald-100 text-emerald-700 text-[9px] font-black px-2 py-0.5 rounded uppercase shadow-sm" title="KM Poupado em relação ao ERP no dia da visita">
-                      Economizou {diferencaFrete.toFixed(1)} km
-                    </span>
-                  );
-                } else {
-                  return (
-                    <span className="bg-amber-100 text-amber-700 text-[9px] font-black px-2 py-0.5 rounded uppercase shadow-sm" title="Desvio de rota em relação ao ERP no dia da visita">
-                      Desviou {Math.abs(diferencaFrete).toFixed(1)} km
-                    </span>
-                  );
-                }
-              })()
+            {economiaKm > 0 && (
+              <span className="bg-emerald-100 text-emerald-700 text-[9px] font-black px-2 py-0.5 rounded uppercase shadow-sm mt-1" title="KM Poupado em relação ao ERP no dia da visita">
+                Economizou {economiaKm.toFixed(1)} km
+              </span>
+            )}
+
+            {desvioKm > 0 && (
+              <span className="bg-amber-100 text-amber-700 text-[9px] font-black px-2 py-0.5 rounded uppercase shadow-sm mt-1" title="Desvio de rota em relação ao ERP no dia da visita">
+                Desviou {desvioKm.toFixed(1)} km
+              </span>
             )}
           </div>
         </TableCell>
         
-        {/* 👇 CÉLULA DE AÇÕES: AJUSTE DO BOTÃO GEROU COMPRA NA PARTE INFERIOR 👇 */}
         <TableCell className="text-right px-4 py-4 align-middle">
-          <div className="flex flex-col items-end justify-center gap-2 min-w-[200px]">
+          <div className="inline-flex flex-col items-stretch gap-2 min-w-[200px]">
             
-            {/* LINHA DE CIMA: BOTÕES */}
             <div className="flex items-center justify-end gap-2 w-full">
               {v.statusDatavale === "cadastrado" && (
                  <Button
@@ -506,15 +602,44 @@ export default function Pecuaristas() {
                  </Button>
               )}
 
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="h-8 w-10 sm:w-auto px-0 sm:px-3 text-[11px] font-bold shadow-sm border-slate-200 text-slate-600 hover:bg-slate-100 transition-all rounded-lg flex justify-center shrink-0" 
-                onClick={() => setSelectedReport(v)}
-                title="Ver Relatório"
-              >
-                <FileText className="w-4 h-4 sm:mr-1.5" /> <span className="hidden sm:inline">RELATÓRIO</span>
-              </Button>
+              {/* BOTÃO DE RELATÓRIO COM MENU SUSPENSO */}
+              <div className="relative">
+                {v.statusAuditoria ? (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className={`h-8 px-3 text-[11px] font-bold shadow-sm transition-all rounded-lg flex justify-center shrink-0 ${openReportMenuId === v.id ? 'bg-slate-100 border-slate-300 text-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                    onClick={() => setOpenReportMenuId(openReportMenuId === v.id ? null : v.id)}
+                    title="Ver Relatórios"
+                  >
+                    <FileText className="w-4 h-4 sm:mr-1.5" /> <span className="hidden sm:inline">RELATÓRIO ▾</span>
+                  </Button>
+                ) : (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="h-8 w-10 sm:w-auto px-0 sm:px-3 text-[11px] font-bold shadow-sm border-slate-200 text-slate-600 hover:bg-slate-100 transition-all rounded-lg flex justify-center shrink-0" 
+                    onClick={() => setSelectedReport(v)}
+                    title="Ver Relatório"
+                  >
+                    <FileText className="w-4 h-4 sm:mr-1.5" /> <span className="hidden sm:inline">RELATÓRIO</span>
+                  </Button>
+                )}
+
+                {openReportMenuId === v.id && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setOpenReportMenuId(null)} />
+                    <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-200 shadow-xl rounded-xl p-1.5 z-50 flex flex-col gap-1 animate-in fade-in slide-in-from-top-2">
+                      <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => { setSelectedReport(v); setOpenReportMenuId(null); }}>
+                        📄 Ficha de Visita
+                      </Button>
+                      <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => { handleOpenAudit(v); setOpenReportMenuId(null); }}>
+                        📋 Checklist
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
               
               {podeExcluir && (
                 <Button 
@@ -530,17 +655,16 @@ export default function Pecuaristas() {
               )}
             </div>
 
-            {/* LINHA DE BAIXO: SELO GEROU COMPRA (Largo e centralizado) */}
             {v.nropedido && (
               <div 
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-900 border border-slate-200 text-white rounded-lg shadow-sm h-8 w-full max-w-[210px] ml-auto" 
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-900 border border-slate-200 text-white rounded-lg shadow-sm h-8 w-full shrink-0" 
                 title={`Pedidos: ${v.nropedido}`}
               >
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span className="text-[10px] font-bold uppercase whitespace-nowrap">Gerou Compra</span>
               </div>
             )}
-
+            
           </div>
         </TableCell>
       </TableRow>
@@ -913,7 +1037,7 @@ export default function Pecuaristas() {
         )}
 
         {isLinkModalOpen && visitToLink && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-2xl flex flex-col shadow-2xl border-none rounded-2xl overflow-hidden max-h-[85vh]">
               <div className="h-2 w-full bg-amber-500" />
               <CardHeader className="border-b bg-white pb-4 shrink-0">
@@ -926,7 +1050,7 @@ export default function Pecuaristas() {
                       Encontre o cadastro oficial para a visita feita em <b className="text-slate-700">{visitToLink.propriedade}</b> ({visitToLink.nome}).
                     </CardDescription>
                   </div>
-                  <button onClick={() => setIsLinkModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                  <button onClick={() => setIsLinkModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
                     <X className="w-5 h-5 text-slate-400" />
                   </button>
                 </div>
@@ -988,6 +1112,7 @@ export default function Pecuaristas() {
           </div>
         )}
 
+        {/* MODAL DE ALERTAS GERAIS E ERROS */}
         {alertModal && alertModal.isOpen && (
           <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-md shadow-2xl overflow-hidden border-none rounded-2xl">
@@ -1001,8 +1126,14 @@ export default function Pecuaristas() {
               <CardContent className="text-center pb-8 px-8">
                 <p className="text-slate-500 font-medium leading-relaxed mb-8">{alertModal.message}</p>
                 <Button 
-                  className={`w-full h-14 text-base tracking-wide font-black shadow-lg ${alertModal.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20' : 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/20'}`}
-                  onClick={() => setAlertModal(null)}
+                  className={`w-full h-14 text-base tracking-wide font-black shadow-lg ${alertModal.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+                  onClick={() => {
+                    const action = alertModal.onCloseAction;
+                    setAlertModal(null);
+                    if (action) {
+                      setTimeout(() => action(), 150);
+                    }
+                  }}
                 >
                   OK, ENTENDIDO
                 </Button>
@@ -1011,6 +1142,7 @@ export default function Pecuaristas() {
           </div>
         )}
 
+        {/* 👇 MODAL DO RELATÓRIO DE FICHA DE VISITA (NORMAL) 👇 */}
         {selectedReport && (
           <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl border-none rounded-2xl overflow-hidden">
@@ -1035,7 +1167,6 @@ export default function Pecuaristas() {
                         src="/logo.png" 
                         alt="Logo Empresa" 
                         className="h-14 object-contain" 
-                        crossOrigin="anonymous" 
                       />
                       <div>
                         <h2 className="text-2xl font-black text-primary uppercase tracking-tight">Ficha de Visita</h2>
@@ -1063,7 +1194,7 @@ export default function Pecuaristas() {
                       <div className="flex flex-col items-end justify-center">
                         {selectedReport.imagem ? (
                           <div className="border border-slate-200 bg-white rounded-xl p-1 shadow-sm overflow-hidden h-24 w-auto max-w-[200px]">
-                             <img src={selectedReport.imagem} alt="Foto Capturada" className="h-full w-full object-cover rounded-lg" />
+                             <img src={selectedReport.imagem} alt="Foto Capturada" className="h-full w-full object-cover rounded-lg" crossOrigin="anonymous" />
                           </div>
                         ) : (
                           <div className="flex flex-col items-center justify-center text-slate-300">
@@ -1149,17 +1280,16 @@ export default function Pecuaristas() {
                     </div>
                   </div>
 
-                  {/* 👇 AJUSTE AQUI: Mostrar as Observações ou 'SEM OBSERVAÇÕES' 👇 */}
                   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                     <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">D. Observações da Negociação</h3>
                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                      {selectedReport.observacoes && selectedReport.observacoes !== "undefined" && selectedReport.observacoes.trim() !== "" ? (
-                        <p className="text-xs font-medium text-slate-700 leading-relaxed uppercase whitespace-pre-wrap">
-                          {selectedReport.observacoes}
-                        </p>
-                      ) : (
+                      {(!selectedReport.observacoes || selectedReport.observacoes === "undefined" || selectedReport.observacoes === "null" || selectedReport.observacoes.trim() === "") ? (
                         <p className="text-xs font-medium text-slate-400 italic uppercase">
                           SEM OBSERVAÇÕES
+                        </p>
+                      ) : (
+                        <p className="text-xs font-medium text-slate-700 leading-relaxed uppercase whitespace-pre-wrap">
+                          {selectedReport.observacoes}
                         </p>
                       )}
                     </div>
@@ -1195,6 +1325,182 @@ export default function Pecuaristas() {
                   {isGeneratingPDF ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} BAIXAR PDF
                 </Button>
                 <Button onClick={() => setSelectedReport(null)} className="font-bold h-11 bg-slate-800 text-white hover:bg-slate-700">FECHAR RELATÓRIO</Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* 👇 MODAL DO RELATÓRIO DE AUDITORIA (HORIZONTAL EM 2 PÁGINAS) 👇 */}
+        {selectedAuditVisit && (
+          <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-6xl max-h-[95vh] flex flex-col shadow-2xl border-none rounded-2xl overflow-hidden">
+              <div className="h-2 w-full bg-emerald-600" />
+              <CardHeader className="border-b bg-white pb-4 shrink-0">
+                <div className="flex justify-between items-center mb-2">
+                  <CardTitle className="text-xl font-black flex items-center gap-2 text-slate-800">
+                    <ClipboardCheck className="w-6 h-6 text-emerald-600" /> Relatório de Auditoria (BEA) - Paisagem
+                  </CardTitle>
+                  <button onClick={() => { setSelectedAuditVisit(null); setAuditAnswers([]); }} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </CardHeader>
+              
+              <CardContent className="overflow-y-auto p-0 bg-slate-50/50 custom-scrollbar">
+                {isFetchingAudit ? (
+                  <div className="flex flex-col items-center justify-center py-32">
+                    <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mb-4" />
+                    <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Buscando respostas no ERP...</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center py-6 gap-8">
+                    
+                    {/* PAGINA 1: TÓPICOS 1 A 3 */}
+                    <div ref={auditPart1Ref} className="bg-white text-black shadow-sm border border-slate-200 w-[1080px] p-6 pb-10 flex flex-col">
+                      <div className="flex items-stretch border-2 border-black divide-x-2 divide-black mb-4 shrink-0">
+                        <div className="p-3 flex items-center justify-center w-[220px]">
+                          <img src="/logo.png" alt="Logo Empresa" className="max-h-14 object-contain" />
+                        </div>
+                        <div className="p-3 flex-1 flex items-center justify-center text-center">
+                          <h2 className="text-base font-black uppercase tracking-tight leading-snug">
+                            Check List de Visita técnica/Auditorias em Fazendas<br/>Aquisições de Matéria Prima (GADO)
+                          </h2>
+                        </div>
+                        <div className="p-1.5 w-[200px] flex flex-col justify-center text-[9px] font-bold uppercase divide-y divide-black">
+                          <div className="py-1">IDENTIFICADOR:<br/>PLAN-2872-BEA-007</div>
+                          <div className="py-1">DATA DE EMISSÃO: 09/2020</div>
+                          <div className="py-1">REVISÃO: 15 / 10-02-2024</div>
+                        </div>
+                      </div>
+
+                      <div className="border-2 border-black mb-4 text-[10px] font-bold uppercase shrink-0">
+                        <div className="flex border-b border-black divide-x divide-black">
+                          <div className="p-2 flex-1 truncate">PROPRIEDADE: {selectedAuditVisit.propriedade}</div>
+                          <div className="p-2 w-1/4 truncate">DATA VISITA: {formatarDataBruta(selectedAuditVisit.data)}</div>
+                        </div>
+                        <div className="flex border-b border-black divide-x divide-black">
+                          <div className="p-2 flex-1 truncate">PROPRIETÁRIO: {selectedAuditVisit.nome}</div>
+                          <div className="p-2 w-1/4 truncate">DATA AUDITORIA: {auditAnswers.length > 0 ? formatarDataBruta(auditAnswers[0].DATA_AUDITORIA) : formatarDataBruta(selectedAuditVisit.data)}</div>
+                        </div>
+                        <div className="flex border-b border-black divide-x divide-black">
+                          <div className="p-2 flex-1 truncate">MUNICÍPIO/UF: {selectedAuditVisit.municipio}</div>
+                          <div className="p-2 w-1/4 truncate">TELEFONE: {selectedAuditVisit.telefone || 'N/A'}</div>
+                        </div>
+                        <div className="flex border-b border-black divide-x divide-black">
+                          <div className="p-2 flex-1 truncate">SISTEMA DE CRIAÇÃO: {selectedAuditVisit.terminacao}</div>
+                          <div className="p-2 w-1/4 truncate">TIPO DE CRIAÇÃO: {selectedAuditVisit.atividade}</div>
+                        </div>
+                        <div className="p-2 truncate">NATUREZA DA VISITA: {selectedAuditVisit.tipoVisita}</div>
+                      </div>
+
+                      <div className="flex-1 pb-4">
+                        <table className="w-full border-collapse border-2 border-black text-[10px] mb-4">
+                          <thead>
+                            <tr className="bg-slate-200 border-b-2 border-black font-black uppercase">
+                              <th className="p-2 border-r-2 border-black text-left">Conceito / Requisito</th>
+                              <th className="p-2 w-[80px] border-r-2 border-black text-center">C/NC/NA</th>
+                              <th className="p-2 w-[400px] text-center">Observações</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(auditParts.part1).map(([req, answers]) => (
+                              <React.Fragment key={req}>
+                                <tr className="bg-slate-100 border-b-2 border-black">
+                                  <td colSpan={3} className="p-1.5 font-black uppercase text-[11px]">{req}</td>
+                                </tr>
+                                {answers.map((ans, idx) => (
+                                  <tr key={ans.ID_RESPOSTA} className={`border-black ${idx === answers.length - 1 ? 'border-b-2' : 'border-b'}`}>
+                                    <td className="p-1.5 border-r-2 border-black font-semibold leading-tight">{ans.PERGUNTA}</td>
+                                    <td className="p-1.5 border-r-2 border-black text-center font-black text-xs">{ans.RESPOSTA}</td>
+                                    <td className="p-1.5 text-left font-medium text-[10px] leading-tight break-words italic">{(ans as any).OBSERVACOES || ""}</td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* PAGINA 2: TÓPICO 4 EM DIANTE + ASSINATURAS */}
+                    <div ref={auditPart2Ref} className="bg-white text-black shadow-sm border border-slate-200 w-[1123px] h-[794px] p-8 pb-10 flex flex-col box-border">
+                      <div className="flex-1 pb-2">
+                        <table className="w-full border-collapse border-2 border-black text-[10px]">
+                          <thead>
+                            <tr className="bg-slate-200 border-b-2 border-black font-black uppercase">
+                              <th className="p-2 border-r-2 border-black text-left">Conceito / Requisito</th>
+                              <th className="p-2 w-[80px] border-r-2 border-black text-center">C/NC/NA</th>
+                              <th className="p-2 w-[350px] text-center">Observações</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(auditParts.part2).map(([req, answers]) => (
+                              <React.Fragment key={req}>
+                                <tr className="bg-slate-100 border-b-2 border-black">
+                                  <td colSpan={3} className="p-1.5 font-black uppercase text-[11px]">{req}</td>
+                                </tr>
+                                {answers.map((ans, idx) => (
+                                  <tr key={ans.ID_RESPOSTA} className={`border-black ${idx === answers.length - 1 ? 'border-b-2' : 'border-b'}`}>
+                                    <td className="p-1.5 border-r-2 border-black font-semibold leading-tight">{ans.PERGUNTA}</td>
+                                    <td className="p-1.5 border-r-2 border-black text-center font-black text-xs">{ans.RESPOSTA}</td>
+                                    <td className="p-1.5 text-left font-medium text-[10px] leading-tight break-words italic">{(ans as any).OBSERVACOES || ""}</td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="border-2 border-black mb-4 mt-4 shrink-0">
+                        <div className="p-1.5 border-b border-black font-black text-[10px] uppercase bg-slate-100">COMENTÁRIO GERAL DA VISITA:</div>
+                        <div className="p-2 text-[10px] font-medium leading-relaxed uppercase min-h-[40px]">
+                          {(!selectedAuditVisit.observacoes || selectedAuditVisit.observacoes === "undefined" || selectedAuditVisit.observacoes === "null" || selectedAuditVisit.observacoes.trim() === "") 
+                            ? "SEM OBSERVAÇÕES" 
+                            : selectedAuditVisit.observacoes}
+                        </div>
+                      </div>
+
+                      <div className="text-[9px] font-bold text-slate-500 uppercase text-center mb-4 shrink-0">
+                        C = Conforme | NC = Não Conforme | NA = Não Aplicável <br/>
+                        Frequência: A cada cadastro de novas propriedades e revalidação a cada 03 anos.
+                      </div>
+                      
+                      <div className="border-2 border-black shrink-0">
+                        <div className="p-2 border-b-2 border-black flex justify-center gap-12 font-black text-[11px] uppercase tracking-wider">
+                          <div>AVALIAÇÃO:</div>
+                          <div>FAZENDA APROVADA ({selectedAuditVisit.statusAuditoria === 'APROVADA' ? ' X ' : '   '})</div>
+                          <div>FAZENDA REPROVADA ({selectedAuditVisit.statusAuditoria === 'REPROVADA' ? ' X ' : '   '})</div>
+                        </div>
+                        <div className="grid grid-cols-2 divide-x-2 divide-black">
+                          <div className="p-3 flex flex-col items-center justify-end min-h-[90px]">
+                            {selectedAuditVisit.produtorAssinatura && selectedAuditVisit.produtorAssinatura.startsWith("data:image") ? (
+                              <img src={selectedAuditVisit.produtorAssinatura} alt="Assinatura" className="h-12 object-contain mb-1 mix-blend-multiply" />
+                            ) : (
+                              <div className="h-12 mb-1 border-b border-black w-3/4"></div>
+                            )}
+                            <p className="text-[9px] font-bold uppercase tracking-wider">Responsável pela Propriedade</p>
+                          </div>
+                          <div className="p-3 flex flex-col items-center justify-end min-h-[90px]">
+                             <p className="font-bold text-[11px] text-black uppercase mb-2 text-center">{selectedAuditVisit.visitante}</p>
+                             <p className="text-[9px] font-bold uppercase tracking-wider border-t border-black pt-1 w-3/4 text-center">Responsável pela Auditoria</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-[7px] font-bold text-slate-400 text-center uppercase pt-2 shrink-0">
+                        "Registro Confidencial Beauvallet Brasil, não podendo ser copiado ou distribuído, ou ter qualquer coisa descrita sem o consentimento da Garantia da Qualidade."
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+              
+              <div className="border-t bg-white p-5 flex justify-between items-center">
+                <Button variant="outline" className="font-bold text-emerald-700 border-emerald-600 hover:bg-emerald-50 bg-white shadow-sm h-11" onClick={handleDownloadAuditPDF} disabled={isGeneratingAuditPDF || isFetchingAudit}>
+                  {isGeneratingAuditPDF ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} BAIXAR PDF HORIZONTAL
+                </Button>
+                <Button onClick={() => { setSelectedAuditVisit(null); setAuditAnswers([]); }} className="font-bold h-11 bg-slate-800 text-white hover:bg-slate-700">FECHAR RELATÓRIO</Button>
               </div>
             </Card>
           </div>

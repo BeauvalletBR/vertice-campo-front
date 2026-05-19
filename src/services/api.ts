@@ -82,6 +82,7 @@ export interface ApiVisita {
   GPS_LATITUDE: number | null;
   GPS_LONGITUDE: number | null;
   DISTANCIA_PERCORRIDA_REAL: number | null;
+  DISTANCIA_CADASTRADA: number | null;
   MELHOR_DIA_CONTATO: string | null;
   NATUREZA_VISITA: string | null;
   NOME_RECEBEDOR: string | null;
@@ -107,6 +108,19 @@ export interface ApiVisita {
   OBSERVACOES?: string | null;
   DISTANCIAERP?: number | null;
   NROPEDIDO?: string | null;
+  STATUS_AUDITORIA?: string | null;
+}
+
+export interface ApiAuditoria {
+  ID_RESPOSTA: number;
+  ID_VISITA: number;
+  COD_PRODUTOR: number | null;
+  NOME_FAZENDA: string;
+  REQUISITO: string;
+  PERGUNTA: string;
+  RESPOSTA: "C" | "NC" | "NA";
+  DATA_AUDITORIA: string;
+  OBSERVACOES: string | null;
 }
 
 export interface ApiUsuario {
@@ -127,6 +141,7 @@ const mockStats: DashboardStats[] = [
   { region: "Norte", ranchers: 142, cities: 28 },
   { region: "Sul", ranchers: 385, cities: 42 },
 ];
+
 const mockVisits: Visit[] = [];
 const mockRanchers: Rancher[] = [];
 
@@ -215,8 +230,8 @@ export const fetchHistoricoCompras = async (forceRefresh = false): Promise<ApiHi
       checkSessionExpired(response);
       
       if (response.status === 401 || response.status === 403) {
-         fetchHistoricoPromise = null; 
-         return [];
+          fetchHistoricoPromise = null; 
+          return [];
       }
       
       const data = await response.json();
@@ -281,6 +296,29 @@ export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
   }
 };
 
+export const fetchAuditoriaVisita = async (id_visita: string | number): Promise<ApiAuditoria[]> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_AUDITORIA_CONSULTAR;
+  if (!url) return [];
+  
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify({ id_visita: Number(id_visita) })
+    });
+    checkSessionExpired(response);
+    
+    if (response.status === 401 || response.status === 403) return [];
+    if (!response.ok) return [];
+    
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("Falha ao buscar auditoria do checklist:", error);
+    return [];
+  }
+};
+
 export const fetchUsuarios = async (): Promise<ApiUsuario[]> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_USUARIOS;
   if (!url) return [];
@@ -331,14 +369,38 @@ export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean; m
     try {
       const resJson = await response.json();
       if (resJson.id_visita) idVisitaSalva = resJson.id_visita;
-    } catch(e) {} // Se não for JSON, ignora
+    } catch(e) {}
 
     return { success: response.ok, id_visita: idVisitaSalva };
   } catch (error) { return { success: false, message: "Erro de rede" }; }
 };
 
+// 👇 NOVA FUNÇÃO EXPORTADA PARA SALVAR AUDITORIA STANDALONE (AVULSA) 👇
+export const saveAuditoriaAvulsa = async (dados: any): Promise<{ success: boolean; message?: string }> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_AUDITORIA_INSERT_AVULSA;
+  if (!url) return { success: false, message: "URL de gravação de auditoria avulsa não definida no ambiente" };
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(dados)
+    });
+    checkSessionExpired(response);
+
+    if (response.status === 403) {
+      return { success: false, message: "Acesso Negado: Privilégios insuficientes para salvar auditoria." };
+    }
+
+    return { success: response.ok };
+  } catch (error) {
+    console.error("Falha ao sincronizar auditoria avulsa:", error);
+    return { success: false, message: "Falha de rede ao tentar se comunicar com o servidor" };
+  }
+};
+
 export const savePedidoVisita = async (id_visita: string | number, numero_pedido: string | number): Promise<{ success: boolean; message?: string }> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_PEDIDO_INSERT; // Ex: /pedidos/insert
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_PEDIDO_INSERT; 
   if (!url) return { success: false, message: "URL de inserção de pedido não configurada" };
   
   try {
@@ -523,6 +585,7 @@ export const api = {
   getStats: async (): Promise<DashboardStats[]> => { await delay(800); return mockStats; },
   getRecentVisits: async (): Promise<Visit[]> => { await delay(600); return mockVisits; },
   saveVisit: saveVisitaCampo, 
+  saveAuditoriaAvulsa, // Mapeado no objeto global de chamadas
   searchRanchers: async (query: string): Promise<Rancher[]> => { 
     await delay(400); 
     const q = query.toLowerCase();
@@ -540,5 +603,6 @@ export const api = {
   editarAgendamento,
   editarVisita,
   fetchHistoricoCompras,
-  savePedidoVisita 
+  savePedidoVisita,
+  fetchAuditoriaVisita 
 };
