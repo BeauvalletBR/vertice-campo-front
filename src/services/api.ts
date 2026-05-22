@@ -15,7 +15,7 @@ export interface DashboardStats {
 
 export interface Rancher {
   id: string;
-  nome: string;
+  name: string;
   ie: string;
   propriedade: string;
   car: "sim" | "nao";
@@ -375,7 +375,6 @@ export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean; m
   } catch (error) { return { success: false, message: "Erro de rede" }; }
 };
 
-// 👇 NOVA FUNÇÃO EXPORTADA PARA SALVAR AUDITORIA STANDALONE (AVULSA) 👇
 export const saveAuditoriaAvulsa = async (dados: any): Promise<{ success: boolean; message?: string }> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_AUDITORIA_INSERT_AVULSA;
   if (!url) return { success: false, message: "URL de gravação de auditoria avulsa não definida no ambiente" };
@@ -585,11 +584,11 @@ export const api = {
   getStats: async (): Promise<DashboardStats[]> => { await delay(800); return mockStats; },
   getRecentVisits: async (): Promise<Visit[]> => { await delay(600); return mockVisits; },
   saveVisit: saveVisitaCampo, 
-  saveAuditoriaAvulsa, // Mapeado no objeto global de chamadas
+  saveAuditoriaAvulsa,
   searchRanchers: async (query: string): Promise<Rancher[]> => { 
     await delay(400); 
     const q = query.toLowerCase();
-    return mockRanchers.filter(r => r.nome.toLowerCase().includes(q) || r.propriedade.toLowerCase().includes(q)); 
+    return mockRanchers.filter(r => r.name.toLowerCase().includes(q) || r.propriedade.toLowerCase().includes(q)); 
   },
   getRanchers: async (): Promise<Rancher[]> => { await delay(400); return mockRanchers; },
   getVisitasConsulta: fetchRelatorioVisitas,

@@ -38,7 +38,8 @@ import {
   ShoppingCart,
   TrendingDown,
   TrendingUp,
-  ClipboardCheck
+  ClipboardCheck,
+  Pencil // 👇 ÍCONE ADICIONADO AQUI
 } from "lucide-react";
 import { toast } from "sonner";
 import html2canvas from "html2canvas";
@@ -88,6 +89,8 @@ interface CheckinReport {
   nropedido?: string | null; 
   distanciaerp?: number | null; 
   statusAuditoria?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 const formatarDataBruta = (dataString: string | null | undefined) => {
@@ -150,6 +153,30 @@ export default function Pecuaristas() {
   const [pedidosList, setPedidosList] = useState<string[]>([]);
   const [isSavingPedidos, setIsSavingPedidos] = useState(false);
 
+  // 👇 ESTADOS ADICIONADOS PARA GERENCIAR O FORMULÁRIO DE EDIÇÃO PANELS 👇
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [visitToEdit, setVisitToEdit] = useState<CheckinReport | null>(null);
+  const [editNumAnimais, setEditNumAnimais] = useState("");
+  const [editNaturezaVisita, setEditNaturezaVisita] = useState("");
+  const [editNomeRecebedor, setEditNomeRecebedor] = useState("");
+  const [editCargoRecebedor, setEditCargoRecebedor] = useState("");
+  const [editDistanciaReal, setEditDistanciaReal] = useState("");
+  const [editLatitude, setEditLatitude] = useState("");   
+  const [editLongitude, setEditLongitude] = useState("");
+  const [editDisp30, setEditDisp30] = useState(false);
+  const [editQtd30, setEditQtd30] = useState("");
+  const [editSexo30, setEditSexo30] = useState("BOI");
+  const [editStatus30, setEditStatus30] = useState("DISPONIVEL");
+  const [editDisp60, setEditDisp60] = useState(false);
+  const [editQtd60, setEditQtd60] = useState("");
+  const [editSexo60, setEditSexo60] = useState("BOI");
+  const [editStatus60, setEditStatus60] = useState("DISPONIVEL");
+  const [editDisp90, setEditDisp90] = useState(false);
+  const [editQtd90, setEditQtd90] = useState("");
+  const [editSexo90, setEditSexo90] = useState("BOI");
+  const [editStatus90, setEditStatus90] = useState("DISPONIVEL");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
   const [alertModal, setAlertModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -205,7 +232,10 @@ export default function Pecuaristas() {
             statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente",
             imagem: v.IMAGEM || null,
             observacoes: v.OBSERVACOES || null,
-            nropedido: v.NROPEDIDO || v.nropedido || null
+            nropedido: v.NROPEDIDO || v.nropedido || null,
+            latitude: v.GPS_LATITUDE !== null && v.GPS_LATITUDE !== undefined ? Number(v.GPS_LATITUDE) : null,   
+            longitude: v.GPS_LONGITUDE !== null && v.GPS_LONGITUDE !== undefined ? Number(v.GPS_LONGITUDE) : null 
+
           }));
 
         setAllData(mappedData);
@@ -426,6 +456,67 @@ export default function Pecuaristas() {
     }
   };
 
+  // 👇 FUNÇÃO PARA SALVAR A EDIÇÃO DO RELATÓRIO VIA API 👇
+  const handleSaveEdit = async () => {
+    if (!visitToEdit) return;
+    setIsSavingEdit(true);
+    try {
+      const payload = {
+        id_visita: Number(visitToEdit.id),
+        tipoVisita: editNaturezaVisita,
+        nomeRecebedor: editNomeRecebedor,
+        cargoRecebedor: editCargoRecebedor,
+        numAnimais: editNumAnimais ? Number(editNumAnimais) : null,
+        gps_latitude: editLatitude ? Number(editLatitude) : null, 
+        gps_longitude: editLongitude ? Number(editLongitude) : null,
+        distancia_percorrida_real: editDistanciaReal ? Number(editDistanciaReal) : null,
+        disp30Dias: editDisp30,
+        qtd30Dias: editQtd30 ? Number(editQtd30) : 0,
+        sexo30Dias: editSexo30,
+        status30Dias: editStatus30,
+        disp60Dias: editDisp60,
+        qtd60Dias: editQtd60 ? Number(editQtd60) : 0,
+        sexo60Dias: editSexo60,
+        status60Dias: editStatus60,
+        disp90Dias: editDisp90,
+        qtd90Dias: editQtd90 ? Number(editQtd90) : 0,
+        sexo90Dias: editSexo90,
+        status90Dias: editStatus90
+      };
+
+      const res = await api.editarVisita(payload);
+      if (res.success) {
+        toast.success("Relatório atualizado com sucesso!");
+        setAllData(prev => prev.map(item => {
+          if (item.id === visitToEdit.id) {
+            return {
+              ...item,
+              tipoVisita: editNaturezaVisita,
+              nomeRecebedor: editNomeRecebedor,
+              cargoRecebedor: editCargoRecebedor,
+              numAnimais: editNumAnimais,
+              latitude: editLatitude ? Number(editLatitude) : null,   
+              longitude: editLongitude ? Number(editLongitude) : null, 
+              distanciaRealRaw: editDistanciaReal ? Number(editDistanciaReal) : item.distanciaRealRaw,
+              distancia: editDistanciaReal ? `${(Number(editDistanciaReal) * 2).toFixed(1)} km` : item.distancia,
+              disp30Dias: editDisp30, qtd30Dias: editQtd30, sexo30Dias: editSexo30, status30Dias: editStatus30,
+              disp60Dias: editDisp60, qtd60Dias: editQtd60, sexo60Dias: editSexo60, status60Dias: editStatus60,
+              disp90Dias: editDisp90, qtd90Dias: editQtd90, sexo90Dias: editSexo90, status90Dias: editStatus90,
+            };
+          }
+          return item;
+        }));
+        setIsEditModalOpen(false);
+      } else {
+        toast.error(res.message || "Erro ao editar relatório.");
+      }
+    } catch (e) {
+      toast.error("Erro de comunicação com o servidor.");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   const handleDownloadPDF = async () => {
     if (!reportRef.current || !selectedReport) return;
     try {
@@ -470,6 +561,7 @@ export default function Pecuaristas() {
     }
   };
 
+  // 👇 FUNÇÃO DE DOWNLOAD ATUALIZADA PARA HORIZONTAL (PAISAGEM) COM CORREÇÃO DE LOGO E 2 PÁGINAS 👇
   const handleDownloadAuditPDF = async () => {
     if (!auditPart1Ref.current || !auditPart2Ref.current || !selectedAuditVisit) return;
     try {
@@ -518,7 +610,6 @@ export default function Pecuaristas() {
     if (erpAtualKm !== null && erpVisitaKm !== null && gpsKmIdaVolta !== null) {
       if (erpAtualKm !== erpVisitaKm) {
         const diferenca = erpVisitaKm - gpsKmIdaVolta;
-
         if (diferenca > 0) {
           economiaKm = diferenca;
         } else if (diferenca < 0) {
@@ -641,6 +732,42 @@ export default function Pecuaristas() {
                 )}
               </div>
               
+              {/* 👇 BOTÃO DE EDITAR ADICIONADO PERFEITAMENTE À ESQUERDA DA LIXEIRA 👇 */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-10 p-0 border-slate-200 text-amber-600 hover:bg-amber-50 hover:border-amber-200 transition-all rounded-lg shadow-sm shrink-0 flex items-center justify-center"
+                onClick={() => {
+                  setVisitToEdit(v);
+                  setEditNaturezaVisita(v.tipoVisita || "");
+                  setEditNomeRecebedor(v.nomeRecebedor || "");
+                  setEditCargoRecebedor(v.cargoRecebedor || "");
+                  setEditNumAnimais(v.numAnimais || "");
+                  setEditDistanciaReal(v.distanciaRealRaw ? String(v.distanciaRealRaw) : "");
+                  setEditLatitude(v.latitude !== null && v.latitude !== undefined ? String(v.latitude) : "");  
+                  setEditLongitude(v.longitude !== null && v.longitude !== undefined ? String(v.longitude) : ""); 
+                  setEditDisp30(v.disp30Dias || false);
+                  setEditQtd30(v.qtd30Dias || "");
+                  setEditSexo30(v.sexo30Dias || "BOI");
+                  setEditStatus30(v.status30Dias || "DISPONIVEL");
+
+                  setEditDisp60(v.disp60Dias || false);
+                  setEditQtd60(v.qtd60Dias || "");
+                  setEditSexo60(v.sexo60Dias || "BOI");
+                  setEditStatus60(v.status60Dias || "DISPONIVEL");
+
+                  setEditDisp90(v.disp90Dias || false);
+                  setEditQtd90(v.qtd90Dias || "");
+                  setEditSexo90(v.sexo90Dias || "BOI");
+                  setEditStatus90(v.status90Dias || "DISPONIVEL");
+                  
+                  setIsEditModalOpen(true);
+                }}
+                title="Editar Relatório"
+              >
+                <Pencil className="w-4 h-4" />
+              </Button>
+
               {podeExcluir && (
                 <Button 
                   size="sm" 
@@ -790,8 +917,8 @@ export default function Pecuaristas() {
                   onChange={(e) => setFilterGerouCompra(e.target.value)}
                 >
                   <option value="Todos">TODAS</option>
-                  <option value="S">SIM (COM PEDIDO)</option>
-                  <option value="N">NÃO (SEM PEDIDO)</option>
+                  <option value="S">SIM</option>
+                  <option value="N">NÃO</option>
                 </select>
               </div>
               <Button variant="outline" size="sm" className="h-10 text-slate-600 font-bold border-slate-200 hover:bg-slate-100" onClick={handleClearFilters}>
@@ -1037,7 +1164,7 @@ export default function Pecuaristas() {
         )}
 
         {isLinkModalOpen && visitToLink && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-2xl flex flex-col shadow-2xl border-none rounded-2xl overflow-hidden max-h-[85vh]">
               <div className="h-2 w-full bg-amber-500" />
               <CardHeader className="border-b bg-white pb-4 shrink-0">
@@ -1126,7 +1253,7 @@ export default function Pecuaristas() {
               <CardContent className="text-center pb-8 px-8">
                 <p className="text-slate-500 font-medium leading-relaxed mb-8">{alertModal.message}</p>
                 <Button 
-                  className={`w-full h-14 text-base tracking-wide font-black shadow-lg ${alertModal.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+                  className={`w-full h-14 text-base tracking-wide font-black shadow-lg ${alertModal.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20' : 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/20'}`}
                   onClick={() => {
                     const action = alertModal.onCloseAction;
                     setAlertModal(null);
@@ -1502,6 +1629,136 @@ export default function Pecuaristas() {
                 </Button>
                 <Button onClick={() => { setSelectedAuditVisit(null); setAuditAnswers([]); }} className="font-bold h-11 bg-slate-800 text-white hover:bg-slate-700">FECHAR RELATÓRIO</Button>
               </div>
+            </Card>
+          </div>
+        )}
+
+        {/* 👇 MODAL / PAINEL SUSPENSO PARA EDICAO DOS DADOS MAIS BÁSICOS (NOME DO PECUARISTA FICA APENAS COMO TEXTO DE LEITURA) 👇 */}
+        {isEditModalOpen && visitToEdit && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-xl shadow-2xl overflow-hidden border-none rounded-2xl max-h-[90vh] flex flex-col">
+              <div className="h-2 w-full bg-amber-500" />
+              <CardHeader className="bg-slate-50 border-b pb-4 shrink-0">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-lg font-black flex items-center gap-2 text-slate-800">
+                    <Pencil className="w-5 h-5 text-amber-500" /> Editar Registro
+                  </CardTitle>
+                  <button onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <CardDescription className="font-medium text-xs mt-1">
+                  Atualize o efetivo, lotes e dados logísticos da propriedade <b>{visitToEdit.propriedade}</b>.
+                </CardDescription>
+              </CardHeader>
+              
+              <CardContent className="p-6 bg-white space-y-4 overflow-y-auto custom-scrollbar flex-1">
+                
+               {/* IDENTIFICAÇÃO APENAS LEITURA (ESTILO TRAVADO/NÃO CLICÁVEL) */}
+                <div className="bg-slate-100/80 p-3 rounded-lg border border-slate-200 cursor-not-allowed select-none">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Pecuarista Associado (Bloqueado):</p>
+                  <p className="text-sm font-semibold text-slate-400 uppercase mt-0.5 italic tracking-wide">
+                    {visitToEdit.nome}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Efetivo Total (Cabeças)</Label>
+                    <Input type="number" value={editNumAnimais} onChange={(e) => setEditNumAnimais(e.target.value)} className="h-10 bg-slate-50 font-bold text-slate-700" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">KM Coletado (Distância Ida)</Label>
+                    <Input type="number" step="any" value={editDistanciaReal} onChange={(e) => setEditDistanciaReal(e.target.value)} className="h-10 bg-slate-50 font-bold text-slate-700" />
+                  </div>
+                </div>
+
+                {/* Cole este bloco de Grid exatamente acima da div de Natureza Visita/Nome Recebedor */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Latitude GPS</Label>
+                    <Input type="number" step="any" value={editLatitude} onChange={(e) => setEditLatitude(e.target.value)} placeholder="Ex: -16.3419" className="h-10 bg-slate-50 font-bold text-slate-700" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Longitude GPS</Label>
+                    <Input type="number" step="any" value={editLongitude} onChange={(e) => setEditLongitude(e.target.value)} placeholder="Ex: -49.4708" className="h-10 bg-slate-50 font-bold text-slate-700" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Natureza Visita</Label>
+                    <Input value={editNaturezaVisita} onChange={(e) => setEditNaturezaVisita(e.target.value)} className="h-10 bg-slate-50 font-bold text-slate-700 uppercase" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nome Recebedor</Label>
+                    <Input value={editNomeRecebedor} onChange={(e) => setEditNomeRecebedor(e.target.value)} className="h-10 bg-slate-50 font-bold text-slate-700 uppercase" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Cargo Recebedor</Label>
+                    <Input value={editCargoRecebedor} onChange={(e) => setEditCargoRecebedor(e.target.value)} className="h-10 bg-slate-50 font-bold text-slate-700 uppercase" />
+                  </div>
+                </div>
+
+                {/* PAINEL DE DISPONIBILIDADE DE LOTES */}
+                <div className="border-t border-slate-100 pt-3 space-y-3">
+                  <Label className="text-[11px] font-black text-slate-600 uppercase tracking-wider block">Previsão e Disponibilidade de Lotes</Label>
+                  
+                  {/* LOTE 30 */}
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" id="editDisp30" checked={editDisp30} onChange={(e) => setEditDisp30(e.target.checked)} className="rounded text-primary focus:ring-primary w-4 h-4 shadow-sm" />
+                      <Label htmlFor="editDisp30" className="text-xs font-bold text-slate-700">Lote 30 Dias</Label>
+                    </div>
+                    {editDisp30 && (
+                      <div className="grid grid-cols-3 gap-2 animate-in fade-in duration-150">
+                        <Input type="number" placeholder="Qtd Cabeças" value={editQtd30} onChange={(e) => setEditQtd30(e.target.value)} className="h-9 bg-white font-bold" />
+                        <select value={editSexo30} onChange={(e) => setEditSexo30(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
+                        <select value={editStatus30} onChange={(e) => setEditStatus30(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* LOTE 60 */}
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" id="editDisp60" checked={editDisp60} onChange={(e) => setEditDisp60(e.target.checked)} className="rounded text-primary focus:ring-primary w-4 h-4 shadow-sm" />
+                      <Label htmlFor="editDisp60" className="text-xs font-bold text-slate-700">Lote 60 Dias</Label>
+                    </div>
+                    {editDisp60 && (
+                      <div className="grid grid-cols-3 gap-2 animate-in fade-in duration-150">
+                        <Input type="number" placeholder="Qtd Cabeças" value={editQtd60} onChange={(e) => setEditQtd60(e.target.value)} className="h-9 bg-white font-bold" />
+                        <select value={editSexo60} onChange={(e) => setEditSexo60(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
+                        <select value={editStatus60} onChange={(e) => setEditStatus60(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* LOTE 90 */}
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" id="editDisp90" checked={editDisp90} onChange={(e) => setEditDisp90(e.target.checked)} className="rounded text-primary focus:ring-primary w-4 h-4 shadow-sm" />
+                      <Label htmlFor="editDisp90" className="text-xs font-bold text-slate-700">Lote 90 Dias</Label>
+                    </div>
+                    {editDisp90 && (
+                      <div className="grid grid-cols-3 gap-2 animate-in fade-in duration-150">
+                        <Input type="number" placeholder="Qtd Cabeças" value={editQtd90} onChange={(e) => setEditQtd90(e.target.value)} className="h-9 bg-white font-bold" />
+                        <select value={editSexo90} onChange={(e) => setEditSexo90(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
+                        <select value={editStatus90} onChange={(e) => setEditStatus90(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Button 
+                  className="w-full h-12 bg-amber-500 hover:bg-amber-600 text-white font-black mt-4 shadow-lg shadow-amber-500/20" 
+                  onClick={handleSaveEdit}
+                  disabled={isSavingEdit}
+                >
+                  {isSavingEdit ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Check className="w-5 h-5 mr-2" />}
+                  SALVAR ALTERAÇÕES
+                </Button>
+              </CardContent>
             </Card>
           </div>
         )}

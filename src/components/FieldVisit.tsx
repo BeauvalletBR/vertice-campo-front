@@ -59,13 +59,11 @@ const CHECKLIST_TEMPLATE = [
   { id: 'c1_6', category: '1- MANEJO PRÉ ABATE', text: 'O uso de bastões elétricos: deverá ser evitado', severity: 'Maior' },
   { id: 'c1_7', category: '1- MANEJO PRÉ ABATE', text: 'O uso de bastão perfurocortante (Ferrão): não deverá ser usado', severity: 'Crítico' },
   { id: 'c1_8', category: '1- MANEJO PRÉ ABATE', text: 'Gritos e ruídos: deverão ser moderados sem excessos', severity: 'Maior' },
-
   // 2. SISTEMA DE CRIAÇÃO
   { id: 'c2_1', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'Sistema Intensivo: as condições do local de manejo adequadas à finalidade', severity: 'Maior' },
   { id: 'c2_2', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'Sistema Extensivo: manejo de forma tranquila (Bem Estar Animal)', severity: 'Maior' },
   { id: 'c2_3', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'Sistema Semi Intensivo: etapas de manejo bem definidas e alimentação garantida', severity: 'Maior' },
   { id: 'c2_4', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'A propriedade possui algum tipo de enriquecimento ambiental', severity: 'Obs' },
-
   // 3. MANEJO SANITÁRIO
   { id: 'c3_1', category: '3. MANEJO SANITÁRIO', text: 'Animais fora do período de carência de medicamentos', severity: 'Crítico' },
   { id: 'c3_2', category: '3. MANEJO SANITÁRIO', text: 'Proibido uso de anabolizantes', severity: 'Crítico' },
@@ -74,21 +72,17 @@ const CHECKLIST_TEMPLATE = [
   { id: 'c3_5', category: '3. MANEJO SANITÁRIO', text: 'Vacinas não obrigatórias sob prescrição', severity: 'Crítico' },
   { id: 'c3_6', category: '3. MANEJO SANITÁRIO', text: 'Endoparasitas com acompanhamento técnico', severity: 'Menor' },
   { id: 'c3_7', category: '3. MANEJO SANITÁRIO', text: 'Ectoparasitas com acompanhamento técnico', severity: 'Menor' },
-
   // 4. TIPO DE TRATO
   { id: 'c4_1', category: '4. TIPO DE TRATO OFERECIDO', text: 'Armazenamento adequado', severity: 'Maior' },
   { id: 'c4_2', category: '4. TIPO DE TRATO OFERECIDO', text: 'Suplementação programada', severity: 'Maior' },
   { id: 'c4_3', category: '4. TIPO DE TRATO OFERECIDO', text: 'Comprovação da alimentação via notas', severity: 'Menor' },
   { id: 'c4_4', category: '4. TIPO DE TRATO OFERECIDO', text: 'Água limpa, abundante e renovada', severity: 'Crítico' },
   { id: 'c4_5', category: '4. TIPO DE TRATO OFERECIDO', text: 'Sem produtos de origem animal ou cama de frango', severity: 'Crítico' },
-
   // 5. ORIGEM DO REBANHO
   { id: 'c5_1', category: '5. ORIGEM DO REBANHO', text: 'Comprovação de origem (GTA/DIA)', severity: 'Maior' },
   { id: 'c5_2', category: '5. ORIGEM DO REBANHO', text: 'Sistema de rastreabilidade na propriedade', severity: 'Maior' },
-
   // 6. QUALIDADE DO REBANHO
   { id: 'c6_1', category: '6. QUALIDADE DO REBANHO', text: 'Uniformidade de peso e genética', severity: 'Obs' },
-
   // 7. ORIENTAÇÕES
   { id: 'c7_1', category: '7. ORIENTAÇÕES', text: 'Produtor orientado sobre Bem Estar Animal', severity: 'Maior' },
   { id: 'c7_2', category: '7. ORIENTAÇÕES', text: 'Produtor orientado sobre vacinação', severity: 'Maior' },
@@ -376,11 +370,8 @@ export function FieldVisit() {
           setIsRealLocation(true); 
           const { latitude, longitude } = position.coords;
           setUserLocation([latitude, longitude]);
-          
           callback();
-
           fetchCityName(latitude, longitude);
-
           fetch(`https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${longitude},${latitude}?overview=full&geometries=geojson`)
             .then(res => res.json())
             .then(data => {
