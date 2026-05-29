@@ -223,7 +223,7 @@ export default function Pecuaristas() {
             data: v.DATA_REGISTRO_VISITA || "", 
             id_comprador: v.ID_COMPRADOR,
             visitor: getNomeComprador(v.ID_COMPRADOR), visitante: getNomeComprador(v.ID_COMPRADOR), produtorAssinatura: v.ASSINATURA_DIGITAL || "",
-            distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${(v.DISTANCIA_PERCORRIDA_REAL * 2).toFixed(1)} km` : "N/A", 
+            distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${(v.DISTANCIA_PERCORRIDA_REAL).toFixed(1)} km` : "N/A", 
             
             distanciaRealRaw: v.DISTANCIA_PERCORRIDA_REAL !== null && v.DISTANCIA_PERCORRIDA_REAL !== undefined ? Number(v.DISTANCIA_PERCORRIDA_REAL) : null,
             distanciaerp: v.DISTANCIAERP !== null && v.DISTANCIAERP !== undefined ? Number(v.DISTANCIAERP) : null,
@@ -281,7 +281,7 @@ export default function Pecuaristas() {
     historicoBaseParaCalculo.forEach(v => {
       if (v.distanciaRealRaw !== null && v.distanciaerp !== null) {
         const erpKm = Number(v.distanciaerp);
-        const gpsKmIdaVolta = v.distanciaRealRaw * 2;
+        const gpsKmIdaVolta = v.distanciaRealRaw ;
         const diferenca = erpKm - gpsKmIdaVolta;
 
         if (diferenca >= 1) kmEconomizado += diferenca;
@@ -298,7 +298,7 @@ export default function Pecuaristas() {
     if (filterStatusFrete !== "Todos") {
       result = result.filter(v => {
         if (v.distanciaRealRaw === null || v.distanciaerp === null) return false;
-        const diferenca = Number(v.distanciaerp) - (v.distanciaRealRaw * 2);
+        const diferenca = Number(v.distanciaerp) - (v.distanciaRealRaw);
         
         if (filterStatusFrete === "Economia") return diferenca >= 1;
         if (filterStatusFrete === "Desvio") return diferenca <= -1;
@@ -498,7 +498,7 @@ export default function Pecuaristas() {
               latitude: editLatitude ? Number(editLatitude) : null,   
               longitude: editLongitude ? Number(editLongitude) : null, 
               distanciaRealRaw: editDistanciaReal ? Number(editDistanciaReal) : item.distanciaRealRaw,
-              distancia: editDistanciaReal ? `${(Number(editDistanciaReal) * 2).toFixed(1)} km` : item.distancia,
+              distancia: editDistanciaReal ? `${(Number(editDistanciaReal)).toFixed(1)} km` : item.distancia,
               disp30Dias: editDisp30, qtd30Dias: editQtd30, sexo30Dias: editSexo30, status30Dias: editStatus30,
               disp60Dias: editDisp60, qtd60Dias: editQtd60, sexo60Dias: editSexo60, status60Dias: editStatus60,
               disp90Dias: editDisp90, qtd90Dias: editQtd90, sexo90Dias: editSexo90, status90Dias: editStatus90,
@@ -600,7 +600,7 @@ export default function Pecuaristas() {
       if (pec && pec.DISTANCIA_CADASTRADA) erpAtualKm = Number(pec.DISTANCIA_CADASTRADA);
     }
 
-    const gpsKmIdaVolta = v.distanciaRealRaw !== null ? v.distanciaRealRaw * 2 : null;
+    const gpsKmIdaVolta = v.distanciaRealRaw !== null ? v.distanciaRealRaw : null;
     const erpVisitaKm = v.distanciaerp !== null && v.distanciaerp !== undefined ? Number(v.distanciaerp) : null;
 
     let isRed = false;

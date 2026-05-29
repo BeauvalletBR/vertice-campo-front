@@ -173,6 +173,7 @@ export default function AgendamentoGerenciador() {
     }
   };
 
+  
   const confirmInativarAgendamento = async () => {
     if (!agendamentoParaInativar) return;
     setIsInativando(agendamentoParaInativar);
