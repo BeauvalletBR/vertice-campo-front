@@ -323,7 +323,6 @@ export default function Agendamento() {
   const getDisplayQuantidade = (r: ApiRancher) => {
     const china = r.totalChinaCalculado || 0;
     const naoChina = r.totalNaoChinaCalculado || 0;
-    
     if (filterHab === "China") return china;
     if (filterHab === "Não China") return naoChina;
     return china + naoChina; 

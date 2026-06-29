@@ -4,12 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge"; 
-import { 
-  Users, 
-  Building2, 
-  Maximize2, 
-  Navigation, 
+import { Badge } from "@/components/ui/badge";
+import {
+  Users,
+  Building2,
+  Maximize2,
+  Navigation,
   TrendingUp,
   Loader2,
   X,
@@ -35,12 +35,13 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
 
-import { api, fetchPecuaristasAgendamento, type ApiVisita, type ApiUsuario, type ApiRancher } from "@/services/api";
+import { api, fetchPecuaristasAgendamento, type ApiVisita, type ApiUsuario, type ApiRancher, type ApiLote } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 type Rancher = { id: string; name: string; farm: string; headCount: number };
 type CityData = { city: string; lat: number; lng: number; ranchersCount: number; ranchersList: Rancher[] };
 
+// Estendendo o CheckinReport para suportar a lista de lotes da API
 interface CheckinReport {
   id: string;
   nome: string;
@@ -57,27 +58,14 @@ interface CheckinReport {
   frigorificoCostume: string;
   cabecasAbatidasAno: string;
   tipoVenda: string;
-  atividade: string; 
+  atividade: string;
   habilitacao: string;
-  terminacao: string; 
-  
-  disp30Dias: boolean;
-  qtd30Dias: string;
-  sexo30Dias: string;
-  status30Dias: string;
-  
-  disp60Dias: boolean;
-  qtd60Dias: string;
-  sexo60Dias: string;
-  status60Dias: string;
-  
-  disp90Dias: boolean;
-  qtd90Dias: string;
-  sexo90Dias: string;
-  status90Dias: string;
+  terminacao: string;
 
-  numAnimais: string; 
-  data: string; 
+  lotesDaApi: ApiLote[]; // <-- Novo Campo Adicionado
+
+  numAnimais: string;
+  data: string;
   visitante: string;
   produtorAssinatura: string;
   distancia: string;
@@ -122,7 +110,7 @@ const getDiffEmDias = (dataVisita: string, periodoOriginal: string | number) => 
   dataAlvo.setDate(dataAlvo.getDate() + diasSomar);
   
   const hoje = new Date();
-  hoje.setHours(12, 0, 0, 0); 
+  hoje.setHours(12, 0, 0, 0);
   
   const diffEmTempo = dataAlvo.getTime() - hoje.getTime();
   return Math.ceil(diffEmTempo / (1000 * 60 * 60 * 24));
@@ -145,7 +133,9 @@ export function Dashboard() {
   const [selectedCity, setSelectedCity] = useState<CityData | null>(null);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   
-  const [visitasBrutas, setVisitasBrutas] = useState<ApiVisita[]>([]);
+  // Agora armazenamos as visitas já com os Lotes preenchidos
+  const [visitasBrutas, setVisitasBrutas] = useState<(ApiVisita & { lotesDaApi: ApiLote[] })[]>([]);
+  
   const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]);
   const [pecuaristas, setPecuaristas] = useState<ApiRancher[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -157,7 +147,7 @@ export function Dashboard() {
   } | null>(null);
   
   const [forecastSortBy, setForecastSortBy] = useState<'qtd' | 'vencimento'>('vencimento');
-  const [forecastSortOrder, setForecastSortOrder] = useState<'asc' | 'desc'>('asc'); 
+  const [forecastSortOrder, setForecastSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const [selectedReport, setSelectedReport] = useState<CheckinReport | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -173,7 +163,15 @@ export function Dashboard() {
           temPermissaoAdmin ? fetchPecuaristasAgendamento() : Promise.resolve([])
         ]);
         
-        setVisitasBrutas(dadosVisitas);
+        // 👇 BUSCANDO OS LOTES DE CADA VISITA PARA O FORECAST FUNCIONAR 👇
+        const visitasComLotes = await Promise.all(
+          dadosVisitas.map(async (v) => {
+            const lotes = await api.fetchLotesVisita(v.ID_VISITA);
+            return { ...v, lotesDaApi: lotes };
+          })
+        );
+        
+        setVisitasBrutas(visitasComLotes);
         setUsuariosData(dadosUsuarios);
         setPecuaristas(dadosPecuaristas);
       } catch (error) {
@@ -200,7 +198,7 @@ export function Dashboard() {
     return usuario ? usuario.CODUSUARIO : `ID: ${id}`;
   };
 
-  const mapVisitaToReport = (v: ApiVisita): CheckinReport => ({
+  const mapVisitaToReport = (v: ApiVisita & { lotesDaApi: ApiLote[] }): CheckinReport => ({
     id: String(v.ID_VISITA),
     nome: v.NOME_PRODUTOR || "N/A", ie: v.INSCRICAO || "", propriedade: v.NOME_FAZENDA || "N/A",
     car: v.POSSUI_CAR || "N/A", municipio: v.MUNICIPIO || "N/A", telefone: v.TELEFONE || "",
@@ -208,13 +206,13 @@ export function Dashboard() {
     tipoVisita: v.NATUREZA_VISITA || "", nomeRecebedor: v.NOME_RECEBEDOR || "", cargoRecebedor: v.CARGO_RECEBEDOR || "",
     frigorificoCostume: v.FRIGORIFICO_COSTUME || "", cabecasAbatidasAno: v.CABECAS_ABATIDAS_ANO ? String(v.CABECAS_ABATIDAS_ANO) : "",
     tipoVenda: v.TIPO_VENDA || "", atividade: v.TIPO_ATIVIDADE || "", habilitacao: v.HABILITACAO || "", terminacao: v.TIPO_TERMINACAO || "",
-    disp30Dias: v.QTD_30DIAS !== null, qtd30Dias: v.QTD_30DIAS ? String(v.QTD_30DIAS) : "", sexo30Dias: v.SEXO_30DIAS || "", status30Dias: v.STATUS_30DIAS || "",
-    disp60Dias: v.QTD_60DIAS !== null, qtd60Dias: v.QTD_60DIAS ? String(v.QTD_60DIAS) : "", sexo60Dias: v.SEXO_60DIAS || "", status60Dias: v.STATUS_60DIAS || "",
-    disp90Dias: v.QTD_90DIAS !== null, qtd90Dias: v.QTD_90DIAS ? String(v.QTD_90DIAS) : "", sexo90Dias: v.SEXO_90DIAS || "", status90Dias: v.STATUS_90DIAS || "",
+    
+    lotesDaApi: v.lotesDaApi, // <-- Passando os lotes pro Relatório
+    
     numAnimais: v.EFETIVO_TOTAL_ANIMAIS ? String(v.EFETIVO_TOTAL_ANIMAIS) : "",
     data: v.DATA_REGISTRO_VISITA ? v.DATA_REGISTRO_VISITA.split('T')[0] : "",
     visitante: getNomeComprador(v.ID_COMPRADOR), produtorAssinatura: v.ASSINATURA_DIGITAL || "",
-    distancia: v.DISTANCIA_PERCORRIDA_REAL ? `${(v.DISTANCIA_PERCORRIDA_REAL * 2).toFixed(1)} km (Ida e Volta)` : "DISTÂNCIA NÃO COLETADA", // <-- Modificado p/ Relatório
+    distancia: v.DISTANCIA_PERCORRIDA_REAL !== null ? `${Number(v.DISTANCIA_PERCORRIDA_REAL).toFixed(1)} km (Ida e Volta)` : "DISTÂNCIA NÃO COLETADA",
     statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente"
   });
 
@@ -262,34 +260,53 @@ export function Dashboard() {
     return { mapData: Array.from(citiesMap.values()), kpis: { totalHeads, totalVisitas: visitas.length, novosPecuaristas, cidadesCobertas: cidadesSet.size } };
   }, [visitas]);
 
+  // 👇 NOVA LÓGICA DO FORECAST BASEADO NOS LOTES DINÂMICOS 👇
   const { forecast, auditoriaFrete } = useMemo(() => {
     let f30 = 0, f60 = 0, f90 = 0;
     const alertasFrete: any[] = [];
-
     visitas.forEach(v => {
-      const checkLot = (qtdOriginal: number | null, status: string | null, diasIniciais: number) => {
-        if (status !== 'DISPONIVEL' || !qtdOriginal) return; 
-        const diff = getDiffEmDias(v.DATA_REGISTRO_VISITA, diasIniciais);
+      // Varre todos os lotes cadastrados para a visita
+      if (v.lotesDaApi && v.lotesDaApi.length > 0) {
+        v.lotesDaApi.forEach(lote => {
+          if (lote.status_lote !== 'DISPONIVEL' || !lote.quantidade_cabecas) return;
+          
+          const diff = getDiffEmDias(v.DATA_REGISTRO_VISITA, lote.prazo_dias);
+          
+          // Classifica nos 3 "baldes" de tempo baseados no diff em dias de hoje
+          if (diff >= -7 && diff <= 30) f30 += Number(lote.quantidade_cabecas);
+          else if (diff > 30 && diff <= 60) f60 += Number(lote.quantidade_cabecas);
+          else if (diff > 60) f90 += Number(lote.quantidade_cabecas);
+        });
+      }
+
+      // Validação de Frete (mantida igual)
+      // Validação de Frete (Corrigida para bater com o Visitas.tsx)
+      if (v.DISTANCIA_PERCORRIDA_REAL !== null && v.DISTANCIA_PERCORRIDA_REAL !== undefined) {
         
-        if (diff >= -7 && diff <= 30) f30 += Number(qtdOriginal); 
-        else if (diff > 30 && diff <= 60) f60 += Number(qtdOriginal); 
-        else if (diff > 60) f90 += Number(qtdOriginal); 
-      };
-
-      checkLot(v.QTD_30DIAS, v.STATUS_30DIAS, 30);
-      checkLot(v.QTD_60DIAS, v.STATUS_60DIAS, 60);
-      checkLot(v.QTD_90DIAS, v.STATUS_90DIAS, 90);
-
-      if (v.DISTANCIA_PERCORRIDA_REAL && v.COD_PRODUTOR) {
-        const pecuaristaERP = pecuaristas.find(p => p.COD_PRODUTOR === v.COD_PRODUTOR);
-        if (pecuaristaERP && pecuaristaERP.DISTANCIA_CADASTRADA) {
-           const distErp = Number(pecuaristaERP.DISTANCIA_CADASTRADA);
-           // 👇 AQUI: Multiplica o GPS bruto por 2
-           const distGpsIdaVolta = Number(v.DISTANCIA_PERCORRIDA_REAL) * 2;
+        // 1º Tenta pegar a distância que o ERP tinha no momento da visita (se existir na View)
+        let distErp = v.DISTANCIAERP !== null && v.DISTANCIAERP !== undefined ? Number(v.DISTANCIAERP) : null;
+        
+        // 2º Se não tiver, busca do array de pecuaristas protegendo contra erro de tipo (String vs Number)
+        if (distErp === null && v.COD_PRODUTOR) {
+          const pecuaristaERP = pecuaristas.find(p => String(p.COD_PRODUTOR) === String(v.COD_PRODUTOR));
+          if (pecuaristaERP && pecuaristaERP.DISTANCIA_CADASTRADA !== undefined && pecuaristaERP.DISTANCIA_CADASTRADA !== null) {
+             distErp = Number(pecuaristaERP.DISTANCIA_CADASTRADA);
+          }
+        }
+        if (distErp !== null) {
+           // O valor do banco já é a distância total, então não multiplicamos por 2
+           const distGpsIdaVolta = Number(v.DISTANCIA_PERCORRIDA_REAL);
            const divergencia = distErp - distGpsIdaVolta;
-           
-           if (divergencia > 3) { 
-             alertasFrete.push({ id: v.ID_VISITA, data: v.DATA_REGISTRO_VISITA, produtor: v.NOME_PRODUTOR, fazenda: v.NOME_FAZENDA, erp: distErp, gps: distGpsIdaVolta, diff: divergencia });
+           if (divergencia > 3) {
+             alertasFrete.push({ 
+               id: v.ID_VISITA, 
+               data: v.DATA_REGISTRO_VISITA, 
+               produtor: v.NOME_PRODUTOR, 
+               fazenda: v.NOME_FAZENDA, 
+               erp: distErp, 
+               gps: distGpsIdaVolta, 
+               diff: divergencia 
+             });
            }
         }
       }
@@ -305,36 +322,34 @@ export function Dashboard() {
     return { text: `Faltam ${diffEmDias} dias`, style: 'text-emerald-700 bg-emerald-100' };
   };
 
+  // 👇 LÓGICA DO MODAL DO FORECAST ATUALIZADA 👇
   const getDetalhesForecast = () => {
     if (!forecastModal) return [];
-    
-    const targetBucket = forecastModal.periodo; 
+    const targetBucket = forecastModal.periodo;
     
     const filtrados = visitas.map(v => {
        let totalQtd = 0;
        let minDiff = Infinity;
 
-       const checkLotForModal = (qtdOriginal: number | null, status: string | null, diasIniciais: number) => {
-         if (status !== 'DISPONIVEL' || !qtdOriginal) return;
-         const diff = getDiffEmDias(v.DATA_REGISTRO_VISITA, diasIniciais);
-         
-         let belongsToThisBucket = false;
-         if (targetBucket === 30 && diff >= -7 && diff <= 30) belongsToThisBucket = true;
-         else if (targetBucket === 60 && diff > 30 && diff <= 60) belongsToThisBucket = true;
-         else if (targetBucket === 90 && diff > 60) belongsToThisBucket = true;
+       if (v.lotesDaApi && v.lotesDaApi.length > 0) {
+         v.lotesDaApi.forEach(lote => {
+           if (lote.status_lote !== 'DISPONIVEL' || !lote.quantidade_cabecas) return;
+           const diff = getDiffEmDias(v.DATA_REGISTRO_VISITA, lote.prazo_dias);
+           
+           let belongsToThisBucket = false;
+           if (targetBucket === 30 && diff >= -7 && diff <= 30) belongsToThisBucket = true;
+           else if (targetBucket === 60 && diff > 30 && diff <= 60) belongsToThisBucket = true;
+           else if (targetBucket === 90 && diff > 60) belongsToThisBucket = true;
 
-         if (belongsToThisBucket) {
-             totalQtd += Number(qtdOriginal);
-             if (diff < minDiff) minDiff = diff;
-         }
-       };
-
-       checkLotForModal(v.QTD_30DIAS, v.STATUS_30DIAS, 30);
-       checkLotForModal(v.QTD_60DIAS, v.STATUS_60DIAS, 60);
-       checkLotForModal(v.QTD_90DIAS, v.STATUS_90DIAS, 90);
+           if (belongsToThisBucket) {
+               totalQtd += Number(lote.quantidade_cabecas);
+               if (diff < minDiff) minDiff = diff;
+           }
+         });
+       }
 
        return { ...v, _computedQtd: totalQtd, _computedMinDiff: minDiff };
-    }).filter(v => v._computedQtd > 0); 
+    }).filter(v => v._computedQtd > 0);
 
     filtrados.sort((a, b) => {
       if (forecastSortBy === 'qtd') {
@@ -352,14 +367,14 @@ export function Dashboard() {
       setForecastSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
     } else {
       setForecastSortBy(column);
-      setForecastSortOrder(column === 'vencimento' ? 'asc' : 'desc'); 
+      setForecastSortOrder(column === 'vencimento' ? 'asc' : 'desc');
     }
   };
 
   const openForecastModal = (periodo: 30 | 60 | 90, titulo: string) => {
-    setIsMapExpanded(false); 
-    setForecastSortBy('vencimento'); 
-    setForecastSortOrder('asc'); 
+    setIsMapExpanded(false);
+    setForecastSortBy('vencimento');
+    setForecastSortOrder('asc');
     setForecastModal({ isOpen: true, periodo, titulo });
   };
 
@@ -657,7 +672,7 @@ export function Dashboard() {
       )}
 
       {/* =======================================================
-          MODAL: RELATÓRIO DO CHECK-IN (COM ASSINATURA ARRUMADA)
+          MODAL: RELATÓRIO DO CHECK-IN
           ======================================================= */}
       {selectedReport && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -740,7 +755,7 @@ export function Dashboard() {
                   </div>
                 </div>
 
-                {/* BLOCO C */}
+                {/* BLOCO C 👇 ATUALIZADO PARA LOTES DINÂMICOS 👇 */}
                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b pb-2">C. Rebanho e Lotes para Abate</h3>
                   
@@ -751,56 +766,26 @@ export function Dashboard() {
 
                   <h4 className="text-[10px] font-bold text-slate-500 uppercase mb-2">Previsão de Abate (Lotes)</h4>
                   <div className="space-y-2">
-                    {selectedReport.disp30Dias && (
-                      <div className="grid grid-cols-4 gap-2 bg-slate-50 p-2 rounded border border-slate-100 items-center">
-                        <span className="font-bold text-sm text-slate-800">30 Dias</span>
-                        <span className="text-xs text-slate-600 font-medium">{selectedReport.qtd30Dias || 0} cabeças</span>
-                        <span className="text-xs text-slate-600 font-medium uppercase">{selectedReport.sexo30Dias}</span>
-                        <span className={`text-xs font-bold uppercase text-right ${selectedReport.status30Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status30Dias}</span>
+                    {selectedReport.lotesDaApi && selectedReport.lotesDaApi.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {selectedReport.lotesDaApi.map((lote, index) => (
+                          <div key={index} className="flex flex-col bg-slate-50 p-3 rounded-lg border border-slate-200 gap-1.5">
+                            <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
+                              <span className="font-black text-sm text-slate-800">{lote.prazo_dias} Dias</span>
+                              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${lote.status_lote === 'VENDIDO' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                                {lote.status_lote}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-end mt-1">
+                              <span className="text-xl text-slate-700 font-black tabular-nums">{lote.quantidade_cabecas}</span>
+                              <span className="text-[11px] text-slate-500 font-bold uppercase mb-1">cab. ({lote.sexo_animal})</span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    )}
-                    {selectedReport.disp60Dias && (
-                      <div className="grid grid-cols-4 gap-2 bg-slate-50 p-2 rounded border border-slate-100 items-center">
-                        <span className="font-bold text-sm text-slate-800">60 Dias</span>
-                        <span className="text-xs text-slate-600 font-medium">{selectedReport.qtd60Dias || 0} cabeças</span>
-                        <span className="text-xs text-slate-600 font-medium uppercase">{selectedReport.sexo60Dias}</span>
-                        <span className={`text-xs font-bold uppercase text-right ${selectedReport.status60Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status60Dias}</span>
-                      </div>
-                    )}
-                    {selectedReport.disp90Dias && (
-                      <div className="grid grid-cols-4 gap-2 bg-slate-50 p-2 rounded border border-slate-100 items-center">
-                        <span className="font-bold text-sm text-slate-800">90 Dias</span>
-                        <span className="text-xs text-slate-600 font-medium">{selectedReport.qtd90Dias || 0} cabeças</span>
-                        <span className="text-xs text-slate-600 font-medium uppercase">{selectedReport.sexo90Dias}</span>
-                        <span className={`text-xs font-bold uppercase text-right ${selectedReport.status90Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status90Dias}</span>
-                      </div>
-                    )}
-                    {!selectedReport.disp30Dias && !selectedReport.disp60Dias && !selectedReport.disp90Dias && (
+                    ) : (
                       <p className="text-xs text-slate-400 italic">Nenhum lote com previsão de abate a curto prazo.</p>
                     )}
-                  </div>
-                  
-                  {/* 👇 ASSINATURAS CORRIGIDAS AQUI 👇 */}
-                  <div className="grid grid-cols-2 gap-8 mt-10">
-                    <div className="border-t border-slate-300 pt-2 text-center flex flex-col justify-end">
-                      <p className="font-bold text-sm text-slate-800 uppercase">{selectedReport.visitante}</p>
-                      <p className="text-[10px] text-slate-500 font-semibold uppercase mt-1">Comprador (Visitante)</p>
-                    </div>
-                    <div className="border-t border-slate-300 pt-2 text-center flex flex-col justify-end min-h-[80px]">
-                      {/* Lógica: Verifica se é uma imagem base64 e renderiza a tag <img>, senão renderiza o texto */}
-                      {selectedReport.produtorAssinatura && selectedReport.produtorAssinatura.includes("data:image") ? (
-                        <img 
-                          src={selectedReport.produtorAssinatura} 
-                          alt="Assinatura Produtor" 
-                          className="mx-auto h-16 object-contain mb-1" 
-                        />
-                      ) : (
-                        <p className="font-bold text-sm text-slate-800 font-serif italic uppercase">
-                          {selectedReport.produtorAssinatura || "Assinatura Digital Ausente"}
-                        </p>
-                      )}
-                      <p className="text-[10px] text-slate-500 font-semibold uppercase mt-auto">Produtor</p>
-                    </div>
                   </div>
                 </div>
 

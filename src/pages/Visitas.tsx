@@ -39,19 +39,58 @@ import {
   TrendingDown,
   TrendingUp,
   ClipboardCheck,
-  Pencil // 👇 ÍCONE ADICIONADO AQUI
+  Pencil 
 } from "lucide-react";
 import { toast } from "sonner";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import { api, fetchPecuaristasAgendamento, type ApiRancher, type ApiUsuario, type ApiAuditoria } from "@/services/api";
+import { api, fetchPecuaristasAgendamento, type ApiRancher, type ApiUsuario, type ApiAuditoria, type ApiLote } from "@/services/api";
 
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import SignatureCanvas from 'react-signature-canvas';
 
-type Step = "idle" | "routing" | "form";
+// ------------------------------------------------------------
+// ESTRUTURAS DE DADOS
+// ------------------------------------------------------------
+const CHECKLIST_TEMPLATE = [
+  { id: 'c1_1', category: '1- MANEJO PRÉ ABATE', text: 'Horário de fechamento dos animais: preferência nas horas mais frescas do dia', severity: 'Menor' },
+  { id: 'c1_2', category: '1- MANEJO PRÉ ABATE', text: 'Horário de pesagem e embarque nos horários mais frescos', severity: 'Menor' },
+  { id: 'c1_3', category: '1- MANEJO PRÉ ABATE', text: 'Condições dos currais, tronco, cercas e porteiras em boas condições de uso', severity: 'Menor' },
+  { id: 'c1_4', category: '1- MANEJO PRÉ ABATE', text: 'Condições do piso: deverá evitar quedas, escorregões e atolamentos', severity: 'Menor' },
+  { id: 'c1_5', category: '1- MANEJO PRÉ ABATE', text: 'Rampa de embarque: preferencialmente cimentada, com inclinação adequada', severity: 'Menor' },
+  { id: 'c1_6', category: '1- MANEJO PRÉ ABATE', text: 'O uso de bastões elétricos: deverá ser evitado', severity: 'Maior' },
+  { id: 'c1_7', category: '1- MANEJO PRÉ ABATE', text: 'O uso de bastão perfurocortante (Ferrão): não deverá ser usado', severity: 'Crítico' },
+  { id: 'c1_8', category: '1- MANEJO PRÉ ABATE', text: 'Gritos e ruídos: deverão ser moderados sem excessos', severity: 'Maior' },
+  { id: 'c2_1', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'Sistema Intensivo: as condições do local de manejo adequadas à finalidade', severity: 'Maior' },
+  { id: 'c2_2', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'Sistema Extensivo: manejo de forma tranquila (Bem Estar Animal)', severity: 'Maior' },
+  { id: 'c2_3', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'Sistema Semi Intensivo: etapas de manejo bem definidas e alimentação garantida', severity: 'Maior' },
+  { id: 'c2_4', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'A propriedade possui algum tipo de enriquecimento ambiental', severity: 'Obs' },
+  { id: 'c3_1', category: '3. MANEJO SANITÁRIO', text: 'Animais fora do período de carência de medicamentos', severity: 'Crítico' },
+  { id: 'c3_2', category: '3. MANEJO SANITÁRIO', text: 'Proibido uso de anabolizantes', severity: 'Crítico' },
+  { id: 'c3_3', category: '3. MANEJO SANITÁRIO', text: 'Uso de antibióticos somente quando prescrito', severity: 'Crítico' },
+  { id: 'c3_4', category: '3. MANEJO SANITÁRIO', text: 'Comprovantes de vacinas obrigatórias', severity: 'Maior' },
+  { id: 'c3_5', category: '3. MANEJO SANITÁRIO', text: 'Vacinas não obrigatórias sob prescrição', severity: 'Crítico' },
+  { id: 'c3_6', category: '3. MANEJO SANITÁRIO', text: 'Endoparasitas com acompanhamento técnico', severity: 'Menor' },
+  { id: 'c3_7', category: '3. MANEJO SANITÁRIO', text: 'Ectoparasitas com acompanhamento técnico', severity: 'Menor' },
+  { id: 'c4_1', category: '4. TIPO DE TRATO OFERECIDO', text: 'Armazenamento adequado', severity: 'Maior' },
+  { id: 'c4_2', category: '4. TIPO DE TRATO OFERECIDO', text: 'Suplementação programada', severity: 'Maior' },
+  { id: 'c4_3', category: '4. TIPO DE TRATO OFERECIDO', text: 'Comprovação da alimentação via notas', severity: 'Menor' },
+  { id: 'c4_4', category: '4. TIPO DE TRATO OFERECIDO', text: 'Água limpa, abundante e renovada', severity: 'Crítico' },
+  { id: 'c4_5', category: '4. TIPO DE TRATO OFERECIDO', text: 'Sem produtos de origem animal ou cama de frango', severity: 'Crítico' },
+  { id: 'c5_1', category: '5. ORIGEM DO REBANHO', text: 'Comprovação de origem (GTA/DIA)', severity: 'Maior' },
+  { id: 'c5_2', category: '5. ORIGEM DO REBANHO', text: 'Sistema de rastreabilidade na propriedade', severity: 'Maior' },
+  { id: 'c6_1', category: '6. QUALIDADE DO REBANHO', text: 'Uniformidade de peso e genética', severity: 'Obs' },
+  { id: 'c7_1', category: '7. ORIENTAÇÕES', text: 'Produtor orientado sobre Bem Estar Animal', severity: 'Maior' },
+  { id: 'c7_2', category: '7. ORIENTAÇÕES', text: 'Produtor orientado sobre vacinação', severity: 'Maior' },
+];
+
+interface LoteForm {
+  prazo_dias: string;
+  quantidade_cabecas: string;
+  sexo_animal: string;
+  status_lote: string;
+}
 
 interface CheckinReport {
   id: string;
@@ -73,9 +112,9 @@ interface CheckinReport {
   atividade: string; 
   habilitacao: string;
   terminacao: string; 
-  disp30Dias: boolean; qtd30Dias: string; sexo30Dias: string; status30Dias: string;
-  disp60Dias: boolean; qtd60Dias: string; sexo60Dias: string; status60Dias: string;
-  disp90Dias: boolean; qtd90Dias: string; sexo90Dias: string; status90Dias: string;
+  
+  lotesDaApi?: ApiLote[];
+  
   numAnimais: string; 
   data: string; 
   id_comprador: number;
@@ -103,22 +142,22 @@ const formatarDataBruta = (dataString: string | null | undefined) => {
   return dataString; 
 };
 
-export default function Pecuaristas() {
+// ------------------------------------------------------------
+// COMPONENTE PRINCIPAL (VISITAS / RELATÓRIOS)
+// ------------------------------------------------------------
+export default function Visitas() {
   const { user } = useAuth();
-  
   const podeExcluir = user && (user as any).nivel > 3;
 
-  const [isPendingOpen, setIsPendingOpen] = useState(true);
+  const [isPendingOpen, setIsPendingOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<CheckinReport | null>(null);
   
-  // 👇 ESTADOS PARA A AUDITORIA E RELATÓRIO PDF 👇
   const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
   const [selectedAuditVisit, setSelectedAuditVisit] = useState<CheckinReport | null>(null);
   const [auditAnswers, setAuditAnswers] = useState<ApiAuditoria[]>([]);
   const [isFetchingAudit, setIsFetchingAudit] = useState(false);
   const [isGeneratingAuditPDF, setIsGeneratingAuditPDF] = useState(false);
   
-  // Refs para as duas partes da auditoria (para gerar duas páginas em Paisagem)
   const auditPart1Ref = useRef<HTMLDivElement>(null);
   const auditPart2Ref = useRef<HTMLDivElement>(null);
 
@@ -130,13 +169,13 @@ export default function Pecuaristas() {
   const [pecuaristas, setPecuaristas] = useState<ApiRancher[]>([]);
   const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]);
 
+  // Filtros Globais e de Visitas
   const [filterProdutor, setFilterProdutor] = useState("");
   const [filterFazenda, setFilterFazenda] = useState("");
   const [filterCidade, setFilterCidade] = useState("");
   const [filterData, setFilterData] = useState("");
   const [filterGerouCompra, setFilterGerouCompra] = useState("Todos"); 
   const [filterComprador, setFilterComprador] = useState(""); 
-  
   const [filterStatusFrete, setFilterStatusFrete] = useState<"Todos" | "Economia" | "Desvio">("Todos");
 
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
@@ -153,7 +192,7 @@ export default function Pecuaristas() {
   const [pedidosList, setPedidosList] = useState<string[]>([]);
   const [isSavingPedidos, setIsSavingPedidos] = useState(false);
 
-  // 👇 ESTADOS ADICIONADOS PARA GERENCIAR O FORMULÁRIO DE EDIÇÃO PANELS 👇
+  // ESTADOS FORMULÁRIO DE EDIÇÃO PANELS
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [visitToEdit, setVisitToEdit] = useState<CheckinReport | null>(null);
   const [editNumAnimais, setEditNumAnimais] = useState("");
@@ -163,20 +202,9 @@ export default function Pecuaristas() {
   const [editDistanciaReal, setEditDistanciaReal] = useState("");
   const [editLatitude, setEditLatitude] = useState("");   
   const [editLongitude, setEditLongitude] = useState("");
-  const [editDisp30, setEditDisp30] = useState(false);
-  const [editQtd30, setEditQtd30] = useState("");
-  const [editSexo30, setEditSexo30] = useState("BOI");
-  const [editStatus30, setEditStatus30] = useState("DISPONIVEL");
-  const [editDisp60, setEditDisp60] = useState(false);
-  const [editQtd60, setEditQtd60] = useState("");
-  const [editSexo60, setEditSexo60] = useState("BOI");
-  const [editStatus60, setEditStatus60] = useState("DISPONIVEL");
-  const [editDisp90, setEditDisp90] = useState(false);
-  const [editQtd90, setEditQtd90] = useState("");
-  const [editSexo90, setEditSexo90] = useState("BOI");
-  const [editStatus90, setEditStatus90] = useState("DISPONIVEL");
+  
+  const [editLotes, setEditLotes] = useState<LoteForm[]>([]);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
-
   const [alertModal, setAlertModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -204,7 +232,6 @@ export default function Pecuaristas() {
           return usuario ? usuario.CODUSUARIO : `ID: ${id}`;
         };
 
-        // 👇 TRAVA FILTRO: Só mapeia se tiver ID_VISITA e não for "AUDITORIA AVULSA" 👇
         const mappedData: CheckinReport[] = data
           .filter((v: any) => v.ID_VISITA !== null && v.ID_VISITA !== undefined && String(v.ID_VISITA).trim() !== "" && String(v.ID_VISITA) !== "null" && v.NATUREZA_VISITA !== "AUDITORIA AVULSA")
           .map((v: any) => ({
@@ -216,9 +243,7 @@ export default function Pecuaristas() {
             tipoVisita: v.NATUREZA_VISITA || "", nomeRecebedor: v.NOME_RECEBEDOR || "", cargoRecebedor: v.CARGO_RECEBEDOR || "",
             frigorificoCostume: v.FRIGORIFICO_COSTUME || "", cabecasAbatidasAno: v.CABECAS_ABATIDAS_ANO ? String(v.CABECAS_ABATIDAS_ANO) : "",
             tipoVenda: v.TIPO_VENDA || "", atividade: v.TIPO_ATIVIDADE || "", habilitacao: v.HABILITACAO || "", terminacao: v.TIPO_TERMINACAO || "",
-            disp30Dias: v.QTD_30DIAS !== null, qtd30Dias: v.QTD_30DIAS ? String(v.QTD_30DIAS) : "", sexo30Dias: v.SEXO_30DIAS || "", status30Dias: v.STATUS_30DIAS || "",
-            disp60Dias: v.QTD_60DIAS !== null, qtd60Dias: v.QTD_60DIAS ? String(v.QTD_60DIAS) : "", sexo60Dias: v.SEXO_60DIAS || "", status60Dias: v.STATUS_60DIAS || "",
-            disp90Dias: v.QTD_90DIAS !== null, qtd90Dias: v.QTD_90DIAS ? String(v.QTD_90DIAS) : "", sexo90Dias: v.SEXO_90DIAS || "", status90Dias: v.STATUS_90DIAS || "",
+            
             numAnimais: v.EFETIVO_TOTAL_ANIMAIS ? String(v.EFETIVO_TOTAL_ANIMAIS) : "",
             data: v.DATA_REGISTRO_VISITA || "", 
             id_comprador: v.ID_COMPRADOR,
@@ -227,7 +252,7 @@ export default function Pecuaristas() {
             
             distanciaRealRaw: v.DISTANCIA_PERCORRIDA_REAL !== null && v.DISTANCIA_PERCORRIDA_REAL !== undefined ? Number(v.DISTANCIA_PERCORRIDA_REAL) : null,
             distanciaerp: v.DISTANCIAERP !== null && v.DISTANCIAERP !== undefined ? Number(v.DISTANCIAERP) : null,
-            statusAuditoria: v.STATUS_AUDITORIA || null,
+            statusAuditoria: (v.STATUS_AUDITORIA && String(v.STATUS_AUDITORIA).trim() !== "null" && String(v.STATUS_AUDITORIA).trim() !== "") ? String(v.STATUS_AUDITORIA) : null, // Importante para validar se exibe botão Checklist
             
             statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente",
             imagem: v.IMAGEM || null,
@@ -235,7 +260,6 @@ export default function Pecuaristas() {
             nropedido: v.NROPEDIDO || v.nropedido || null,
             latitude: v.GPS_LATITUDE !== null && v.GPS_LATITUDE !== undefined ? Number(v.GPS_LATITUDE) : null,   
             longitude: v.GPS_LONGITUDE !== null && v.GPS_LONGITUDE !== undefined ? Number(v.GPS_LONGITUDE) : null 
-
           }));
 
         setAllData(mappedData);
@@ -257,6 +281,10 @@ export default function Pecuaristas() {
 
   const filteredBaseData = useMemo(() => {
     return allData.filter(v => {
+      // Bloqueia visão de outros se não for admin
+      if (user?.role !== "ADMIN" && String(v.id_comprador) !== String(user?.id)) {
+        return false;
+      }
       const matchProdutor = v.nome.toLowerCase().includes(filterProdutor.toLowerCase());
       const matchFazenda = v.propriedade.toLowerCase().includes(filterFazenda.toLowerCase());
       const matchCidade = filterCidade === "" || v.municipio === filterCidade;
@@ -268,10 +296,9 @@ export default function Pecuaristas() {
 
       return matchProdutor && matchFazenda && matchCidade && matchData && matchGerouCompra && matchComprador;
     });
-  }, [filterProdutor, filterFazenda, filterCidade, filterData, filterGerouCompra, filterComprador, allData]);
+  }, [filterProdutor, filterFazenda, filterCidade, filterData, filterGerouCompra, filterComprador, allData, user?.role, user?.id]);
 
   const filteredPendentes = useMemo(() => filteredBaseData.filter(v => v.statusDatavale === "pendente"), [filteredBaseData]);
-
   const historicoBaseParaCalculo = useMemo(() => filteredBaseData.filter(v => v.statusDatavale === "cadastrado"), [filteredBaseData]);
 
   const freteStats = useMemo(() => {
@@ -309,12 +336,12 @@ export default function Pecuaristas() {
     return result.sort((a, b) => Number(b.id) - Number(a.id));
   }, [historicoBaseParaCalculo, filterStatusFrete]);
 
-  // 👇 AGRUPAMENTO DA AUDITORIA PARA 2 PÁGINAS 👇
   const auditParts = useMemo(() => {
     const part1: Record<string, ApiAuditoria[]> = {};
     const part2: Record<string, ApiAuditoria[]> = {};
 
     auditAnswers.forEach(ans => {
+      if (!ans || !ans.REQUISITO) return;
       const firstChar = ans.REQUISITO.trim().charAt(0);
       if (['4', '5', '6', '7'].includes(firstChar)) {
         if (!part2[ans.REQUISITO]) part2[ans.REQUISITO] = [];
@@ -343,7 +370,6 @@ export default function Pecuaristas() {
   const handleVincularPecuarista = async (rancher: ApiRancher) => {
     if (!visitToLink) return;
     setIsLinking(true);
-
     try {
       const result = await api.vincularVisita({
         id_visita: visitToLink.id,
@@ -376,7 +402,6 @@ export default function Pecuaristas() {
       toast.success(`Visita vinculada a ${rancher.NOME_PRODUTOR}!`);
       setIsLinkModalOpen(false);
       setVisitToLink(null);
-
     } catch (error) {
       toast.error("Falha ao vincular pecuarista.");
     } finally {
@@ -435,7 +460,6 @@ export default function Pecuaristas() {
       
       if (salvos > 0) {
         toast.success(`${salvos} pedido(s) vinculado(s) com sucesso!`);
-        
         setAllData(prev => prev.map(v => {
           if (v.id === visitToLinkPedido.id) {
              const existing = v.nropedido ? v.nropedido.split(', ') : [];
@@ -444,7 +468,6 @@ export default function Pecuaristas() {
           }
           return v;
         }));
-        
         setIsPedidoModalOpen(false);
       } else {
         toast.error("Nenhum pedido foi salvo. Verifique a conexão.");
@@ -456,11 +479,32 @@ export default function Pecuaristas() {
     }
   };
 
-  // 👇 FUNÇÃO PARA SALVAR A EDIÇÃO DO RELATÓRIO VIA API 👇
+  // 👇 FUNÇÃO PARA SALVAR A EDIÇÃO DOS LOTES E DADOS GERAIS VIA API 👇
   const handleSaveEdit = async () => {
     if (!visitToEdit) return;
+
+    // Valida os lotes antes de salvar
+    const errosLotes: string[] = [];
+    editLotes.forEach((lote, index) => {
+      if (!String(lote.prazo_dias).trim() || !String(lote.quantidade_cabecas).trim()) {
+        errosLotes.push(`Lote ${index + 1}`);
+      }
+    });
+
+    if (errosLotes.length > 0) {
+      toast.error(`Você adicionou os lotes: ${errosLotes.join(", ")}, mas deixou dias ou cabeças em branco.`);
+      return;
+    }
+
     setIsSavingEdit(true);
     try {
+      const lotesFormatados = editLotes.map(l => ({
+        prazo_dias: Number(l.prazo_dias),
+        quantidade_cabecas: Number(l.quantidade_cabecas),
+        sexo_animal: String(l.sexo_animal).toUpperCase(),
+        status_lote: String(l.status_lote).toUpperCase()
+      }));
+
       const payload = {
         id_visita: Number(visitToEdit.id),
         tipoVisita: editNaturezaVisita,
@@ -470,18 +514,7 @@ export default function Pecuaristas() {
         gps_latitude: editLatitude ? Number(editLatitude) : null, 
         gps_longitude: editLongitude ? Number(editLongitude) : null,
         distancia_percorrida_real: editDistanciaReal ? Number(editDistanciaReal) : null,
-        disp30Dias: editDisp30,
-        qtd30Dias: editQtd30 ? Number(editQtd30) : 0,
-        sexo30Dias: editSexo30,
-        status30Dias: editStatus30,
-        disp60Dias: editDisp60,
-        qtd60Dias: editQtd60 ? Number(editQtd60) : 0,
-        sexo60Dias: editSexo60,
-        status60Dias: editStatus60,
-        disp90Dias: editDisp90,
-        qtd90Dias: editQtd90 ? Number(editQtd90) : 0,
-        sexo90Dias: editSexo90,
-        status90Dias: editStatus90
+        lotes: lotesFormatados // Passa os lotes dinâmicos
       };
 
       const res = await api.editarVisita(payload);
@@ -499,9 +532,6 @@ export default function Pecuaristas() {
               longitude: editLongitude ? Number(editLongitude) : null, 
               distanciaRealRaw: editDistanciaReal ? Number(editDistanciaReal) : item.distanciaRealRaw,
               distancia: editDistanciaReal ? `${(Number(editDistanciaReal)).toFixed(1)} km` : item.distancia,
-              disp30Dias: editDisp30, qtd30Dias: editQtd30, sexo30Dias: editSexo30, status30Dias: editStatus30,
-              disp60Dias: editDisp60, qtd60Dias: editQtd60, sexo60Dias: editSexo60, status60Dias: editStatus60,
-              disp90Dias: editDisp90, qtd90Dias: editQtd90, sexo90Dias: editSexo90, status90Dias: editStatus90,
             };
           }
           return item;
@@ -561,7 +591,6 @@ export default function Pecuaristas() {
     }
   };
 
-  // 👇 FUNÇÃO DE DOWNLOAD ATUALIZADA PARA HORIZONTAL (PAISAGEM) COM CORREÇÃO DE LOGO E 2 PÁGINAS 👇
   const handleDownloadAuditPDF = async () => {
     if (!auditPart1Ref.current || !auditPart2Ref.current || !selectedAuditVisit) return;
     try {
@@ -576,7 +605,7 @@ export default function Pecuaristas() {
       const imgHeight1 = (canvas1.height * pdfWidth) / canvas1.width;
       pdf.addImage(imgData1, 'PNG', 0, 0, pdfWidth, imgHeight1);
 
-      // Adiciona Página para Parte 2 (Tipo de Trato oferecido em diante)
+      // Adiciona Página para Parte 2
       pdf.addPage();
       const canvas2 = await html2canvas(auditPart2Ref.current, { scale: 2, useCORS: true, logging: false });
       const imgData2 = canvas2.toDataURL("image/png");
@@ -693,51 +722,61 @@ export default function Pecuaristas() {
                  </Button>
               )}
 
-              {/* BOTÃO DE RELATÓRIO COM MENU SUSPENSO */}
+              {/* 👇 AQUI A LÓGICA DO MENU DO RELATÓRIO CORRIGIDA 👇 */}
               <div className="relative">
                 {v.statusAuditoria ? (
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className={`h-8 px-3 text-[11px] font-bold shadow-sm transition-all rounded-lg flex justify-center shrink-0 ${openReportMenuId === v.id ? 'bg-slate-100 border-slate-300 text-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'}`}
-                    onClick={() => setOpenReportMenuId(openReportMenuId === v.id ? null : v.id)}
-                    title="Ver Relatórios"
-                  >
-                    <FileText className="w-4 h-4 sm:mr-1.5" /> <span className="hidden sm:inline">RELATÓRIO ▾</span>
-                  </Button>
+                  // SE TEM CHECKLIST, MOSTRA O MENU COM SETINHA E AS DUAS OPÇÕES
+                  <>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className={`h-8 px-3 text-[11px] font-bold shadow-sm transition-all rounded-lg flex justify-center shrink-0 ${openReportMenuId === v.id ? 'bg-slate-100 border-slate-300 text-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                      onClick={() => setOpenReportMenuId(openReportMenuId === v.id ? null : v.id)}
+                      title="Ver Relatórios"
+                    >
+                      <FileText className="w-4 h-4 sm:mr-1.5" /> <span className="hidden sm:inline">RELATÓRIO ▾</span>
+                    </Button>
+
+                    {openReportMenuId === v.id && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setOpenReportMenuId(null)} />
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-200 shadow-xl rounded-xl p-1.5 z-50 flex flex-col gap-1 animate-in fade-in slide-in-from-top-2">
+                          <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={async () => { 
+                            const apiLotes = await api.fetchLotesVisita(v.id);
+                            setSelectedReport({ ...v, lotesDaApi: apiLotes }); 
+                            setOpenReportMenuId(null); 
+                          }}>
+                            📄 Ficha de Visita
+                          </Button>
+                          <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => { handleOpenAudit(v); setOpenReportMenuId(null); }}>
+                            📋 Checklist
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </>
                 ) : (
+                  // SE NÃO TEM CHECKLIST, É SÓ UM BOTÃO SIMPLES QUE ABRE A FICHA DA VISITA DIRETO
                   <Button 
                     size="sm" 
                     variant="outline" 
                     className="h-8 w-10 sm:w-auto px-0 sm:px-3 text-[11px] font-bold shadow-sm border-slate-200 text-slate-600 hover:bg-slate-100 transition-all rounded-lg flex justify-center shrink-0" 
-                    onClick={() => setSelectedReport(v)}
+                    onClick={async () => {
+                      const apiLotes = await api.fetchLotesVisita(v.id);
+                      setSelectedReport({ ...v, lotesDaApi: apiLotes });
+                    }}
                     title="Ver Relatório"
                   >
                     <FileText className="w-4 h-4 sm:mr-1.5" /> <span className="hidden sm:inline">RELATÓRIO</span>
                   </Button>
                 )}
-
-                {openReportMenuId === v.id && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setOpenReportMenuId(null)} />
-                    <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-200 shadow-xl rounded-xl p-1.5 z-50 flex flex-col gap-1 animate-in fade-in slide-in-from-top-2">
-                      <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => { setSelectedReport(v); setOpenReportMenuId(null); }}>
-                        📄 Ficha de Visita
-                      </Button>
-                      <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => { handleOpenAudit(v); setOpenReportMenuId(null); }}>
-                        📋 Checklist
-                      </Button>
-                    </div>
-                  </>
-                )}
               </div>
               
-              {/* 👇 BOTÃO DE EDITAR ADICIONADO PERFEITAMENTE À ESQUERDA DA LIXEIRA 👇 */}
               <Button
                 size="sm"
                 variant="outline"
                 className="h-8 w-10 p-0 border-slate-200 text-amber-600 hover:bg-amber-50 hover:border-amber-200 transition-all rounded-lg shadow-sm shrink-0 flex items-center justify-center"
-                onClick={() => {
+                onClick={async () => {
                   setVisitToEdit(v);
                   setEditNaturezaVisita(v.tipoVisita || "");
                   setEditNomeRecebedor(v.nomeRecebedor || "");
@@ -746,20 +785,16 @@ export default function Pecuaristas() {
                   setEditDistanciaReal(v.distanciaRealRaw ? String(v.distanciaRealRaw) : "");
                   setEditLatitude(v.latitude !== null && v.latitude !== undefined ? String(v.latitude) : "");  
                   setEditLongitude(v.longitude !== null && v.longitude !== undefined ? String(v.longitude) : ""); 
-                  setEditDisp30(v.disp30Dias || false);
-                  setEditQtd30(v.qtd30Dias || "");
-                  setEditSexo30(v.sexo30Dias || "BOI");
-                  setEditStatus30(v.status30Dias || "DISPONIVEL");
-
-                  setEditDisp60(v.disp60Dias || false);
-                  setEditQtd60(v.qtd60Dias || "");
-                  setEditSexo60(v.sexo60Dias || "BOI");
-                  setEditStatus60(v.status60Dias || "DISPONIVEL");
-
-                  setEditDisp90(v.disp90Dias || false);
-                  setEditQtd90(v.qtd90Dias || "");
-                  setEditSexo90(v.sexo90Dias || "BOI");
-                  setEditStatus90(v.status90Dias || "DISPONIVEL");
+                  
+                  // 👇 BUSCA OS LOTES DO BANCO DE DADOS E JOGA NO ARRAY PARA EDIÇÃO 👇
+                  const lotesDoBanco = await api.fetchLotesVisita(v.id);
+                  const lotesConvertidos: LoteForm[] = lotesDoBanco.map(l => ({
+                    prazo_dias: String(l.prazo_dias),
+                    quantidade_cabecas: String(l.quantidade_cabecas),
+                    sexo_animal: String(l.sexo_animal),
+                    status_lote: String(l.status_lote)
+                  }));
+                  setEditLotes(lotesConvertidos);
                   
                   setIsEditModalOpen(true);
                 }}
@@ -994,7 +1029,10 @@ export default function Pecuaristas() {
                               size="sm" 
                               variant="outline" 
                               className="text-[11px] h-8 text-slate-600 border-slate-200 hover:bg-slate-100 font-bold transition-all shadow-sm rounded-lg w-10 sm:w-auto px-0 sm:px-3 flex justify-center shrink-0" 
-                              onClick={() => setSelectedReport(p)}
+                              onClick={async () => {
+                                const apiLotes = await api.fetchLotesVisita(p.id);
+                                setSelectedReport({ ...p, lotesDaApi: apiLotes });
+                              }}
                             >
                               <FileText className="w-3.5 h-3.5 sm:mr-1.5 text-slate-400" /> <span className="hidden sm:inline">RELATÓRIO</span>
                             </Button>
@@ -1197,24 +1235,28 @@ export default function Pecuaristas() {
 
                 <div className="flex-1 overflow-y-auto border border-slate-200 rounded-xl bg-white shadow-sm min-h-[300px]">
                   <Table>
-                    <TableHeader className="bg-slate-50 sticky top-0 shadow-sm z-10">
+                    <TableHeader className="bg-slate-50/80 sticky top-0 shadow-sm backdrop-blur-sm">
                       <TableRow>
-                        <TableHead className="font-bold text-[10px] uppercase tracking-wider text-slate-500">Dados do ERP</TableHead>
-                        <TableHead className="font-bold text-[10px] uppercase tracking-wider text-slate-500 text-right">Ação</TableHead>
+                        <TableHead className="font-bold text-[11px] uppercase tracking-wider text-slate-500">Pecuarista</TableHead>
+                        <TableHead className="font-bold text-[11px] uppercase tracking-wider text-slate-500">Local</TableHead>
+                        <TableHead className="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 w-24">Ação</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredModalRanchers.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={2} className="text-center py-12 text-slate-400 font-medium">Nenhum pecuarista encontrado na base.</TableCell>
+                          <TableCell colSpan={3} className="text-center py-12 text-slate-400 font-medium">Nenhum pecuarista encontrado na base.</TableCell>
                         </TableRow>
                       ) : (
                         filteredModalRanchers.map((r, index) => (
                           <TableRow key={`${r.COD_PRODUTOR}-${r.INSCRICAO}-${index}`} className="hover:bg-slate-50 transition-colors">
                             <TableCell className="py-4">
                               <p className="font-black text-sm text-slate-800 uppercase">{r.NOME_PRODUTOR}</p>
-                              <p className="text-xs font-bold text-slate-500 mt-0.5 uppercase">{r.NOME_FAZENDA} - {r.MUNICIPIO}</p>
-                              <p className="text-[10px] text-slate-400 font-mono mt-1 font-semibold">CÓD: {r.COD_PRODUTOR} | IE: {r.INSCRICAO}</p>
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">CÓD: {r.COD_PRODUTOR} • IE: {r.INSCRICAO}</p>
+                            </TableCell>
+                            <TableCell className="py-4">
+                              <p className="text-xs font-bold text-slate-700 uppercase">{r.NOME_FAZENDA}</p>
+                              <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500 mt-0.5"><MapPin className="w-3 h-3" /> {r.MUNICIPIO}</div>
                             </TableCell>
                             <TableCell className="text-right align-middle py-4">
                               <Button 
@@ -1376,35 +1418,28 @@ export default function Pecuaristas() {
                     </div>
 
                     <h4 className="text-[10px] font-bold text-slate-500 uppercase mb-3 tracking-wider">Previsão de Abate (Lotes)</h4>
-                    <div className="space-y-3">
-                      {selectedReport.disp30Dias && (
-                        <div className="grid grid-cols-4 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 items-center">
-                          <span className="font-black text-sm text-slate-800">30 Dias</span>
-                          <span className="text-xs text-slate-700 font-bold">{selectedReport.qtd30Dias || 0} cab.</span>
-                          <span className="text-[11px] text-slate-500 font-bold uppercase">{selectedReport.sexo30Dias}</span>
-                          <span className={`text-[11px] font-black uppercase text-right ${selectedReport.status30Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status30Dias}</span>
-                        </div>
-                      )}
-                      {selectedReport.disp60Dias && (
-                        <div className="grid grid-cols-4 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 items-center">
-                          <span className="font-black text-sm text-slate-800">60 Dias</span>
-                          <span className="text-xs text-slate-700 font-bold">{selectedReport.qtd60Dias || 0} cab.</span>
-                          <span className="text-[11px] text-slate-500 font-bold uppercase">{selectedReport.sexo60Dias}</span>
-                          <span className={`text-[11px] font-black uppercase text-right ${selectedReport.status60Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status60Dias}</span>
-                        </div>
-                      )}
-                      {selectedReport.disp90Dias && (
-                        <div className="grid grid-cols-4 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 items-center">
-                          <span className="font-black text-sm text-slate-800">90 Dias</span>
-                          <span className="text-xs text-slate-700 font-bold">{selectedReport.qtd90Dias || 0} cab.</span>
-                          <span className="text-[11px] text-slate-500 font-bold uppercase">{selectedReport.sexo90Dias}</span>
-                          <span className={`text-[11px] font-black uppercase text-right ${selectedReport.status90Dias === 'VENDIDO' ? 'text-amber-600' : 'text-primary'}`}>{selectedReport.status90Dias}</span>
-                        </div>
-                      )}
-                      {!selectedReport.disp30Dias && !selectedReport.disp60Dias && !selectedReport.disp90Dias && (
-                        <p className="text-xs text-slate-400 font-medium italic">Nenhum lote com previsão de abate a curto prazo.</p>
-                      )}
-                    </div>
+                    
+                    {/* 👇 RENDERIZAÇÃO DINÂMICA DE LOTES NO RELATÓRIO 👇 */}
+                    {selectedReport.lotesDaApi && selectedReport.lotesDaApi.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {selectedReport.lotesDaApi.map((lote, index) => (
+                          <div key={index} className="flex flex-col bg-slate-50 p-3 rounded-lg border border-slate-200 gap-1.5">
+                            <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
+                              <span className="font-black text-sm text-slate-800">{lote.prazo_dias} Dias</span>
+                              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${lote.status_lote === 'VENDIDO' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                                {lote.status_lote}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-end mt-1">
+                              <span className="text-xl text-slate-700 font-black tabular-nums">{lote.quantidade_cabecas}</span>
+                              <span className="text-[11px] text-slate-500 font-bold uppercase mb-1">cab. ({lote.sexo_animal})</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 font-medium italic">Nenhum lote com previsão de abate a curto prazo.</p>
+                    )}
                   </div>
 
                   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -1633,7 +1668,7 @@ export default function Pecuaristas() {
           </div>
         )}
 
-        {/* 👇 MODAL / PAINEL SUSPENSO PARA EDICAO DOS DADOS MAIS BÁSICOS (NOME DO PECUARISTA FICA APENAS COMO TEXTO DE LEITURA) 👇 */}
+        {/* 👇 MODAL / PAINEL SUSPENSO PARA EDICAO DOS DADOS MAIS BÁSICOS 👇 */}
         {isEditModalOpen && visitToEdit && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <Card className="w-full max-w-xl shadow-2xl overflow-hidden border-none rounded-2xl max-h-[90vh] flex flex-col">
@@ -1673,7 +1708,6 @@ export default function Pecuaristas() {
                   </div>
                 </div>
 
-                {/* Cole este bloco de Grid exatamente acima da div de Natureza Visita/Nome Recebedor */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Latitude GPS</Label>
@@ -1700,54 +1734,72 @@ export default function Pecuaristas() {
                   </div>
                 </div>
 
-                {/* PAINEL DE DISPONIBILIDADE DE LOTES */}
+                {/* 👇 EDIÇÃO DINÂMICA DE LOTES 👇 */}
                 <div className="border-t border-slate-100 pt-3 space-y-3">
                   <Label className="text-[11px] font-black text-slate-600 uppercase tracking-wider block">Previsão e Disponibilidade de Lotes</Label>
                   
-                  {/* LOTE 30 */}
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <input type="checkbox" id="editDisp30" checked={editDisp30} onChange={(e) => setEditDisp30(e.target.checked)} className="rounded text-primary focus:ring-primary w-4 h-4 shadow-sm" />
-                      <Label htmlFor="editDisp30" className="text-xs font-bold text-slate-700">Lote 30 Dias</Label>
-                    </div>
-                    {editDisp30 && (
-                      <div className="grid grid-cols-3 gap-2 animate-in fade-in duration-150">
-                        <Input type="number" placeholder="Qtd Cabeças" value={editQtd30} onChange={(e) => setEditQtd30(e.target.value)} className="h-9 bg-white font-bold" />
-                        <select value={editSexo30} onChange={(e) => setEditSexo30(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
-                        <select value={editStatus30} onChange={(e) => setEditStatus30(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
+                  {editLotes.map((lote, index) => (
+                    <div key={index} className="flex-1 grid grid-cols-1 sm:grid-cols-5 gap-2 w-full animate-in fade-in items-center bg-slate-50 p-3 rounded-lg border border-slate-200">
+                      <div className="flex flex-col space-y-1">
+                        <Label className="text-[10px] text-slate-500 uppercase">Dias</Label>
+                        <Input type="number" placeholder="Ex: 45" className="h-9 text-xs font-bold bg-white" value={lote.prazo_dias} onChange={(e) => {
+                          const newLotes = [...editLotes];
+                          newLotes[index].prazo_dias = e.target.value;
+                          setEditLotes(newLotes);
+                        }} />
                       </div>
-                    )}
-                  </div>
-
-                  {/* LOTE 60 */}
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <input type="checkbox" id="editDisp60" checked={editDisp60} onChange={(e) => setEditDisp60(e.target.checked)} className="rounded text-primary focus:ring-primary w-4 h-4 shadow-sm" />
-                      <Label htmlFor="editDisp60" className="text-xs font-bold text-slate-700">Lote 60 Dias</Label>
-                    </div>
-                    {editDisp60 && (
-                      <div className="grid grid-cols-3 gap-2 animate-in fade-in duration-150">
-                        <Input type="number" placeholder="Qtd Cabeças" value={editQtd60} onChange={(e) => setEditQtd60(e.target.value)} className="h-9 bg-white font-bold" />
-                        <select value={editSexo60} onChange={(e) => setEditSexo60(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
-                        <select value={editStatus60} onChange={(e) => setEditStatus60(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
+                      <div className="flex flex-col space-y-1">
+                        <Label className="text-[10px] text-slate-500 uppercase">Qtd Cab</Label>
+                        <Input type="number" placeholder="Qtd" className="h-9 text-xs font-bold bg-white" value={lote.quantidade_cabecas} onChange={(e) => {
+                          const newLotes = [...editLotes];
+                          newLotes[index].quantidade_cabecas = e.target.value;
+                          setEditLotes(newLotes);
+                        }} />
                       </div>
-                    )}
-                  </div>
-
-                  {/* LOTE 90 */}
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <input type="checkbox" id="editDisp90" checked={editDisp90} onChange={(e) => setEditDisp90(e.target.checked)} className="rounded text-primary focus:ring-primary w-4 h-4 shadow-sm" />
-                      <Label htmlFor="editDisp90" className="text-xs font-bold text-slate-700">Lote 90 Dias</Label>
-                    </div>
-                    {editDisp90 && (
-                      <div className="grid grid-cols-3 gap-2 animate-in fade-in duration-150">
-                        <Input type="number" placeholder="Qtd Cabeças" value={editQtd90} onChange={(e) => setEditQtd90(e.target.value)} className="h-9 bg-white font-bold" />
-                        <select value={editSexo90} onChange={(e) => setEditSexo90(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
-                        <select value={editStatus90} onChange={(e) => setEditStatus90(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase"><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
+                      <div className="flex flex-col space-y-1">
+                        <Label className="text-[10px] text-slate-500 uppercase">Sexo</Label>
+                        <select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={lote.sexo_animal} onChange={(e) => {
+                          const newLotes = [...editLotes];
+                          newLotes[index].sexo_animal = e.target.value;
+                          setEditLotes(newLotes);
+                        }}>
+                          <option value="BOI">BOI</option>
+                          <option value="VACA">VACA</option>
+                          <option value="AMBOS">MISTO</option>
+                        </select>
                       </div>
-                    )}
-                  </div>
+                      <div className="flex flex-col space-y-1">
+                        <Label className="text-[10px] text-slate-500 uppercase">Status</Label>
+                        <select className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs font-bold uppercase" value={lote.status_lote} onChange={(e) => {
+                          const newLotes = [...editLotes];
+                          newLotes[index].status_lote = e.target.value;
+                          setEditLotes(newLotes);
+                        }}>
+                          <option value="DISPONIVEL">DISPONÍVEL</option>
+                          <option value="NEGOCIANDO">NEGOCIANDO</option>
+                          <option value="VENDIDO">VENDIDO</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col justify-end h-full">
+                        <Button variant="outline" size="sm" className="h-9 text-red-500 hover:bg-red-50 hover:text-red-600 border-red-200" onClick={() => {
+                          const newLotes = editLotes.filter((_, i) => i !== index);
+                          setEditLotes(newLotes);
+                        }}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  <Button 
+                    variant="outline" 
+                    className="w-full border-dashed border-2 border-slate-300 text-slate-500 hover:text-primary hover:border-primary hover:bg-primary/5 bg-slate-50 h-10 text-xs" 
+                    onClick={() => {
+                      setEditLotes([...editLotes, { prazo_dias: '', quantidade_cabecas: '', sexo_animal: 'BOI', status_lote: 'DISPONIVEL' }]);
+                    }}
+                  >
+                    <Plus className="w-4 h-4 mr-2" /> ADICIONAR LOTE
+                  </Button>
                 </div>
 
                 <Button 

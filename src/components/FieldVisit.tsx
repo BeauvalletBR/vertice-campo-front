@@ -50,7 +50,6 @@ import SignatureCanvas from 'react-signature-canvas';
 type Step = "idle" | "routing" | "form";
 
 const CHECKLIST_TEMPLATE = [
-  // 1. MANEJO PRÉ ABATE
   { id: 'c1_1', category: '1- MANEJO PRÉ ABATE', text: 'Horário de fechamento dos animais: preferência nas horas mais frescas do dia', severity: 'Menor' },
   { id: 'c1_2', category: '1- MANEJO PRÉ ABATE', text: 'Horário de pesagem e embarque nos horários mais frescos', severity: 'Menor' },
   { id: 'c1_3', category: '1- MANEJO PRÉ ABATE', text: 'Condições dos currais, tronco, cercas e porteiras em boas condições de uso', severity: 'Menor' },
@@ -59,12 +58,10 @@ const CHECKLIST_TEMPLATE = [
   { id: 'c1_6', category: '1- MANEJO PRÉ ABATE', text: 'O uso de bastões elétricos: deverá ser evitado', severity: 'Maior' },
   { id: 'c1_7', category: '1- MANEJO PRÉ ABATE', text: 'O uso de bastão perfurocortante (Ferrão): não deverá ser usado', severity: 'Crítico' },
   { id: 'c1_8', category: '1- MANEJO PRÉ ABATE', text: 'Gritos e ruídos: deverão ser moderados sem excessos', severity: 'Maior' },
-  // 2. SISTEMA DE CRIAÇÃO
   { id: 'c2_1', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'Sistema Intensivo: as condições do local de manejo adequadas à finalidade', severity: 'Maior' },
   { id: 'c2_2', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'Sistema Extensivo: manejo de forma tranquila (Bem Estar Animal)', severity: 'Maior' },
   { id: 'c2_3', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'Sistema Semi Intensivo: etapas de manejo bem definidas e alimentação garantida', severity: 'Maior' },
   { id: 'c2_4', category: '2. SISTEMA DE CRIAÇÃO DOS ANIMAIS', text: 'A propriedade possui algum tipo de enriquecimento ambiental', severity: 'Obs' },
-  // 3. MANEJO SANITÁRIO
   { id: 'c3_1', category: '3. MANEJO SANITÁRIO', text: 'Animais fora do período de carência de medicamentos', severity: 'Crítico' },
   { id: 'c3_2', category: '3. MANEJO SANITÁRIO', text: 'Proibido uso de anabolizantes', severity: 'Crítico' },
   { id: 'c3_3', category: '3. MANEJO SANITÁRIO', text: 'Uso de antibióticos somente quando prescrito', severity: 'Crítico' },
@@ -72,21 +69,24 @@ const CHECKLIST_TEMPLATE = [
   { id: 'c3_5', category: '3. MANEJO SANITÁRIO', text: 'Vacinas não obrigatórias sob prescrição', severity: 'Crítico' },
   { id: 'c3_6', category: '3. MANEJO SANITÁRIO', text: 'Endoparasitas com acompanhamento técnico', severity: 'Menor' },
   { id: 'c3_7', category: '3. MANEJO SANITÁRIO', text: 'Ectoparasitas com acompanhamento técnico', severity: 'Menor' },
-  // 4. TIPO DE TRATO
   { id: 'c4_1', category: '4. TIPO DE TRATO OFERECIDO', text: 'Armazenamento adequado', severity: 'Maior' },
   { id: 'c4_2', category: '4. TIPO DE TRATO OFERECIDO', text: 'Suplementação programada', severity: 'Maior' },
   { id: 'c4_3', category: '4. TIPO DE TRATO OFERECIDO', text: 'Comprovação da alimentação via notas', severity: 'Menor' },
   { id: 'c4_4', category: '4. TIPO DE TRATO OFERECIDO', text: 'Água limpa, abundante e renovada', severity: 'Crítico' },
   { id: 'c4_5', category: '4. TIPO DE TRATO OFERECIDO', text: 'Sem produtos de origem animal ou cama de frango', severity: 'Crítico' },
-  // 5. ORIGEM DO REBANHO
   { id: 'c5_1', category: '5. ORIGEM DO REBANHO', text: 'Comprovação de origem (GTA/DIA)', severity: 'Maior' },
   { id: 'c5_2', category: '5. ORIGEM DO REBANHO', text: 'Sistema de rastreabilidade na propriedade', severity: 'Maior' },
-  // 6. QUALIDADE DO REBANHO
   { id: 'c6_1', category: '6. QUALIDADE DO REBANHO', text: 'Uniformidade de peso e genética', severity: 'Obs' },
-  // 7. ORIENTAÇÕES
   { id: 'c7_1', category: '7. ORIENTAÇÕES', text: 'Produtor orientado sobre Bem Estar Animal', severity: 'Maior' },
   { id: 'c7_2', category: '7. ORIENTAÇÕES', text: 'Produtor orientado sobre vacinação', severity: 'Maior' },
 ];
+
+interface LoteForm {
+  prazo_dias: string;
+  quantidade_cabecas: string;
+  sexo_animal: string;
+  status_lote: string;
+}
 
 interface FormData {
   id_agendamento: string;
@@ -108,18 +108,9 @@ interface FormData {
   tipoAtividade: string;
   habilitacao: string;
   tipoTerminacao: string;
-  disp30Dias: boolean;
-  qtd30Dias: string;
-  sexo30Dias: string;
-  status30Dias: string;
-  disp60Dias: boolean;
-  qtd60Dias: string;
-  sexo60Dias: string;
-  status60Dias: string;
-  disp90Dias: boolean;
-  qtd90Dias: string;
-  sexo90Dias: string;
-  status90Dias: string;
+  
+  lotes: LoteForm[];
+  
   numAnimais: string; 
   dataVisita: string;
   visitante: string; 
@@ -159,9 +150,7 @@ const emptyForm = (today: string, userName : string): FormData => ({
   nomeRecebedor: "", cargoRecebedor: "", frigorificoCostume: "", cabecasAbatidasAno: "", 
   tipoVenda: "", tipoAtividade: "", habilitacao: "", tipoTerminacao: "",
   
-  disp30Dias: false, qtd30Dias: "", sexo30Dias: "BOI", status30Dias: "DISPONIVEL",
-  disp60Dias: false, qtd60Dias: "", sexo60Dias: "BOI", status60Dias: "DISPONIVEL",
-  disp90Dias: false, qtd90Dias: "", sexo90Dias: "BOI", status90Dias: "DISPONIVEL",
+  lotes: [], 
   
   numAnimais: "", dataVisita: today, visitante: userName, produtorAssinatura: "",
   observacoes: "", 
@@ -199,11 +188,11 @@ export function FieldVisit() {
   
   const [isRealLocation, setIsRealLocation] = useState<boolean>(false);
   const [confirmSaveModal, setConfirmSaveModal] = useState<boolean>(false);
+  const [confirmSkipChecklistModal, setConfirmSkipChecklistModal] = useState<boolean>(false); // 👇 NOVO ESTADO DO MODAL DE PULAR CHECKLIST 👇
 
   const [isSignatureFullscreen, setIsSignatureFullscreen] = useState<boolean>(false);
   const [isChecklistModalOpen, setIsChecklistModalOpen] = useState<boolean>(false);
   
-  // 👇 ESTADO FLUXO AUDITORIA AVULSA 👇
   const [isStandaloneAuditFlow, setIsStandaloneAuditFlow] = useState<boolean>(false);
 
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
@@ -244,8 +233,11 @@ export function FieldVisit() {
   const [apiRanchers, setApiRanchers] = useState<ApiRancher[]>([]);
   const [agendamentosPendentes, setAgendamentosPendentes] = useState<ApiAgendamento[]>([]);
   const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]);
-  const [allData, setAllData] = useState<any[]>([]);
   const [isLoadingApi, setIsLoadingApi] = useState(false);
+
+  const [openMapMenuId, setOpenMapMenuId] = useState<string | null>(null);
+  
+  const [agendamentoComprador, setAgendamentoComprador] = useState("");
 
   const [alertModal, setAlertModal] = useState<{
     isOpen: boolean;
@@ -262,7 +254,7 @@ export function FieldVisit() {
       setIsLoadingApi(true);
       try {
         const [agendamentosData, ranchersData, usersData] = await Promise.all([
-          fetchAgendamentosPendentes().catch(() => []),
+          api.fetchAgendamentosPendentes().catch(() => []),
           fetchPecuaristasAgendamento().catch(() => []),
           api.getUsuarios().catch(() => [])
         ]);
@@ -274,13 +266,23 @@ export function FieldVisit() {
         setApiRanchers(Array.isArray(ranchersData) ? ranchersData : []);
         setUsuariosData(Array.isArray(usersData) ? usersData : []);
 
+        if (pendentes.length > 0) {
+          const oldestDate = pendentes.reduce((min, curr) => {
+            if (!curr.DATA_AGENDADA) return min;
+            const currentDate = String(curr.DATA_AGENDADA).split('T')[0];
+            return currentDate < min ? currentDate : min;
+          }, String(pendentes[0].DATA_AGENDADA).split('T')[0] || today);
+          
+          setDateStart(oldestDate); 
+        }
+
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
       }
       setIsLoadingApi(false);
     };
     loadApiData();
-  }, []);
+  }, [today]);
 
   useEffect(() => {
     if (isSignatureFullscreen) {
@@ -313,16 +315,29 @@ export function FieldVisit() {
     ).slice(0, 20);
   }, [modalSearchTerm, apiRanchers]);
 
+  const uniqueAgendamentoCompradores = useMemo(() => {
+    const compIds = agendamentosPendentes.map(ag => ag.ID_COMPRADOR).filter(Boolean);
+    const uniqueIds = Array.from(new Set(compIds));
+    return uniqueIds.map(id => ({
+       id,
+       nome: getNomeComprador(id as number)
+    })).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [agendamentosPendentes, usuariosData]);
+
   const filteredAgendamentos = useMemo(() => {
     return agendamentosPendentes.filter(ag => {
       if (user?.role !== "ADMIN" && String(ag.ID_COMPRADOR) !== String(user?.id)) {
         return false;
       }
+      if (user?.role === "ADMIN" && agendamentoComprador && String(ag.ID_COMPRADOR) !== agendamentoComprador) {
+        return false;
+      }
+
       if (!ag.DATA_AGENDADA) return false;
       const dataStr = String(ag.DATA_AGENDADA).split("T")[0];
       return dataStr >= dateStart && dataStr <= dateEnd;
     });
-  }, [dateStart, dateEnd, agendamentosPendentes, user?.id, user?.role]);
+  }, [dateStart, dateEnd, agendamentosPendentes, user?.id, user?.role, agendamentoComprador]);
 
   const fetchCityName = async (lat: number, lng: number) => {
     try {
@@ -438,7 +453,6 @@ export function FieldVisit() {
     fetchRealRouteAndLocation(() => setStep("form"));
   };
 
-  // 👇 ATIVA O FLUXO DE AUDITORIA TÉCNICA DIRETA 👇
   const startStandaloneAuditFlow = () => {
     setIsStandaloneAuditFlow(true);
     setIsManual(false);
@@ -469,6 +483,7 @@ export function FieldVisit() {
       tipoVenda: "",
       habilitacao: "",
       numAnimais: "",
+      lotes: []
     }));
 
     if (isStandaloneAuditFlow) {
@@ -500,12 +515,6 @@ export function FieldVisit() {
       checklistObs: { ...prev.checklistObs, [id]: value }
     }));
   };
-
-  const checklistProgress = useMemo(() => {
-    const answered = Object.keys(form.checklist).length;
-    const total = CHECKLIST_TEMPLATE.length;
-    return { answered, total, isComplete: answered === total && form.checklistFinalStatus };
-  }, [form.checklist, form.checklistFinalStatus]);
 
   const handleCaptureImagePhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -565,6 +574,7 @@ export function FieldVisit() {
     updateField("produtorAssinatura", "");
   }
 
+  // 👇 NOVA LÓGICA DE VALIDAÇÃO COM CHECKLIST OPCIONAL 👇
   const validateAndProceed = () => {
     const camposObrigatorios: { key: keyof FormData, label: string }[] = [
       { key: "nome", label: "Nome do Produtor" }, { key: "propriedade", label: "Propriedade" },
@@ -586,28 +596,19 @@ export function FieldVisit() {
       return;
     }
 
-    const errosLotes = [];
-    if (form.disp30Dias && String(form.qtd30Dias).trim() === "") errosLotes.push("30 Dias");
-    if (form.disp60Dias && String(form.qtd60Dias).trim() === "") errosLotes.push("60 Dias");
-    if (form.disp90Dias && String(form.qtd90Dias).trim() === "") errosLotes.push("90 Dias");
+    const errosLotes: string[] = [];
+    form.lotes.forEach((lote, index) => {
+      if (!String(lote.prazo_dias).trim() || !String(lote.quantidade_cabecas).trim()) {
+        errosLotes.push(`Lote ${index + 1}`);
+      }
+    });
 
     if (errosLotes.length > 0) {
       setAlertModal({ 
         isOpen: true, 
         type: "error", 
-        title: "Quantidade Inválida", 
-        message: `Você marcou a disponibilidade para ${errosLotes.join(", ")}, mas não informou a quantidade de cabeças. Digite um valor (mesmo que seja 0).` 
-      });
-      return;
-    }
-
-    if (!form.checklistFinalStatus) {
-      setAlertModal({ 
-        isOpen: true, 
-        type: "error", 
-        title: "Auditoria Pendente!", 
-        message: "O preenchimento da Auditoria Técnica (Checklist de Bem-Estar Animal) é obrigatório para finalizar a visita.",
-        onCloseAction: () => setIsChecklistModalOpen(true) 
+        title: "Lote Inválido", 
+        message: `Você adicionou os lotes: ${errosLotes.join(", ")}, mas deixou o número de dias ou a quantidade em branco.` 
       });
       return;
     }
@@ -624,6 +625,12 @@ export function FieldVisit() {
       return;
     }
 
+    // Se o checklist NÃO estiver preenchido, exibe o modal de confirmação para pular
+    if (!form.checklistFinalStatus) {
+      setConfirmSkipChecklistModal(true);
+      return;
+    }
+
     if (!isRealLocation) {
       setConfirmSaveModal(true);
       return;
@@ -632,7 +639,6 @@ export function FieldVisit() {
     executeSavePayload(assinaturaPronta);
   };
 
-  // 👇 EXECUTA O SALVAMENTO DA AUDITORIA AVULSA COM A NOVA API 👇
   const executeSaveStandaloneAudit = async () => {
     if (!form.checklistFinalStatus) {
       setAlertModal({ 
@@ -672,13 +678,17 @@ export function FieldVisit() {
 
   const executeSavePayload = async (assinaturaForcada?: string) => {
     setConfirmSaveModal(false);
+    setConfirmSkipChecklistModal(false);
     setSaving(true);
     try {
       const base64Assinatura = assinaturaForcada || form.produtorAssinatura;
-      const lotes = [];
-      if (form.disp30Dias) lotes.push({ prazo_dias: 30, quantity_cabecas: form.qtd30Dias || 0, sexo_animal: formatToUpper(form.sexo30Dias), status_lote: formatToUpper(form.status30Dias) });
-      if (form.disp60Dias) lotes.push({ prazo_dias: 60, quantity_cabecas: form.qtd60Dias || 0, sexo_animal: formatToUpper(form.sexo60Dias), status_lote: formatToUpper(form.status60Dias) });
-      if (form.disp90Dias) lotes.push({ prazo_dias: 90, quantity_cabecas: form.qtd90Dias || 0, sexo_animal: formatToUpper(form.sexo90Dias), status_lote: formatToUpper(form.status90Dias) });
+      
+      const lotesFormatados = form.lotes.map(l => ({
+        prazo_dias: Number(l.prazo_dias),
+        quantidade_cabecas: Number(l.quantidade_cabecas),
+        sexo_animal: formatToUpper(l.sexo_animal),
+        status_lote: formatToUpper(l.status_lote)
+      }));
 
       const payload = {
         id_agendamento: form.id_agendamento, 
@@ -711,10 +721,6 @@ export function FieldVisit() {
         observacoes: form.observacoes, 
         imagem: form.imagem,            
         
-        disp30Dias: form.disp30Dias, qtd30Dias: form.qtd30Dias, sexo30Dias: formatToUpper(form.sexo30Dias), status30Dias: formatToUpper(form.status30Dias),
-        disp60Dias: form.disp60Dias, qtd60Dias: form.qtd60Dias, sexo60Dias: formatToUpper(form.sexo60Dias), status60Dias: formatToUpper(form.status60Dias),
-        disp90Dias: form.disp90Dias, qtd90Dias: form.qtd90Dias, sexo90Dias: formatToUpper(form.sexo90Dias), status90Dias: formatToUpper(form.status90Dias),
-        
         gps_latitude: userLocation ? userLocation[0] : null, 
         gps_longitude: userLocation ? userLocation[1] : null,
         distancia_percorrida_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 
@@ -723,7 +729,7 @@ export function FieldVisit() {
         distancia_sistema: selectedRancher ? Number(selectedRancher.DISTANCIA_CADASTRADA) || 0 : 0,
         
         id_comprador: (user as any)?.id, 
-        lotes: lotes,
+        lotes: lotesFormatados, 
         checklist_dados: form.checklist,
         checklist_obs: form.checklistObs, 
         checklist_status: form.checklistFinalStatus
@@ -752,7 +758,6 @@ export function FieldVisit() {
     <div className="min-h-screen bg-slate-50 pb-24 relative font-sans">
       <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
         
-        {/* 👇 DINAMISMO DO CONTEXTO DE TELA INTERA AQUI 👇 */}
         <div className={step === "form" && isStandaloneAuditFlow ? "max-w-4xl mx-auto w-full" : "grid grid-cols-1 lg:grid-cols-2 gap-8 relative items-start"}>
           <div className="flex flex-col gap-6 w-full">
             
@@ -765,7 +770,23 @@ export function FieldVisit() {
                     </h1>
                     <p className="text-sm font-medium text-slate-500 mt-1">Sua agenda de prospecção e rota de campo.</p>
                   </div>
-                  <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto">
+                  
+                  <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm w-full sm:w-auto flex-wrap">
+                    {user?.role === "ADMIN" && (
+                      <div className="flex flex-col flex-1 sm:flex-initial min-w-[120px]">
+                        <Label className="text-[10px] font-bold uppercase text-slate-400 mb-1">Comprador</Label>
+                        <select 
+                          className="h-9 text-xs font-bold bg-slate-50 border-slate-100 rounded-md px-2 focus:ring-1 focus:ring-primary uppercase text-slate-700"
+                          value={agendamentoComprador}
+                          onChange={(e) => setAgendamentoComprador(e.target.value)}
+                        >
+                          <option value="">TODOS</option>
+                          {uniqueAgendamentoCompradores.map(c => (
+                             <option key={c.id} value={String(c.id)}>{c.nome}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="flex flex-col flex-1 sm:flex-initial">
                       <Label className="text-[10px] font-bold uppercase text-slate-400 mb-1">Início</Label>
                       <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="h-9 text-xs font-bold bg-slate-50 border-slate-100" />
@@ -813,6 +834,9 @@ export function FieldVisit() {
                           dateIconClass = "text-blue-700 font-bold bg-blue-50 border border-blue-100";
                         }
 
+                        const lat = (ag as any).LATITUDE || (ag as any).GPS_LATITUDE;
+                        const lng = (ag as any).LONGITUDE || (ag as any).GPS_LONGITUDE;
+
                         return (
                           <Card key={ag.ID_AGENDAMENTO} className={cardClass} onClick={() => startScheduledVisit(ag)}>
                             <CardContent className="p-0 flex items-stretch">
@@ -837,9 +861,52 @@ export function FieldVisit() {
                                     </span>
                                   </div>
                                 </div>
-                                <div className="hidden sm:flex shrink-0 w-10 h-10 rounded-full bg-slate-50 border border-slate-100 items-center justify-center group-hover:bg-primary group-hover:border-primary transition-colors">
-                                  <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-white" />
+                                
+                                <div className="flex items-center gap-2 mt-2 sm:mt-0 justify-end">
+                                  
+                                  <div className="relative">
+                                    <Button
+                                      type="button"
+                                      size="icon"
+                                      variant="outline"
+                                      disabled={!lat || !lng}
+                                      className={`w-10 h-10 rounded-full z-10 shrink-0 shadow-sm transition-colors ${
+                                        lat && lng 
+                                          ? "bg-blue-50 border-blue-200 hover:bg-blue-600 hover:border-blue-600 text-blue-600 hover:text-white cursor-pointer" 
+                                          : "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
+                                      }`}
+                                      onClick={(e) => {
+                                        e.stopPropagation(); 
+                                        if (lat && lng) {
+                                          setOpenMapMenuId(openMapMenuId === String(ag.ID_AGENDAMENTO) ? null : String(ag.ID_AGENDAMENTO));
+                                        }
+                                      }}
+                                      title={lat && lng ? "Abrir Navegador GPS" : "Produtor sem GPS cadastrado"}
+                                    >
+                                      {lat && lng ? <MapPin className="w-5 h-5" /> : <MapPinOff className="w-5 h-5" />}
+                                    </Button>
+
+                                    {openMapMenuId === String(ag.ID_AGENDAMENTO) && lat && lng && (
+                                      <>
+                                        <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setOpenMapMenuId(null); }} />
+                                        <div className="absolute bottom-full right-0 mb-2 w-40 bg-white border border-slate-200 shadow-xl rounded-xl p-1.5 z-50 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2" onClick={(e) => e.stopPropagation()}>
+                                          <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => { window.open(`https://maps.google.com/?q=${lat},${lng}`, '_blank'); setOpenMapMenuId(null); }}>
+                                            🗺️ Google Maps
+                                          </Button>
+                                          <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => { window.open(`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`, '_blank'); setOpenMapMenuId(null); }}>
+                                            🚙 Waze
+                                          </Button>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  <div className="hidden sm:flex shrink-0 w-10 h-10 rounded-full bg-slate-50 border border-slate-100 items-center justify-center group-hover:bg-primary group-hover:border-primary transition-colors">
+                                    <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-white" />
+                                  </div>
+
                                 </div>
+
                               </div>
                             </CardContent>
                           </Card>
@@ -853,9 +920,6 @@ export function FieldVisit() {
                   <Button className="flex-1 bg-white border-2 border-primary text-primary hover:bg-primary/5 font-bold shadow-sm h-14 rounded-xl" onClick={startNewVisit}>
                     <Plus className="w-5 h-5 mr-2" /> INICIAR VISITA AVULSA
                   </Button>
-                  {/* <Button className="bg-white border-2 border-emerald-600 text-emerald-600 hover:bg-emerald-50/50 font-bold shadow-sm h-14 rounded-xl px-5 text-xs uppercase shrink-0" onClick={startStandaloneAuditFlow}>
-                    <ClipboardCheck className="w-4 h-4 mr-2" /> INICIAR AUDITORIA AVULSA
-                  </Button> */}
                 </div>
               </div>
             )}
@@ -881,7 +945,6 @@ export function FieldVisit() {
                     {isStandaloneAuditFlow ? "Auditoria Técnica Avulsa" : "Formulário de Campo"}
                   </h2>
                   <div className="flex items-center gap-2">
-                    {/* 👇 ADICIONADO O BOTÃO DE VOLTAR EXCLUSIVO DO FLUXO AVULSO 👇 */}
                     {isStandaloneAuditFlow && (
                       <Button variant="outline" size="sm" className="font-bold border-slate-200 text-slate-600 h-9" onClick={() => { setStep("idle"); setIsStandaloneAuditFlow(false); setSelectedRancher(null); }}>
                         VOLTAR
@@ -895,7 +958,6 @@ export function FieldVisit() {
 
                 {isStandaloneAuditFlow ? (
                   <div className="space-y-6">
-                    {/* 👇 FORMULÁRIO DE EXIBIÇÃO EM TELA CHEIA 👇 */}
                     <Card className="border border-slate-200 shadow-sm bg-white rounded-xl">
                       <CardHeader className="bg-slate-50 border-b border-slate-100 py-3 px-5">
                         <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
@@ -934,28 +996,11 @@ export function FieldVisit() {
                                 
                                 <div className="flex flex-col sm:flex-row gap-2 shrink-0">
                                   <div className="flex bg-slate-100 p-1 rounded-lg gap-1 h-12">
-                                    <button 
-                                      type="button"
-                                      className={`w-12 sm:w-14 rounded-md font-black text-sm transition-all border ${answer === 'C' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md scale-105' : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-200'}`}
-                                      onClick={() => updateChecklistItem(q.id, 'C')}
-                                    >C</button>
-                                    <button 
-                                      type="button"
-                                      className={`w-12 sm:w-14 rounded-md font-black text-sm transition-all border ${answer === 'NC' ? 'bg-red-500 text-white border-red-600 shadow-md scale-105' : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-200'}`}
-                                      onClick={() => updateChecklistItem(q.id, 'NC')}
-                                    >NC</button>
-                                    <button 
-                                      type="button"
-                                      className={`w-12 sm:w-14 rounded-md font-black text-sm transition-all border ${answer === 'NA' ? 'bg-slate-600 text-white border-slate-700 shadow-md scale-105' : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-200'}`}
-                                      onClick={() => updateChecklistItem(q.id, 'NA')}
-                                    >NA</button>
+                                    <button type="button" className={`w-12 sm:w-14 rounded-md font-black text-sm transition-all border ${answer === 'C' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md scale-105' : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-200'}`} onClick={() => updateChecklistItem(q.id, 'C')}>C</button>
+                                    <button type="button" className={`w-12 sm:w-14 rounded-md font-black text-sm transition-all border ${answer === 'NC' ? 'bg-red-500 text-white border-red-600 shadow-md scale-105' : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-200'}`} onClick={() => updateChecklistItem(q.id, 'NC')}>NC</button>
+                                    <button type="button" className={`w-12 sm:w-14 rounded-md font-black text-sm transition-all border ${answer === 'NA' ? 'bg-slate-600 text-white border-slate-700 shadow-md scale-105' : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-200'}`} onClick={() => updateChecklistItem(q.id, 'NA')}>NA</button>
                                   </div>
-                                  <Input 
-                                    placeholder="Observação..." 
-                                    className="h-12 w-full sm:w-48 bg-slate-50 border-slate-200 text-xs font-bold text-slate-700 uppercase"
-                                    value={obs}
-                                    onChange={(e) => updateChecklistObs(q.id, e.target.value)}
-                                  />
+                                  <Input placeholder="Observação..." className="h-12 w-full sm:w-48 bg-slate-50 border-slate-200 text-xs font-bold text-slate-700 uppercase" value={obs} onChange={(e) => updateChecklistObs(q.id, e.target.value)} />
                                 </div>
                               </div>
                             )
@@ -966,20 +1011,8 @@ export function FieldVisit() {
                       <div className="pt-6 border-t-2 border-slate-200 border-dashed">
                         <h3 className="text-sm font-black text-slate-800 mb-4 uppercase tracking-widest text-center">Conclusão da Auditoria</h3>
                         <div className="flex flex-col sm:flex-row gap-4 justify-center max-w-lg mx-auto">
-                          <button 
-                            type="button"
-                            className={`flex-1 py-4 rounded-xl font-black text-lg transition-all border-2 flex items-center justify-center gap-2 ${form.checklistFinalStatus === 'APROVADA' ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
-                            onClick={() => updateField("checklistFinalStatus", "APROVADA")}
-                          >
-                            <CheckCircle2 className="w-6 h-6" /> FAZENDA APROVADA
-                          </button>
-                          <button 
-                            type="button"
-                            className={`flex-1 py-4 rounded-xl font-black text-lg transition-all border-2 flex items-center justify-center gap-2 ${form.checklistFinalStatus === 'REPROVADA' ? 'bg-red-50 text-red-700 border-red-500 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
-                            onClick={() => updateField("checklistFinalStatus", "REPROVADA")}
-                          >
-                            <X className="w-5 h-5" /> FAZENDA REPROVADA
-                          </button>
+                          <button type="button" className={`flex-1 py-4 rounded-xl font-black text-lg transition-all border-2 flex items-center justify-center gap-2 ${form.checklistFinalStatus === 'APROVADA' ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`} onClick={() => updateField("checklistFinalStatus", "APROVADA")}><CheckCircle2 className="w-6 h-6" /> FAZENDA APROVADA</button>
+                          <button type="button" className={`flex-1 py-4 rounded-xl font-black text-lg transition-all border-2 flex items-center justify-center gap-2 ${form.checklistFinalStatus === 'REPROVADA' ? 'bg-red-50 text-red-700 border-red-500 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`} onClick={() => updateField("checklistFinalStatus", "REPROVADA")}><X className="w-6 h-6" /> FAZENDA REPROVADA</button>
                         </div>
                       </div>
                     </div>
@@ -1156,40 +1189,74 @@ export function FieldVisit() {
                       <CardContent className="space-y-6 p-5">
                         <FieldInput label="Nº de Animais na Propriedade (Efetivo Total)" type="number" placeholder="Ex: 1500" value={form.numAnimais} onChange={(v) => updateField("numAnimais", v)} className="bg-blue-50/50 border-blue-200 focus:border-blue-500 font-black text-blue-900 text-lg" />
                         
-                        <div className="space-y-3 bg-slate-50 p-5 rounded-xl border border-slate-200">
-                          <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-3">Disponibilidade p/ Abate</Label>
+                        <div className="space-y-4 bg-slate-50 p-5 rounded-xl border border-slate-200">
+                          <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Previsão e Disponibilidade para Abate (Lotes)</Label>
+                          
                           <div className="space-y-3">
-                            <div className="flex flex-col xl:flex-row items-start xl:items-center gap-3">
-                              <button type="button" onClick={() => updateField("disp30Dias", !form.disp30Dias)} className={`w-full xl:w-32 h-11 rounded-lg font-bold text-xs transition-all border shadow-sm ${form.disp30Dias ? "bg-primary border-primary text-white" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100"}`}>30 Dias {form.disp30Dias && "✓"}</button>
-                              {form.disp30Dias && (
-                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2">
-                                  <Input type="number" placeholder="Qtd. cabeças" className="h-11 bg-white text-sm font-black text-slate-800 shadow-sm" value={form.qtd30Dias} onChange={(e) => updateField("qtd30Dias", e.target.value)} />
-                                  <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo30Dias} onChange={(e) => updateField("sexo30Dias", e.target.value)}><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
-                                  <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.status30Dias} onChange={(e) => updateField("status30Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
+                            {form.lotes.map((lote, index) => (
+                              <div key={index} className="flex-1 grid grid-cols-1 sm:grid-cols-5 gap-2 w-full animate-in fade-in slide-in-from-left-2 items-center bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                <div className="flex flex-col space-y-1">
+                                  <Label className="text-[10px] text-slate-500 uppercase">Dias</Label>
+                                  <Input type="number" placeholder="Ex: 45" className="h-10 text-xs font-bold bg-slate-50" value={lote.prazo_dias} onChange={(e) => {
+                                    const newLotes = [...form.lotes];
+                                    newLotes[index].prazo_dias = e.target.value;
+                                    updateField('lotes', newLotes);
+                                  }} />
                                 </div>
-                              )}
-                            </div>
-                            <div className="flex flex-col xl:flex-row items-start xl:items-center gap-3">
-                              <button type="button" onClick={() => updateField("disp60Dias", !form.disp60Dias)} className={`w-full xl:w-32 h-11 rounded-lg font-bold text-xs transition-all border shadow-sm ${form.disp60Dias ? "bg-primary border-primary text-white" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100"}`}>60 Dias {form.disp60Dias && "✓"}</button>
-                              {form.disp60Dias && (
-                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2">
-                                  <Input type="number" placeholder="Qtd. cabeças" className="h-11 bg-white text-sm font-black text-slate-800 shadow-sm" value={form.qtd60Dias} onChange={(e) => updateField("qtd60Dias", e.target.value)} />
-                                  <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo60Dias} onChange={(e) => updateField("sexo60Dias", e.target.value)}><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
-                                  <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.status60Dias} onChange={(e) => updateField("status60Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
+                                <div className="flex flex-col space-y-1">
+                                  <Label className="text-[10px] text-slate-500 uppercase">Qtd Cab</Label>
+                                  <Input type="number" placeholder="Qtd" className="h-10 text-xs font-bold bg-slate-50" value={lote.quantidade_cabecas} onChange={(e) => {
+                                    const newLotes = [...form.lotes];
+                                    newLotes[index].quantidade_cabecas = e.target.value;
+                                    updateField('lotes', newLotes);
+                                  }} />
                                 </div>
-                              )}
-                            </div>
-                            <div className="flex flex-col xl:flex-row items-start xl:items-center gap-3">
-                              <button type="button" onClick={() => updateField("disp90Dias", !form.disp90Dias)} className={`w-full xl:w-32 h-11 rounded-lg font-bold text-xs transition-all border shadow-sm ${form.disp90Dias ? "bg-primary border-primary text-white" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100"}`}>90 Dias {form.disp90Dias && "✓"}</button>
-                              {form.disp90Dias && (
-                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 w-full animate-in fade-in slide-in-from-left-2">
-                                  <Input type="number" placeholder="Qtd. cabeças" className="h-11 bg-white text-sm font-black text-slate-800 shadow-sm" value={form.qtd90Dias} onChange={(e) => updateField("qtd90Dias", e.target.value)} />
-                                  <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.sexo90Dias} onChange={(e) => updateField("sexo90Dias", e.target.value)}><option value="BOI">BOI</option><option value="VACA">VACA</option><option value="AMBOS">MISTO</option></select>
-                                  <select className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase shadow-sm text-slate-700" value={form.status90Dias} onChange={(e) => updateField("status90Dias", e.target.value)}><option value="DISPONIVEL">DISPONÍVEL</option><option value="NEGOCIANDO">NEGOCIANDO</option><option value="VENDIDO">VENDIDO</option></select>
+                                <div className="flex flex-col space-y-1">
+                                  <Label className="text-[10px] text-slate-500 uppercase">Sexo</Label>
+                                  <select className="h-10 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold uppercase" value={lote.sexo_animal} onChange={(e) => {
+                                    const newLotes = [...form.lotes];
+                                    newLotes[index].sexo_animal = e.target.value;
+                                    updateField('lotes', newLotes);
+                                  }}>
+                                    <option value="BOI">BOI</option>
+                                    <option value="VACA">VACA</option>
+                                    <option value="AMBOS">MISTO</option>
+                                  </select>
                                 </div>
-                              )}
-                            </div>
+                                <div className="flex flex-col space-y-1">
+                                  <Label className="text-[10px] text-slate-500 uppercase">Status</Label>
+                                  <select className="h-10 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold uppercase" value={lote.status_lote} onChange={(e) => {
+                                    const newLotes = [...form.lotes];
+                                    newLotes[index].status_lote = e.target.value;
+                                    updateField('lotes', newLotes);
+                                  }}>
+                                    <option value="DISPONIVEL">DISPONÍVEL</option>
+                                    <option value="NEGOCIANDO">NEGOCIANDO</option>
+                                    <option value="VENDIDO">VENDIDO</option>
+                                  </select>
+                                </div>
+                                <div className="flex flex-col justify-end h-full">
+                                  <Button variant="outline" size="sm" className="h-10 text-red-500 hover:bg-red-50 hover:text-red-600 border-red-200" onClick={() => {
+                                    const newLotes = form.lotes.filter((_, i) => i !== index);
+                                    updateField('lotes', newLotes);
+                                  }}>
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                            
+                            <Button 
+                              variant="outline" 
+                              className="w-full border-dashed border-2 border-slate-300 text-slate-500 hover:text-primary hover:border-primary hover:bg-primary/5 bg-slate-50 h-12" 
+                              onClick={() => {
+                                updateField('lotes', [...form.lotes, { prazo_dias: '', quantidade_cabecas: '', sexo_animal: 'BOI', status_lote: 'DISPONIVEL' }]);
+                              }}
+                            >
+                              <Plus className="w-4 h-4 mr-2" /> ADICIONAR LOTE DE ABATE
+                            </Button>
                           </div>
+
                         </div>
                       </CardContent>
                     </Card>
@@ -1253,6 +1320,7 @@ export function FieldVisit() {
                       )}
                     </div>
 
+                    {/* 👇 BOTÃO DO CHECKLIST AGORA É OPCIONAL 👇 */}
                     <div className="my-8">
                       <Button
                         type="button"
@@ -1260,11 +1328,11 @@ export function FieldVisit() {
                         className={`w-full h-16 rounded-xl font-black text-sm uppercase shadow-lg transition-all ${
                           form.checklistFinalStatus 
                             ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
-                            : "bg-primary hover:bg-primary/90 text-white animate-pulse"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300"
                         }`}
                       >
-                        <ClipboardCheck className="w-5 h-5 mr-2" />
-                        {form.checklistFinalStatus ? `CHECKLIST DE BEM ESTAR ANIMAL: ${form.checklistFinalStatus}` : "RESPONDER CHECKLIST OBRIGATÓRIO (BEM ESTAR ANIMAL)"}
+                        <ClipboardCheck className={`w-5 h-5 mr-2 ${form.checklistFinalStatus ? "text-white" : "text-slate-500"}`} />
+                        {form.checklistFinalStatus ? `CHECKLIST PREENCHIDO: ${form.checklistFinalStatus}` : "PREENCHER CHECKLIST (OPCIONAL)"}
                       </Button>
                     </div>
 
@@ -1585,6 +1653,51 @@ export function FieldVisit() {
                  SALVAR E VOLTAR PARA A VISITA
                </Button>
             </div>
+          </div>
+        )}
+
+        {/* 👇 NOVO MODAL DE ALERTA PARA PULAR O CHECKLIST 👇 */}
+        {confirmSkipChecklistModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <Card className="w-full max-w-md shadow-2xl overflow-hidden border-none rounded-2xl">
+              <div className="h-2 w-full bg-blue-500" />
+              <CardHeader className="text-center pt-8 pb-2">
+                <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-blue-50 border border-blue-100 text-blue-500">
+                  <ClipboardCheck className="w-8 h-8" />
+                </div>
+                <CardTitle className="text-2xl font-black text-slate-800">Checklist Não Preenchido</CardTitle>
+              </CardHeader>
+              <CardContent className="text-center pb-8 px-8">
+                <p className="text-slate-500 font-medium leading-relaxed mb-8">
+                  Você não preencheu a auditoria de Bem-Estar Animal. Deseja finalizar a visita mesmo assim e enviá-la sem o checklist?
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1 font-bold h-12 border-slate-200 text-slate-600 hover:bg-slate-50" 
+                    onClick={() => {
+                      setConfirmSkipChecklistModal(false);
+                      setIsChecklistModalOpen(true);
+                    }}
+                  >
+                    PREENCHER AGORA
+                  </Button>
+                  <Button 
+                    className="flex-1 font-bold h-12 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20" 
+                    onClick={() => {
+                      setConfirmSkipChecklistModal(false);
+                      if (!isRealLocation) {
+                        setConfirmSaveModal(true);
+                      } else {
+                        executeSavePayload();
+                      }
+                    }}
+                  >
+                    SIM, SALVAR SEM CHECKLIST
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 

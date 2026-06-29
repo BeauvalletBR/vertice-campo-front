@@ -64,6 +64,16 @@ export interface ApiAgendamento {
   QTD_COMPRADA_12M_NAO_CHINA?: number;
   JA_VENDEU?: "S" | "N";
   VENDAREPRESENTANTE?: "S" | "N";
+  LATITUDE?: number;
+  LONGITUDE?: number;
+}
+
+// 1. 👇 NOVA INTERFACE PARA OS LOTES DINÂMICOS 👇
+export interface ApiLote {
+  prazo_dias: number;
+  quantidade_cabecas: number;
+  sexo_animal: string;
+  status_lote: string;
 }
 
 export interface ApiVisita {
@@ -95,15 +105,10 @@ export interface ApiVisita {
   EFETIVO_TOTAL_ANIMAIS: number | null;
   HABILITACAO: string | null;
   ASSINATURA_DIGITAL: string | null;
-  QTD_30DIAS: number | null;
-  SEXO_30DIAS: string | null;
-  STATUS_30DIAS: string | null;
-  QTD_60DIAS: number | null;
-  SEXO_60DIAS: string | null;
-  STATUS_60DIAS: string | null;
-  QTD_90DIAS: number | null;
-  SEXO_90DIAS: string | null;
-  STATUS_90DIAS: string | null;
+  
+  // 2. 👇 O ARRAY DE LOTES SUBSTITUI AS VARIÁVEIS ANTIGAS 👇
+  LOTES?: ApiLote[];
+  
   IMAGEM?: string | null;
   OBSERVACOES?: string | null;
   DISTANCIAERP?: number | null;
@@ -315,6 +320,43 @@ export const fetchAuditoriaVisita = async (id_visita: string | number): Promise<
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error("Falha ao buscar auditoria do checklist:", error);
+    return [];
+  }
+};
+
+// 👇 NOVA FUNÇÃO: BUSCAR LOTES DINÂMICOS 👇
+export const fetchLotesVisita = async (id_visita: string | number): Promise<ApiLote[]> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_LOTES_CONSULTAR; 
+  if (!url) return [];
+  
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify({ id_visita: Number(id_visita) })
+    });
+    
+    checkSessionExpired(response);
+    
+    if (response.status === 401 || response.status === 403) return [];
+    if (!response.ok) return [];
+    
+    const data = await response.json();
+    
+    // O Oracle retorna as colunas em CAIXA ALTA. 
+    // Vamos mapear para o padrão minúsculo que o formulário React espera.
+    if (Array.isArray(data)) {
+      return data.map((d: any) => ({
+        prazo_dias: Number(d.PRAZO_DIAS),
+        quantidade_cabecas: Number(d.QUANTIDADE_CABECAS),
+        sexo_animal: String(d.SEXO_ANIMAL),
+        status_lote: String(d.STATUS_LOTE)
+      }));
+    }
+    
+    return [];
+  } catch (error) {
+    console.error("Falha ao buscar lotes da visita:", error);
     return [];
   }
 };
@@ -603,5 +645,6 @@ export const api = {
   editarVisita,
   fetchHistoricoCompras,
   savePedidoVisita,
-  fetchAuditoriaVisita 
+  fetchAuditoriaVisita,
+  fetchLotesVisita // 👈 Função nova devidamente exportada
 };
