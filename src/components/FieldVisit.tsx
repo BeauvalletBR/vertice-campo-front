@@ -820,16 +820,16 @@ export function FieldVisit() {
                         const isAtrasada = agDateStr && agDateStr < today;
                         const isHoje = agDateStr === today;
 
-                        let cardClass = "bg-white border border-slate-200 hover:border-primary/50 transition-all cursor-pointer shadow-sm hover:shadow-md group rounded-xl overflow-hidden";
+                        let cardClass = "bg-white border border-slate-200 hover:border-primary/50 transition-all cursor-pointer shadow-sm hover:shadow-md group rounded-xl overflow-visible";
                         let badge = null;
                         let dateIconClass = "text-slate-500 bg-slate-50";
 
                         if (isAtrasada) {
-                          cardClass = "bg-white border border-red-200 hover:border-red-400 transition-all cursor-pointer shadow-sm hover:shadow-md group rounded-xl overflow-hidden";
+                          cardClass = "bg-white border border-red-200 hover:border-red-400 transition-all cursor-pointer shadow-sm hover:shadow-md group rounded-xl overflow-visible";
                           badge = <span className="bg-red-50 text-red-600 border border-red-200 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Atrasada</span>;
                           dateIconClass = "text-red-700 font-bold bg-red-50 border border-red-100";
                         } else if (isHoje) {
-                          cardClass = "bg-white border border-blue-200 hover:border-blue-400 transition-all cursor-pointer shadow-sm hover:shadow-md group rounded-xl overflow-hidden";
+                          cardClass = "bg-white border border-blue-200 hover:border-blue-400 transition-all cursor-pointer shadow-sm hover:shadow-md group rounded-xl overflow-visible";
                           badge = <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Hoje</span>;
                           dateIconClass = "text-blue-700 font-bold bg-blue-50 border border-blue-100";
                         }
@@ -838,7 +838,15 @@ export function FieldVisit() {
                         const lng = (ag as any).LONGITUDE || (ag as any).GPS_LONGITUDE;
 
                         return (
-                          <Card key={ag.ID_AGENDAMENTO} className={cardClass} onClick={() => startScheduledVisit(ag)}>
+                          <Card
+                            key={ag.ID_AGENDAMENTO}
+                            className={`${cardClass} relative ${
+                              openMapMenuId === String(ag.ID_AGENDAMENTO)
+                                ? "z-[60]"
+                                : "z-auto"
+                            }`}
+                            onClick={() => startScheduledVisit(ag)}
+                          >
                             <CardContent className="p-0 flex items-stretch">
                               <div className={`w-2 shrink-0 transition-colors ${isAtrasada ? 'bg-red-500' : isHoje ? 'bg-blue-500' : 'bg-primary'}`} />
                               <div className="p-4 flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -870,30 +878,82 @@ export function FieldVisit() {
                                       size="icon"
                                       variant="outline"
                                       disabled={!lat || !lng}
-                                      className={`w-10 h-10 rounded-full z-10 shrink-0 shadow-sm transition-colors ${
-                                        lat && lng 
-                                          ? "bg-blue-50 border-blue-200 hover:bg-blue-600 hover:border-blue-600 text-blue-600 hover:text-white cursor-pointer" 
+                                      className={`w-10 h-10 rounded-full shrink-0 shadow-sm transition-colors ${
+                                        lat && lng
+                                          ? "bg-blue-50 border-blue-200 hover:bg-blue-600 hover:border-blue-600 text-blue-600 hover:text-white cursor-pointer"
                                           : "bg-slate-50 border-slate-200 text-slate-300 cursor-not-allowed"
                                       }`}
                                       onClick={(e) => {
-                                        e.stopPropagation(); 
+                                        e.stopPropagation();
+
                                         if (lat && lng) {
-                                          setOpenMapMenuId(openMapMenuId === String(ag.ID_AGENDAMENTO) ? null : String(ag.ID_AGENDAMENTO));
+                                          setOpenMapMenuId(
+                                            openMapMenuId === String(ag.ID_AGENDAMENTO)
+                                              ? null
+                                              : String(ag.ID_AGENDAMENTO)
+                                          );
                                         }
                                       }}
-                                      title={lat && lng ? "Abrir Navegador GPS" : "Produtor sem GPS cadastrado"}
+                                      title={
+                                        lat && lng
+                                          ? "Abrir navegador GPS"
+                                          : "Produtor sem GPS cadastrado"
+                                      }
                                     >
-                                      {lat && lng ? <MapPin className="w-5 h-5" /> : <MapPinOff className="w-5 h-5" />}
+                                      {lat && lng ? (
+                                        <MapPin className="w-5 h-5" />
+                                      ) : (
+                                        <MapPinOff className="w-5 h-5" />
+                                      )}
                                     </Button>
 
                                     {openMapMenuId === String(ag.ID_AGENDAMENTO) && lat && lng && (
                                       <>
-                                        <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setOpenMapMenuId(null); }} />
-                                        <div className="absolute bottom-full right-0 mb-2 w-40 bg-white border border-slate-200 shadow-xl rounded-xl p-1.5 z-50 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2" onClick={(e) => e.stopPropagation()}>
-                                          <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => { window.open(`https://maps.google.com/?q=${lat},${lng}`, '_blank'); setOpenMapMenuId(null); }}>
+                                        <div
+                                          className="fixed inset-0 z-[60]"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setOpenMapMenuId(null);
+                                          }}
+                                        />
+
+                                        <div
+                                          className="absolute bottom-full right-0 mb-2 z-[70] w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-100"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              window.open(
+                                                `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+                                                "_blank",
+                                                "noopener,noreferrer"
+                                              );
+                                              setOpenMapMenuId(null);
+                                            }}
+                                          >
                                             🗺️ Google Maps
                                           </Button>
-                                          <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => { window.open(`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`, '_blank'); setOpenMapMenuId(null); }}>
+
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-100"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              window.open(
+                                                `https://www.waze.com/ul?ll=${lat},${lng}&navigate=yes`,
+                                                "_blank",
+                                                "noopener,noreferrer"
+                                              );
+                                              setOpenMapMenuId(null);
+                                            }}
+                                          >
                                             🚙 Waze
                                           </Button>
                                         </div>
