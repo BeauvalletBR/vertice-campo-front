@@ -114,6 +114,15 @@ export interface ApiVisita {
   DISTANCIAERP?: number | null;
   NROPEDIDO?: string | null;
   STATUS_AUDITORIA?: string | null;
+  QUANTIDADECOMPRADA?: number | null;
+
+}
+
+export interface ApiVisitaDetalhe {
+  ID_VISITA: number;
+  ASSINATURA_DIGITAL: string | null;
+  IMAGEM: string | null;
+  OBSERVACOES: string | null;
 }
 
 export interface ApiAuditoria {
@@ -281,15 +290,28 @@ export const fetchAgendamentosPendentes = async (): Promise<ApiAgendamento[]> =>
 };
 
 export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA;
-  if (!url) return [];
+  const baseUrl = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA;
+  if (!baseUrl) return [];
+
+  // Adiciona um parâmetro único para impedir resposta 304 e uso do cache antigo.
+  const separador = baseUrl.includes("?") ? "&" : "?";
+  const url = `${baseUrl}${separador}_=${Date.now()}`;
 
   try {
-    const response = await fetch(url, { headers: getAuthHeaders() });
+    const response = await fetch(url, {
+      method: "GET",
+      headers: getAuthHeaders(),
+      cache: "no-store",
+    });
+
     checkSessionExpired(response);
     
     if (response.status === 401 || response.status === 403) return [];
-    if (!response.ok) return [];
+
+    if (!response.ok) {
+      console.error(`Erro na consulta de visitas. Status: ${response.status}`);
+      return [];
+    }
     
     const data = await response.json();
     if (data.success === false) return [];
@@ -298,6 +320,63 @@ export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
   } catch (error) {
     console.error("Falha API Consulta Relatório de Visitas:", error);
     return [];
+  }
+};
+
+
+export const fetchVisitaDetalhe = async (
+  id_visita: string | number
+): Promise<ApiVisitaDetalhe | null> => {
+  const baseUrl = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA_DETALHE;
+
+  if (!baseUrl) {
+    console.error("VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA_DETALHE não configurada.");
+    return null;
+  }
+
+  const separador = baseUrl.includes("?") ? "&" : "?";
+  const url = `${baseUrl}${separador}_=${Date.now()}`;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      cache: "no-store",
+      body: JSON.stringify({
+        id_visita: Number(id_visita),
+      }),
+    });
+
+    checkSessionExpired(response);
+
+    if (response.status === 401 || response.status === 403) {
+      return null;
+    }
+
+    if (!response.ok) {
+      const erro = await response.text();
+      console.error(
+        `Erro na consulta do detalhe da visita. Status: ${response.status}`,
+        erro
+      );
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (data?.success === false) {
+      console.error("A API de detalhe da visita retornou erro:", data.message);
+      return null;
+    }
+
+    if (Array.isArray(data)) {
+      return data.length > 0 ? data[0] : null;
+    }
+
+    return data?.ID_VISITA ? data : null;
+  } catch (error) {
+    console.error("Falha API Consulta Detalhe da Visita:", error);
+    return null;
   }
 };
 
@@ -634,6 +713,7 @@ export const api = {
   },
   getRanchers: async (): Promise<Rancher[]> => { await delay(400); return mockRanchers; },
   getVisitasConsulta: fetchRelatorioVisitas,
+  fetchVisitaDetalhe,
   realizarLogin,
   realizarLogout, 
   getUsuarios: fetchUsuarios, 
@@ -646,5 +726,5 @@ export const api = {
   fetchHistoricoCompras,
   savePedidoVisita,
   fetchAuditoriaVisita,
-  fetchLotesVisita // 👈 Função nova devidamente exportada
+  fetchLotesVisita 
 };

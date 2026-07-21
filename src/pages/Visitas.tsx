@@ -141,7 +141,77 @@ const formatarDataBruta = (dataString: string | null | undefined) => {
   }
   return dataString; 
 };
+function InfoLegendaLogistica() {
+  return (
+    <div className="relative group">
+      <button
+        type="button"
+        className="w-5 h-5 rounded-full border border-amber-300 bg-amber-50 text-amber-700 text-[11px] font-black flex items-center justify-center shadow-sm hover:bg-amber-100 transition-colors"
+        aria-label="Legenda da logística"
+        title="Ver legenda"
+      >
+        !
+      </button>
 
+      <div className="hidden group-hover:block group-focus-within:block absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 w-[340px] rounded-xl border border-slate-200 bg-white p-4 shadow-2xl">
+        <div className="text-[12px] font-black text-slate-800 uppercase tracking-wide mb-2">
+          Legenda da Logística
+        </div>
+
+        <div className="space-y-2 text-[11px] text-slate-600 leading-relaxed">
+          <p>
+            <span className="font-bold text-slate-800">KM Sistema (ERP):</span>{" "}
+            mostra o <span className="font-bold">KM real atualmente cadastrado no ERP</span> para a propriedade.
+          </p>
+
+          <p>
+            <span className="font-bold text-emerald-700">Economizou X km:</span>{" "}
+            mostra o quanto a visita ficou <span className="font-bold">menor</span> em relação ao
+            KM que estava registrado anteriormente.
+          </p>
+
+          <p>
+            <span className="font-bold text-amber-700">Desviou X km:</span>{" "}
+            mostra o quanto a visita ficou <span className="font-bold">maior</span> em relação ao
+            KM que estava registrado anteriormente.
+          </p>
+
+          <div className="pt-2 border-t border-slate-100 space-y-1.5">
+            <p className="flex items-start gap-2">
+              <span className="inline-block mt-0.5 w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
+              <span>
+                <span className="font-bold text-slate-800">Vermelho:</span> destaque de atenção
+                para divergência que DEVE SER ALTERADA NO SISTEMA.
+              </span>
+            </p>
+
+            <p className="flex items-start gap-2">
+              <span className="inline-block mt-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+              <span>
+                <span className="font-bold text-slate-800">Verde:</span> indica economia de KM.
+              </span>
+            </p>
+
+            <p className="flex items-start gap-2">
+              <span className="inline-block mt-0.5 w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
+              <span>
+                <span className="font-bold text-slate-800">Amarelo/Âmbar:</span> indica desvio de KM.
+              </span>
+            </p>
+
+            <p className="flex items-start gap-2">
+              <span className="inline-block mt-0.5 w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0" />
+              <span>
+                <span className="font-bold text-slate-800">Sem selo:</span> sem diferença relevante
+                dentro da regra atual.
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ------------------------------------------------------------
 // COMPONENTE PRINCIPAL (VISITAS / RELATÓRIOS)
 // ------------------------------------------------------------
@@ -151,6 +221,7 @@ export default function Visitas() {
 
   const [isPendingOpen, setIsPendingOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<CheckinReport | null>(null);
+  const [isLoadingReport, setIsLoadingReport] = useState<string | null>(null);
   
   const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
   const [selectedAuditVisit, setSelectedAuditVisit] = useState<CheckinReport | null>(null);
@@ -547,6 +618,30 @@ export default function Visitas() {
     }
   };
 
+  const handleOpenVisitReport = async (visita: CheckinReport) => {
+    setIsLoadingReport(visita.id);
+
+    try {
+      const [apiLotes, detalhe] = await Promise.all([
+        api.fetchLotesVisita(visita.id),
+        api.fetchVisitaDetalhe(visita.id),
+      ]);
+
+      setSelectedReport({
+        ...visita,
+        lotesDaApi: apiLotes,
+        imagem: detalhe?.IMAGEM || null,
+        produtorAssinatura: detalhe?.ASSINATURA_DIGITAL || "",
+        observacoes: detalhe?.OBSERVACOES || null,
+      });
+    } catch (error) {
+      console.error("Erro ao carregar detalhes do relatório:", error);
+      toast.error("Não foi possível carregar os detalhes da visita.");
+    } finally {
+      setIsLoadingReport(null);
+    }
+  };
+
   const handleDownloadPDF = async () => {
     if (!reportRef.current || !selectedReport) return;
     try {
@@ -622,11 +717,26 @@ export default function Visitas() {
     }
   };
 
+  const normalizarInscricao = (valor: string | null | undefined) => {
+  return String(valor || "").replace(/\D/g, "");
+  };
+
   const renderLogisticaRow = (v: CheckinReport) => {
     let erpAtualKm: number | null = null;
-    if (v.cod_produtor) {
-      const pec = pecuaristas.find(p => String(p.COD_PRODUTOR) === v.cod_produtor);
-      if (pec && pec.DISTANCIA_CADASTRADA) erpAtualKm = Number(pec.DISTANCIA_CADASTRADA);
+    const inscricaoVisita = normalizarInscricao(v.ie);
+
+      if (inscricaoVisita) {
+      const pec = pecuaristas.find(
+        p =>
+          normalizarInscricao(p.INSCRICAO) === inscricaoVisita
+      );
+
+      if (
+        pec?.DISTANCIA_CADASTRADA !== null &&
+        pec?.DISTANCIA_CADASTRADA !== undefined
+      ) {
+        erpAtualKm = Number(pec.DISTANCIA_CADASTRADA);
+      }
     }
 
     const gpsKmIdaVolta = v.distanciaRealRaw !== null ? v.distanciaRealRaw : null;
@@ -741,12 +851,22 @@ export default function Visitas() {
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setOpenReportMenuId(null)} />
                         <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-200 shadow-xl rounded-xl p-1.5 z-50 flex flex-col gap-1 animate-in fade-in slide-in-from-top-2">
-                          <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={async () => { 
-                            const apiLotes = await api.fetchLotesVisita(v.id);
-                            setSelectedReport({ ...v, lotesDaApi: apiLotes }); 
-                            setOpenReportMenuId(null); 
-                          }}>
-                            📄 Ficha de Visita
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50"
+                            disabled={isLoadingReport === v.id}
+                            onClick={async () => {
+                              setOpenReportMenuId(null);
+                              await handleOpenVisitReport(v);
+                            }}
+                          >
+                            {isLoadingReport === v.id ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <FileText className="w-4 h-4 mr-2" />
+                            )}
+                            Ficha de Visita
                           </Button>
                           <Button variant="ghost" size="sm" className="justify-start text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => { handleOpenAudit(v); setOpenReportMenuId(null); }}>
                             📋 Checklist
@@ -760,14 +880,17 @@ export default function Visitas() {
                   <Button 
                     size="sm" 
                     variant="outline" 
-                    className="h-8 w-10 sm:w-auto px-0 sm:px-3 text-[11px] font-bold shadow-sm border-slate-200 text-slate-600 hover:bg-slate-100 transition-all rounded-lg flex justify-center shrink-0" 
-                    onClick={async () => {
-                      const apiLotes = await api.fetchLotesVisita(v.id);
-                      setSelectedReport({ ...v, lotesDaApi: apiLotes });
-                    }}
+                    className="h-8 w-10 sm:w-auto px-0 sm:px-3 text-[11px] font-bold shadow-sm border-slate-200 text-slate-600 hover:bg-slate-100 transition-all rounded-lg flex justify-center shrink-0"
+                    onClick={() => handleOpenVisitReport(v)}
+                    disabled={isLoadingReport === v.id}
                     title="Ver Relatório"
                   >
-                    <FileText className="w-4 h-4 sm:mr-1.5" /> <span className="hidden sm:inline">RELATÓRIO</span>
+                    {isLoadingReport === v.id ? (
+                      <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" />
+                    ) : (
+                      <FileText className="w-4 h-4 sm:mr-1.5" />
+                    )}
+                    <span className="hidden sm:inline">RELATÓRIO</span>
                   </Button>
                 )}
               </div>
@@ -1028,13 +1151,16 @@ export default function Visitas() {
                             <Button 
                               size="sm" 
                               variant="outline" 
-                              className="text-[11px] h-8 text-slate-600 border-slate-200 hover:bg-slate-100 font-bold transition-all shadow-sm rounded-lg w-10 sm:w-auto px-0 sm:px-3 flex justify-center shrink-0" 
-                              onClick={async () => {
-                                const apiLotes = await api.fetchLotesVisita(p.id);
-                                setSelectedReport({ ...p, lotesDaApi: apiLotes });
-                              }}
+                              className="text-[11px] h-8 text-slate-600 border-slate-200 hover:bg-slate-100 font-bold transition-all shadow-sm rounded-lg w-10 sm:w-auto px-0 sm:px-3 flex justify-center shrink-0"
+                              onClick={() => handleOpenVisitReport(p)}
+                              disabled={isLoadingReport === p.id}
                             >
-                              <FileText className="w-3.5 h-3.5 sm:mr-1.5 text-slate-400" /> <span className="hidden sm:inline">RELATÓRIO</span>
+                              {isLoadingReport === p.id ? (
+                                <Loader2 className="w-3.5 h-3.5 sm:mr-1.5 animate-spin" />
+                              ) : (
+                                <FileText className="w-3.5 h-3.5 sm:mr-1.5 text-slate-400" />
+                              )}
+                              <span className="hidden sm:inline">RELATÓRIO</span>
                             </Button>
 
                             {podeExcluir && (
@@ -1063,8 +1189,10 @@ export default function Visitas() {
         <Card className="border border-slate-200 shadow-sm overflow-hidden rounded-xl bg-white">
           <CardHeader className="bg-slate-50 pb-5 border-b border-slate-100">
             <CardTitle className="text-xl font-black flex items-center gap-3 text-slate-800 tracking-tight">
-              <CheckCircle2 className="w-6 h-6 text-primary" /> Histórico & Auditoria Logística
-            </CardTitle>
+          <CheckCircle2 className="w-6 h-6 text-primary" />
+          <span>Histórico & Auditoria Logística</span>
+          <InfoLegendaLogistica />
+        </CardTitle>
             <CardDescription className="font-medium text-slate-500 mt-1">Acompanhamento das visitas vinculadas, inserção de pedidos e validação do desvio de rota.</CardDescription>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto bg-white">

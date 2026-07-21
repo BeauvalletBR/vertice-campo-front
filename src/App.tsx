@@ -1,10 +1,22 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate, Outlet } from "react-router-dom";
+import {
+  BrowserRouter,
+  Route,
+  Routes,
+  Navigate,
+  Outlet
+} from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import {
+  SidebarProvider,
+  SidebarTrigger
+} from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import {
+  AuthProvider,
+  useAuth
+} from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import FieldPage from "./pages/FieldPage";
 import NotFound from "./pages/NotFound";
@@ -24,41 +36,79 @@ function AgendamentoGuard() {
   const userModules = (user as any)?.modulos || [];
   const userNivel = (user as any)?.nivel || 0;
   
-  const hasAccess = userModules.includes("ADMIN") || userNivel >= 3;
+  const hasAccess =
+    userModules.includes("ADMIN") ||
+    userNivel >= 3;
 
-  // Se tiver acesso, renderiza as rotas filhas. Se não, chuta pro dashboard.
-  return hasAccess ? <Outlet /> : <Navigate to="/dashboard" replace />;
+  // Se tiver acesso, renderiza as rotas filhas.
+  // Se não, chuta pro dashboard.
+  return hasAccess
+    ? <Outlet />
+    : <Navigate to="/dashboard" replace />;
 }
 
 function ProtectedLayout() {
   const { user } = useAuth();
   
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
+
         <div className="flex-1 flex flex-col">
           <header className="h-12 flex items-center border-b border-border bg-background px-2">
             <SidebarTrigger className="ml-1" />
           </header>
+
           <main className="flex-1">
             <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route
+                path="/"
+                element={
+                  <Navigate
+                    to="/dashboard"
+                    replace
+                  />
+                }
+              />
               
               {/* 🟢 ROTAS GERAIS: Tanto ADMIN quanto COMPRADOR podem acessar */}
-              <Route path="/dashboard" element={<Index />} />
-              <Route path="/campo" element={<FieldPage />} />
-              <Route path="/visitas" element={<Pecuaristas />} />
+              <Route
+                path="/dashboard"
+                element={<Index />}
+              />
+
+              <Route
+                path="/campo"
+                element={<FieldPage />}
+              />
+
+              <Route
+                path="/visitas"
+                element={<Pecuaristas />}
+              />
               
               {/* 👇 ROTAS DO AGENDAMENTO (Usando o nosso novo guarda-costas) 👇 */}
               <Route element={<AgendamentoGuard />}>
-                <Route path="/agendamento" element={<Agendamento />} />
-                <Route path="/agendamento/gerenciar" element={<AgendamentoGerenciador />} />
+                <Route
+                  path="/agendamento"
+                  element={<Agendamento />}
+                />
+
+                <Route
+                  path="/agendamento/gerenciar"
+                  element={<AgendamentoGerenciador />}
+                />
               </Route>
               
-              <Route path="*" element={<NotFound />} />
+              <Route
+                path="*"
+                element={<NotFound />}
+              />
             </Routes>
           </main>
         </div>
@@ -68,11 +118,38 @@ function ProtectedLayout() {
 }
 
 function AppContent() {
-  const { user } = useAuth();
+  const { user, isAuthLoading } = useAuth();
+
+  // Aguarda a recuperação do usuário salvo antes de avaliar as rotas
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-slate-200 border-t-primary rounded-full animate-spin" />
+
+          <p className="text-sm font-bold text-slate-500">
+            Validando acesso...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
-      <Route path="/*" element={<ProtectedLayout />} />
+      <Route
+        path="/login"
+        element={
+          user
+            ? <Navigate to="/dashboard" replace />
+            : <LoginPage />
+        }
+      />
+
+      <Route
+        path="/*"
+        element={<ProtectedLayout />}
+      />
     </Routes>
   );
 }
@@ -81,6 +158,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Sonner />
+
       <BrowserRouter>
         <AuthProvider>
           <AppContent />

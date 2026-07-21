@@ -67,7 +67,7 @@ export default function LoginPage() {
             
             <div className="space-y-1.5">
               <h1 className="text-4xl font-black tracking-tight text-slate-800">
-                Vértice <span className="text-primary">Campo</span>
+                Vértice <span className="text-primary">Compra de Gado</span>
               </h1>
               <p className="text-sm font-medium text-slate-500">
                 Bem-vindo de volta! Insira suas credenciais para acessar.

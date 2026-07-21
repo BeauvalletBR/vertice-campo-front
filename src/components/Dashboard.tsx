@@ -19,7 +19,14 @@ import {
   FileText,
   Download,
   ArrowUpDown,
-  Filter
+  Filter,
+  ShoppingCart,
+  Search,
+  BellRing,
+  MessageCircle,
+  Truck,
+  PhoneOff,
+  CheckCircle2
 } from "lucide-react";
 import {
   Table,
@@ -40,6 +47,59 @@ import { useAuth } from "@/contexts/AuthContext";
 
 type Rancher = { id: string; name: string; farm: string; headCount: number };
 type CityData = { city: string; lat: number; lng: number; ranchersCount: number; ranchersList: Rancher[] };
+
+type MetricKey = "prospectado" | "comprado" | "visitas" | "novos" | "cidades";
+type MetricSortColumn = "codigo" | "nome" | "fazenda" | "informacao";
+type SortOrder = "asc" | "desc";
+
+interface MetricDetailRow {
+  key: string;
+  codigo: string;
+  nome: string;
+  fazenda: string;
+  municipio: string;
+  visitas: number;
+  prospectado: number;
+  comprado: number;
+  prospeccoes: number;
+}
+
+interface MetricDisplayRow {
+  key: string;
+  codigo: string;
+  nome: string;
+  fazenda: string;
+  informacao: string;
+  sortValue: string | number;
+}
+
+interface BuyerParticipationItem {
+  id: string;
+  nome: string;
+  valor: number;
+}
+
+interface BuyerParticipationAccumulator {
+  id: string;
+  nome: string;
+  prospectado: number;
+  comprado: number;
+  visitas: number;
+  novos: number;
+  cidades: Set<string>;
+}
+
+interface ForecastReadyAlert {
+  key: string;
+  codigoProdutor: string;
+  produtor: string;
+  fazenda: string;
+  quantidade: number;
+  diasRestantes: number;
+  telefoneOriginal: string | null;
+  whatsappNumero: string | null;
+  whatsappUrl: string | null;
+}
 
 // Estendendo o CheckinReport para suportar a lista de lotes da API
 interface CheckinReport {
@@ -81,26 +141,259 @@ function MapController({ selectedCity }: { selectedCity: CityData | null }) {
   return null;
 }
 
-function MetricCard({ title, value, icon, sub, colorClass }: { title: string, value: string | number, icon: React.ReactNode, sub: string, colorClass: string }) {
+function MetricCard({
+  title,
+  value,
+  icon,
+  sub,
+  colorClass,
+  onClick,
+}: {
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+  sub: string;
+  colorClass: string;
+  onClick?: () => void;
+}) {
   return (
-    <Card className="bg-white border-slate-200 shadow-sm transition-all hover:shadow-md">
+    <Card
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (!onClick) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      className={`bg-white border-slate-200 shadow-sm transition-all hover:shadow-md ${
+        onClick
+          ? "cursor-pointer hover:-translate-y-0.5 hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
+          : ""
+      }`}
+    >
       <CardContent className="p-6">
         <div className="flex items-start gap-4">
           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${colorClass}`}>
             {icon}
           </div>
-          <div className="flex flex-col">
+          <div className="flex flex-col min-w-0">
             <p className="text-sm font-bold text-slate-500 tracking-wide uppercase">{title}</p>
             <h3 className="text-4xl font-black text-slate-800 tracking-tight mt-1">{value}</h3>
           </div>
         </div>
-        <div className="mt-4 pt-4 border-t border-slate-100">
+        <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
           <p className="text-xs font-medium text-slate-400">{sub}</p>
+          {onClick && (
+            <span className="text-[10px] font-black uppercase tracking-wider text-primary whitespace-nowrap">
+              Ver detalhes
+            </span>
+          )}
         </div>
       </CardContent>
     </Card>
   );
 }
+
+
+const PARTICIPATION_COLORS = [
+  "#ef4444", // vermelho
+  "#2563eb", // azul
+  "#facc15", // amarelo
+  "#22c55e", // verde
+  "#f97316", // laranja
+  "#a855f7", // roxo
+  "#ec4899", // rosa
+  "#06b6d4", // ciano
+  "#84cc16", // verde-limão
+  "#4f46e5", // índigo
+  "#ffffff", // branco
+  "#14b8a6", // turquesa
+];
+
+const OTHER_BUYERS_COLOR = "#64748b";
+const UNDEFINED_BUYER_COLOR = "#94a3b8";
+
+function BuyerParticipationChart({
+  title,
+  items,
+  centerLabel,
+  selectedBuyerId,
+  buyerColorMap,
+}: {
+  title: string;
+  items: BuyerParticipationItem[];
+  centerLabel: string;
+  selectedBuyerId?: string;
+  buyerColorMap: Record<string, string>;
+}) {
+  const preparedItems = useMemo(() => {
+    const sorted = [...items]
+      .filter((item) => Number.isFinite(item.valor) && item.valor > 0)
+      .sort((a, b) => b.valor - a.valor);
+
+    const firstFive = sorted.slice(0, 5);
+    const remaining = sorted.slice(5);
+    const remainingValue = remaining.reduce((sum, item) => sum + item.valor, 0);
+
+    const visibleItems = remainingValue > 0
+      ? [
+          ...firstFive,
+          {
+            id: "OUTROS",
+            nome: `OUTROS (${remaining.length})`,
+            valor: remainingValue,
+          },
+        ]
+      : firstFive;
+
+    const total = visibleItems.reduce((sum, item) => sum + item.valor, 0);
+
+    return {
+      total,
+      items: visibleItems.map((item) => ({
+        ...item,
+        cor:
+          item.id === "OUTROS"
+            ? OTHER_BUYERS_COLOR
+            : buyerColorMap[item.id] || UNDEFINED_BUYER_COLOR,
+        percentual: total > 0 ? (item.valor / total) * 100 : 0,
+      })),
+    };
+  }, [items, buyerColorMap]);
+
+  const donutBackground = useMemo(() => {
+    if (preparedItems.total <= 0 || preparedItems.items.length === 0) {
+      return "conic-gradient(#e2e8f0 0% 100%)";
+    }
+
+    let accumulated = 0;
+    const stops = preparedItems.items.map((item) => {
+      const start = accumulated;
+      accumulated += item.percentual;
+      return `${item.cor} ${start.toFixed(4)}% ${accumulated.toFixed(4)}%`;
+    });
+
+    return `conic-gradient(${stops.join(", ")})`;
+  }, [preparedItems]);
+
+  return (
+    <Card className="h-[180px] border-slate-200 bg-white shadow-sm overflow-hidden">
+      <CardHeader className="px-4 py-3 border-b border-slate-100">
+        <CardTitle className="text-[12px] font-black uppercase tracking-wide text-slate-800 leading-tight">
+          {title}
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="h-[136px] p-3">
+        {preparedItems.total <= 0 ? (
+          <div className="h-full flex items-center justify-center text-center text-slate-400">
+            <p className="text-[10px] font-bold">Sem dados no período.</p>
+          </div>
+        ) : (
+          <div className="h-full flex items-center gap-3">
+            <div className="relative h-[88px] w-[88px] shrink-0">
+              <div
+                className="absolute inset-0 rounded-full border border-slate-300 shadow-inner"
+                style={{ background: donutBackground }}
+                aria-label={`${title}: participação percentual por comprador`}
+              />
+              <div className="absolute inset-[18px] rounded-full bg-white border border-slate-100 flex flex-col items-center justify-center text-center px-1">
+                <span className="text-[15px] font-black text-slate-800 tabular-nums leading-none">
+                  {preparedItems.total.toLocaleString("pt-BR")}
+                </span>
+                <span className="mt-1 text-[7px] font-black uppercase tracking-wide text-slate-400 leading-none">
+                  {centerLabel}
+                </span>
+              </div>
+            </div>
+
+            <div className="min-w-0 flex-1 space-y-1.5">
+              {preparedItems.items.map((item) => {
+                const isSelected = selectedBuyerId && item.id === selectedBuyerId;
+                const isWhite = item.cor.toLowerCase() === "#ffffff";
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex items-center justify-between gap-2 rounded px-1.5 py-0.5 ${
+                      isSelected ? "bg-primary/5 ring-1 ring-primary/20" : ""
+                    }`}
+                    title={`${item.nome}: ${item.valor.toLocaleString("pt-BR")} (${item.percentual.toFixed(1)}%)`}
+                  >
+                    <div className="min-w-0 flex items-center gap-1.5">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor: item.cor,
+                          border: isWhite ? "1px solid #94a3b8" : undefined,
+                        }}
+                      />
+                      <span className="truncate text-[10px] font-black uppercase leading-tight text-slate-700">
+                        {item.nome}
+                      </span>
+                    </div>
+
+                    <span className="shrink-0 text-[9px] font-black text-slate-700 tabular-nums">
+                      {item.percentual.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 1,
+                        maximumFractionDigits: 1,
+                      })}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+const normalizarInscricao = (valor: string | null | undefined): string => {
+  return String(valor || "").replace(/\D/g, "");
+};
+
+const normalizarTelefoneWhatsApp = (
+  telefone: string | number | null | undefined
+): string | null => {
+  let numero = String(telefone ?? "").replace(/\D/g, "");
+
+  if (!numero) return null;
+
+  if (numero.startsWith("00")) {
+    numero = numero.slice(2);
+  }
+
+  if (
+    numero.startsWith("0") &&
+    (numero.length === 11 || numero.length === 12)
+  ) {
+    numero = numero.slice(1);
+  }
+
+  if (numero.startsWith("55")) {
+    const numeroNacional = numero.slice(2);
+    return numeroNacional.length === 10 || numeroNacional.length === 11
+      ? numero
+      : null;
+  }
+
+  if (numero.length === 10 || numero.length === 11) {
+    return `55${numero}`;
+  }
+
+  return null;
+};
+
+const formatarPrazoForecast = (dias: number): string => {
+  if (dias === 0) return "prontos hoje";
+  if (dias === 1) return "prontos em 1 dia";
+  return `prontos em ${dias} dias`;
+};
 
 const getDiffEmDias = (dataVisita: string, periodoOriginal: string | number) => {
   if (!dataVisita) return 0;
@@ -121,17 +414,15 @@ export function Dashboard() {
   const navigate = useNavigate();
   const temPermissaoAdmin = user?.modulos?.includes('ADMIN') || false;
 
-  const [dateStart, setDateStart] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
-  });
+  const [dateStart, setDateStart] = useState("2026-04-01");
   const [dateEnd, setDateEnd] = useState(() => {
     return new Date().toISOString().split('T')[0];
   });
+  const [selectedBuyer, setSelectedBuyer] = useState("");
 
   const [selectedCity, setSelectedCity] = useState<CityData | null>(null);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [isForecastTipOpen, setIsForecastTipOpen] = useState(false);
   
   // Agora armazenamos as visitas já com os Lotes preenchidos
   const [visitasBrutas, setVisitasBrutas] = useState<(ApiVisita & { lotesDaApi: ApiLote[] })[]>([]);
@@ -139,6 +430,11 @@ export function Dashboard() {
   const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]);
   const [pecuaristas, setPecuaristas] = useState<ApiRancher[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const [selectedMetric, setSelectedMetric] = useState<MetricKey | null>(null);
+  const [metricSearch, setMetricSearch] = useState("");
+  const [metricSortBy, setMetricSortBy] = useState<MetricSortColumn>("informacao");
+  const [metricSortOrder, setMetricSortOrder] = useState<SortOrder>("desc");
 
   const [forecastModal, setForecastModal] = useState<{
     isOpen: boolean;
@@ -183,20 +479,338 @@ export function Dashboard() {
     carregarDados();
   }, [temPermissaoAdmin]);
 
-  const visitas = useMemo(() => {
-    if (!dateStart || !dateEnd) return visitasBrutas;
-    return visitasBrutas.filter(v => {
+  const compradoresDisponiveis = useMemo(() => {
+    const compradoresMap = new Map<string, string>();
+
+    visitasBrutas.forEach((visita) => {
+      if (visita.ID_COMPRADOR === null || visita.ID_COMPRADOR === undefined) return;
+
+      const id = String(visita.ID_COMPRADOR);
+      const usuario = usuariosData.find(
+        (u) => Number(u.SEQUSUARIO) === Number(visita.ID_COMPRADOR)
+      );
+
+      compradoresMap.set(id, usuario?.CODUSUARIO || `ID: ${id}`);
+    });
+
+    return Array.from(compradoresMap.entries())
+      .map(([id, nome]) => ({ id, nome }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [visitasBrutas, usuariosData]);
+
+  // Base somente com o período. Os gráficos de participação usam esta lista
+  // para manter a comparação entre todos os compradores.
+  const buyerColorMap = useMemo<Record<string, string>>(() => {
+    const colorMap: Record<string, string> = {};
+
+    compradoresDisponiveis.forEach((comprador, index) => {
+      colorMap[comprador.id] =
+        PARTICIPATION_COLORS[index % PARTICIPATION_COLORS.length];
+    });
+
+    colorMap.SEM_COMPRADOR = UNDEFINED_BUYER_COLOR;
+    colorMap.OUTROS = OTHER_BUYERS_COLOR;
+
+    return colorMap;
+  }, [compradoresDisponiveis]);
+
+  const visitasPeriodo = useMemo(() => {
+    return visitasBrutas.filter((v) => {
       if (!v.DATA_REGISTRO_VISITA) return false;
-      const vDate = v.DATA_REGISTRO_VISITA.split('T')[0];
-      return vDate >= dateStart && vDate <= dateEnd;
+
+      const vDate = v.DATA_REGISTRO_VISITA.split("T")[0];
+      return (
+        (!dateStart || vDate >= dateStart) &&
+        (!dateEnd || vDate <= dateEnd)
+      );
     });
   }, [visitasBrutas, dateStart, dateEnd]);
+
+  // Cards, mapa, forecast, auditoria e tabelas continuam respeitando
+  // também o filtro de comprador selecionado.
+  const visitas = useMemo(() => {
+    if (!selectedBuyer) return visitasPeriodo;
+
+    return visitasPeriodo.filter(
+      (v) => String(v.ID_COMPRADOR) === selectedBuyer
+    );
+  }, [visitasPeriodo, selectedBuyer]);
 
   const getNomeComprador = (id?: number) => {
     if (!id) return "NÃO DEFINIDO";
     const usuario = usuariosData.find(u => Number(u.SEQUSUARIO) === Number(id));
     return usuario ? usuario.CODUSUARIO : `ID: ${id}`;
   };
+
+  // Mesma regra do selo verde no painel de Visitas:
+  // 1) o KM atual do ERP foi alterado em relação ao KM existente no dia da visita;
+  // 2) o KM existente no dia da visita era maior que o KM coletado pelo GPS.
+  const fretesReduzidosAtualizados = useMemo(() => {
+    const pecuaristasDistintos = new Set<string>();
+
+    visitas.forEach((visita) => {
+      const inscricaoVisita = normalizarInscricao(visita.INSCRICAO);
+
+      const cadastroAtual = pecuaristas.find((pecuarista) => {
+        const mesmaInscricao =
+          inscricaoVisita !== "" &&
+          normalizarInscricao(pecuarista.INSCRICAO) === inscricaoVisita;
+
+        const mesmoProdutor =
+          visita.COD_PRODUTOR === null ||
+          visita.COD_PRODUTOR === undefined ||
+          String(pecuarista.COD_PRODUTOR) === String(visita.COD_PRODUTOR);
+
+        return mesmaInscricao && mesmoProdutor;
+      });
+
+      const distanciaAtualRaw =
+        visita.DISTANCIA_CADASTRADA !== null &&
+        visita.DISTANCIA_CADASTRADA !== undefined
+          ? visita.DISTANCIA_CADASTRADA
+          : cadastroAtual?.DISTANCIA_CADASTRADA;
+
+      const distanciaAnteriorRaw = visita.DISTANCIAERP;
+      const distanciaGpsRaw = visita.DISTANCIA_PERCORRIDA_REAL;
+
+      const distanciaAtual = Number(distanciaAtualRaw);
+      const distanciaAnterior = Number(distanciaAnteriorRaw);
+      const distanciaGps = Number(distanciaGpsRaw);
+
+      const possuiTodasAsDistancias =
+        distanciaAtualRaw !== null &&
+        distanciaAtualRaw !== undefined &&
+        distanciaAnteriorRaw !== null &&
+        distanciaAnteriorRaw !== undefined &&
+        distanciaGpsRaw !== null &&
+        distanciaGpsRaw !== undefined &&
+        Number.isFinite(distanciaAtual) &&
+        Number.isFinite(distanciaAnterior) &&
+        Number.isFinite(distanciaGps);
+
+      if (!possuiTodasAsDistancias) return;
+
+      const distanciaFoiAlterada =
+        Math.abs(distanciaAtual - distanciaAnterior) > 0.001;
+
+      const economiaIdentificadaNaVisita =
+        distanciaAnterior - distanciaGps > 0;
+
+      if (distanciaFoiAlterada && economiaIdentificadaNaVisita) {
+        const chavePecuarista =
+          visita.COD_PRODUTOR !== null &&
+          visita.COD_PRODUTOR !== undefined
+            ? String(visita.COD_PRODUTOR)
+            : inscricaoVisita ||
+              String(visita.NOME_PRODUTOR || "SEM CADASTRO").trim().toUpperCase();
+
+        pecuaristasDistintos.add(chavePecuarista);
+      }
+    });
+
+    return {
+      totalPecuaristas: pecuaristasDistintos.size,
+    };
+  }, [visitas, pecuaristas]);
+
+  const alertasForecastCincoDias = useMemo<ForecastReadyAlert[]>(() => {
+    const agrupados = new Map<
+      string,
+      {
+        key: string;
+        codigoProdutor: string;
+        produtor: string;
+        fazenda: string;
+        quantidade: number;
+        diasRestantes: number;
+        telefoneOriginal: string | null;
+      }
+    >();
+
+    visitas.forEach((visita) => {
+      if (!visita.lotesDaApi || visita.lotesDaApi.length === 0) return;
+
+      const inscricaoVisita = normalizarInscricao(visita.INSCRICAO);
+
+      const cadastroAtual = pecuaristas.find((pecuarista) => {
+        const mesmaInscricao =
+          inscricaoVisita !== "" &&
+          normalizarInscricao(pecuarista.INSCRICAO) === inscricaoVisita;
+
+        const mesmoProdutor =
+          visita.COD_PRODUTOR === null ||
+          visita.COD_PRODUTOR === undefined ||
+          String(pecuarista.COD_PRODUTOR) === String(visita.COD_PRODUTOR);
+
+        return mesmaInscricao && mesmoProdutor;
+      });
+
+      const telefoneBruto =
+        String(visita.TELEFONE || cadastroAtual?.NUMERO1 || "").trim() || null;
+
+      visita.lotesDaApi.forEach((lote) => {
+        if (
+          String(lote.status_lote || "").trim().toUpperCase() !== "DISPONIVEL"
+        ) {
+          return;
+        }
+
+        const quantidade = Number(lote.quantidade_cabecas) || 0;
+        if (quantidade <= 0) return;
+
+        const diasRestantes = getDiffEmDias(
+          visita.DATA_REGISTRO_VISITA,
+          lote.prazo_dias
+        );
+
+        if (diasRestantes < 0 || diasRestantes > 5) return;
+
+        const codigoProdutor =
+          visita.COD_PRODUTOR !== null &&
+          visita.COD_PRODUTOR !== undefined
+            ? String(visita.COD_PRODUTOR)
+            : "SEM CADASTRO";
+
+        const produtor = String(
+          visita.NOME_PRODUTOR || "PECUARISTA NÃO INFORMADO"
+        )
+          .trim()
+          .toUpperCase();
+
+        const fazenda = String(
+          visita.NOME_FAZENDA || "FAZENDA NÃO INFORMADA"
+        )
+          .trim()
+          .toUpperCase();
+
+        const chave =
+          `${codigoProdutor}|${inscricaoVisita}|${fazenda}|${diasRestantes}`;
+
+        const atual = agrupados.get(chave) || {
+          key: chave,
+          codigoProdutor,
+          produtor,
+          fazenda,
+          quantidade: 0,
+          diasRestantes,
+          telefoneOriginal: telefoneBruto,
+        };
+
+        atual.quantidade += quantidade;
+
+        if (!atual.telefoneOriginal && telefoneBruto) {
+          atual.telefoneOriginal = telefoneBruto;
+        }
+
+        agrupados.set(chave, atual);
+      });
+    });
+
+    return Array.from(agrupados.values())
+      .map((item): ForecastReadyAlert => {
+        const whatsappNumero = normalizarTelefoneWhatsApp(
+          item.telefoneOriginal
+        );
+
+        const prazoMensagem =
+          item.diasRestantes === 0
+            ? "já estão previstos para hoje"
+            : item.diasRestantes === 1
+              ? "estarão prontos em 1 dia"
+              : `estarão prontos em ${item.diasRestantes} dias`;
+
+        const mensagem =
+          `Olá! Conforme nossa visita à ${item.fazenda}, ` +
+          `${item.quantidade.toLocaleString("pt-BR")} animais ${prazoMensagem}. ` +
+          "Podemos conversar sobre a programação da compra?";
+
+        return {
+          ...item,
+          whatsappNumero,
+          whatsappUrl: whatsappNumero
+            ? `https://wa.me/${whatsappNumero}?text=${encodeURIComponent(mensagem)}`
+            : null,
+        };
+      })
+      .sort((a, b) => {
+        if (a.diasRestantes !== b.diasRestantes) {
+          return a.diasRestantes - b.diasRestantes;
+        }
+
+        return b.quantidade - a.quantidade;
+      });
+  }, [visitas, pecuaristas]);
+
+
+  const resumoForecastCincoDias = useMemo(() => {
+    return {
+      totalAnimais: alertasForecastCincoDias.reduce(
+        (total, alerta) => total + alerta.quantidade,
+        0
+      ),
+      previa: alertasForecastCincoDias.slice(0, 2),
+    };
+  }, [alertasForecastCincoDias]);
+
+  const participacaoCompradores = useMemo(() => {
+    const agrupados = new Map<string, BuyerParticipationAccumulator>();
+
+    visitasPeriodo.forEach((visita) => {
+      const compradorId = visita.ID_COMPRADOR !== null && visita.ID_COMPRADOR !== undefined
+        ? String(visita.ID_COMPRADOR)
+        : "SEM_COMPRADOR";
+
+      const usuario = usuariosData.find(
+        (item) => Number(item.SEQUSUARIO) === Number(visita.ID_COMPRADOR)
+      );
+
+      const compradorNome = usuario?.CODUSUARIO ||
+        (compradorId === "SEM_COMPRADOR" ? "NÃO DEFINIDO" : `ID: ${compradorId}`);
+
+      const atual = agrupados.get(compradorId) || {
+        id: compradorId,
+        nome: compradorNome,
+        prospectado: 0,
+        comprado: 0,
+        visitas: 0,
+        novos: 0,
+        cidades: new Set<string>(),
+      };
+
+      atual.prospectado += Number(visita.EFETIVO_TOTAL_ANIMAIS) || 0;
+      atual.comprado += Number(visita.QUANTIDADECOMPRADA) || 0;
+      atual.visitas += 1;
+
+      if (String(visita.NATUREZA_VISITA || "").trim().toUpperCase() === "PROSPECÇÃO") {
+        atual.novos += 1;
+      }
+
+      const municipio = String(visita.MUNICIPIO || "").trim().toUpperCase();
+      if (municipio) atual.cidades.add(municipio);
+
+      agrupados.set(compradorId, atual);
+    });
+
+    const compradores = Array.from(agrupados.values());
+    const converter = (
+      obterValor: (item: BuyerParticipationAccumulator) => number
+    ): BuyerParticipationItem[] => compradores
+      .map((item) => ({
+        id: item.id,
+        nome: item.nome,
+        valor: obterValor(item),
+      }))
+      .filter((item) => item.valor > 0)
+      .sort((a, b) => b.valor - a.valor);
+
+    return {
+      prospectado: converter((item) => item.prospectado),
+      comprado: converter((item) => item.comprado),
+      visitas: converter((item) => item.visitas),
+      novos: converter((item) => item.novos),
+      cidades: converter((item) => item.cidades.size),
+    };
+  }, [visitasPeriodo, usuariosData]);
 
   const mapVisitaToReport = (v: ApiVisita & { lotesDaApi: ApiLote[] }): CheckinReport => ({
     id: String(v.ID_VISITA),
@@ -236,12 +850,17 @@ export function Dashboard() {
   };
 
   const { mapData, kpis } = useMemo(() => {
-    let totalHeads = 0; let novosPecuaristas = 0;
+    let totalHeads = 0;
+    let totalComprada = 0;
+    let novosPecuaristas = 0;
     const cidadesSet = new Set<string>(); const citiesMap = new Map<string, CityData>();
 
     visitas.forEach(v => {
       const cabecas = Number(v.EFETIVO_TOTAL_ANIMAIS) || 0;
+      const quantidadeComprada = Number(v.QUANTIDADECOMPRADA) || 0;
+
       totalHeads += cabecas;
+      totalComprada += quantidadeComprada;
       
       if (v.NATUREZA_VISITA?.toUpperCase() === "PROSPECÇÃO") novosPecuaristas += 1;
       
@@ -257,8 +876,211 @@ export function Dashboard() {
       }
     });
 
-    return { mapData: Array.from(citiesMap.values()), kpis: { totalHeads, totalVisitas: visitas.length, novosPecuaristas, cidadesCobertas: cidadesSet.size } };
+    return {
+      mapData: Array.from(citiesMap.values()),
+      kpis: {
+        totalHeads,
+        totalComprada,
+        totalVisitas: visitas.length,
+        novosPecuaristas,
+        cidadesCobertas: cidadesSet.size
+      }
+    };
   }, [visitas]);
+
+  const metricDetailRows = useMemo<MetricDetailRow[]>(() => {
+    const agrupados = new Map<string, MetricDetailRow>();
+
+    visitas.forEach((visita) => {
+      const codigo = visita.COD_PRODUTOR !== null && visita.COD_PRODUTOR !== undefined
+        ? String(visita.COD_PRODUTOR)
+        : "SEM CADASTRO";
+      const nome = String(visita.NOME_PRODUTOR || "NÃO INFORMADO").trim().toUpperCase();
+      const fazenda = String(visita.NOME_FAZENDA || "NÃO INFORMADA").trim().toUpperCase();
+      const municipio = String(visita.MUNICIPIO || "NÃO INFORMADO").trim().toUpperCase();
+      const inscricao = String(visita.INSCRICAO || "").replace(/\D/g, "");
+      const chave = `${codigo}|${inscricao}|${fazenda}`;
+
+      const atual = agrupados.get(chave) || {
+        key: chave,
+        codigo,
+        nome,
+        fazenda,
+        municipio,
+        visitas: 0,
+        prospectado: 0,
+        comprado: 0,
+        prospeccoes: 0,
+      };
+
+      atual.visitas += 1;
+      atual.prospectado += Number(visita.EFETIVO_TOTAL_ANIMAIS) || 0;
+      atual.comprado += Number(visita.QUANTIDADECOMPRADA) || 0;
+
+      if (String(visita.NATUREZA_VISITA || "").trim().toUpperCase() === "PROSPECÇÃO") {
+        atual.prospeccoes += 1;
+      }
+
+      agrupados.set(chave, atual);
+    });
+
+    return Array.from(agrupados.values());
+  }, [visitas]);
+
+  const metricConfig = useMemo(() => {
+    const configs: Record<MetricKey, { title: string; description: string; infoLabel: string }> = {
+      prospectado: {
+        title: "Detalhamento — Gado Prospectado",
+        description: "Efetivo total informado nas visitas do período e comprador selecionados.",
+        infoLabel: "Gado prospectado",
+      },
+      comprado: {
+        title: "Detalhamento — Quantidade Comprada",
+        description: "Quantidade comprada registrada para cada pecuarista e propriedade.",
+        infoLabel: "Quantidade comprada",
+      },
+      visitas: {
+        title: "Detalhamento — Visitas Realizadas",
+        description: "Quantidade de visitas realizadas por pecuarista e propriedade.",
+        infoLabel: "Visitas",
+      },
+      novos: {
+        title: "Detalhamento — Novos Pecuaristas",
+        description: "Visitas cuja natureza foi registrada como PROSPECÇÃO.",
+        infoLabel: "Visitas de prospecção",
+      },
+      cidades: {
+        title: "Detalhamento — Cidades Cobertas",
+        description: "Propriedades alcançadas no período, com município e quantidade de visitas.",
+        infoLabel: "Município / visitas",
+      },
+    };
+
+    return selectedMetric ? configs[selectedMetric] : null;
+  }, [selectedMetric]);
+
+  const metricRows = useMemo<MetricDisplayRow[]>(() => {
+    if (!selectedMetric) return [];
+
+    return metricDetailRows
+      .filter((row) => {
+        if (selectedMetric === "prospectado") return row.prospectado > 0;
+        if (selectedMetric === "comprado") return row.comprado > 0;
+        if (selectedMetric === "novos") return row.prospeccoes > 0;
+        return true;
+      })
+      .map((row) => {
+        if (selectedMetric === "prospectado") {
+          return {
+            key: row.key,
+            codigo: row.codigo,
+            nome: row.nome,
+            fazenda: row.fazenda,
+            informacao: `${row.prospectado.toLocaleString("pt-BR")} cabeças`,
+            sortValue: row.prospectado,
+          };
+        }
+
+        if (selectedMetric === "comprado") {
+          return {
+            key: row.key,
+            codigo: row.codigo,
+            nome: row.nome,
+            fazenda: row.fazenda,
+            informacao: `${row.comprado.toLocaleString("pt-BR")} cabeças`,
+            sortValue: row.comprado,
+          };
+        }
+
+        if (selectedMetric === "visitas") {
+          return {
+            key: row.key,
+            codigo: row.codigo,
+            nome: row.nome,
+            fazenda: row.fazenda,
+            informacao: `${row.visitas.toLocaleString("pt-BR")} ${row.visitas === 1 ? "visita" : "visitas"}`,
+            sortValue: row.visitas,
+          };
+        }
+
+        if (selectedMetric === "novos") {
+          return {
+            key: row.key,
+            codigo: row.codigo,
+            nome: row.nome,
+            fazenda: row.fazenda,
+            informacao: `${row.prospeccoes.toLocaleString("pt-BR")} ${row.prospeccoes === 1 ? "prospecção" : "prospecções"}`,
+            sortValue: row.prospeccoes,
+          };
+        }
+
+        return {
+          key: row.key,
+          codigo: row.codigo,
+          nome: row.nome,
+          fazenda: row.fazenda,
+          informacao: `${row.municipio} • ${row.visitas.toLocaleString("pt-BR")} ${row.visitas === 1 ? "visita" : "visitas"}`,
+          sortValue: row.visitas,
+        };
+      });
+  }, [metricDetailRows, selectedMetric]);
+
+  const sortedMetricRows = useMemo(() => {
+    const pesquisa = metricSearch.trim().toLocaleLowerCase("pt-BR");
+
+    const filtrados = metricRows.filter((row) => {
+      if (!pesquisa) return true;
+      return [row.codigo, row.nome, row.fazenda, row.informacao]
+        .some((value) => String(value).toLocaleLowerCase("pt-BR").includes(pesquisa));
+    });
+
+    return [...filtrados].sort((a, b) => {
+      let valorA: string | number;
+      let valorB: string | number;
+
+      if (metricSortBy === "codigo") {
+        const codigoA = Number(a.codigo);
+        const codigoB = Number(b.codigo);
+        valorA = Number.isFinite(codigoA) ? codigoA : a.codigo;
+        valorB = Number.isFinite(codigoB) ? codigoB : b.codigo;
+      } else if (metricSortBy === "nome") {
+        valorA = a.nome;
+        valorB = b.nome;
+      } else if (metricSortBy === "fazenda") {
+        valorA = a.fazenda;
+        valorB = b.fazenda;
+      } else {
+        valorA = a.sortValue;
+        valorB = b.sortValue;
+      }
+
+      let comparacao = 0;
+      if (typeof valorA === "number" && typeof valorB === "number") {
+        comparacao = valorA - valorB;
+      } else {
+        comparacao = String(valorA).localeCompare(String(valorB), "pt-BR", { numeric: true });
+      }
+
+      return metricSortOrder === "asc" ? comparacao : -comparacao;
+    });
+  }, [metricRows, metricSearch, metricSortBy, metricSortOrder]);
+
+  const openMetricDetails = (metric: MetricKey) => {
+    setMetricSearch("");
+    setMetricSortBy("informacao");
+    setMetricSortOrder("desc");
+    setSelectedMetric(metric);
+  };
+
+  const handleMetricSort = (column: MetricSortColumn) => {
+    if (metricSortBy === column) {
+      setMetricSortOrder((current) => current === "desc" ? "asc" : "desc");
+      return;
+    }
+
+    setMetricSortBy(column);
+    setMetricSortOrder(column === "informacao" || column === "codigo" ? "desc" : "asc");
+  };
 
   // 👇 NOVA LÓGICA DO FORECAST BASEADO NOS LOTES DINÂMICOS 👇
   const { forecast, auditoriaFrete } = useMemo(() => {
@@ -388,38 +1210,316 @@ export function Dashboard() {
             <p className="text-muted-foreground text-sm font-medium mt-1">Visão geral de originação baseada em dados em tempo real</p>
           </div>
           
-          <div className="flex flex-col sm:flex-row items-end gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-            <div className="flex items-center gap-2 text-slate-600 font-bold mb-1 sm:mb-0">
-              <Filter className="w-4 h-4 text-primary" />
-              <span className="text-xs uppercase tracking-wider">Filtro Temporal</span>
-            </div>
-            <div className="flex gap-3 items-center">
-              <div className="flex flex-col">
-                <Label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5">Início</Label>
-                <Input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} className="h-9 text-xs font-bold bg-slate-50 border-slate-200" />
+          <div className="w-full md:w-auto bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2 text-slate-600 font-bold">
+                <Filter className="w-4 h-4 text-primary" />
+                <span className="text-xs uppercase tracking-wider">Filtros do Relatório</span>
               </div>
-              <div className="flex flex-col">
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsForecastTipOpen((current) => !current)}
+                  className={`relative h-8 inline-flex items-center gap-2 rounded-lg border px-3 text-[10px] font-black uppercase tracking-wide transition-all ${
+                    alertasForecastCincoDias.length > 0
+                      ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 shadow-sm"
+                      : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
+                  }`}
+                  aria-expanded={isForecastTipOpen}
+                  aria-label={`Ver animais previstos para os próximos cinco dias. ${alertasForecastCincoDias.length} pendente(s).`}
+                >
+                  <BellRing
+                    className={`w-4 h-4 ${
+                      alertasForecastCincoDias.length > 0 ? "animate-pulse" : ""
+                    }`}
+                  />
+                  <span className="hidden sm:inline">Alertas 5 dias</span>
+
+                  {alertasForecastCincoDias.length > 0 && (
+                    <span
+                      className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-red-600 px-1 text-[9px] font-black leading-none text-white shadow-md tabular-nums"
+                      title={`${alertasForecastCincoDias.length} alerta(s) pendente(s)`}
+                    >
+                      {alertasForecastCincoDias.length > 99
+                        ? "99+"
+                        : alertasForecastCincoDias.length}
+                    </span>
+                  )}
+                </button>
+
+                {isForecastTipOpen && (
+                  <div className="absolute right-0 top-full z-[700] mt-2 w-[420px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-amber-50 px-4 py-3">
+                      <div>
+                        <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-900">
+                          <BellRing className="w-4 h-4" />
+                          Animais prontos em até 5 dias
+                        </p>
+                        <p className="mt-1 text-[10px] font-medium text-amber-800/80">
+                          Acompanhamento dos lotes disponíveis mais próximos.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsForecastTipOpen(false)}
+                        className="rounded-full p-1 text-amber-700 hover:bg-amber-100"
+                        aria-label="Fechar aviso"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="max-h-[360px] overflow-y-auto p-3">
+                      {alertasForecastCincoDias.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                          <CheckCircle2 className="mb-2 h-8 w-8 text-emerald-500" />
+                          <p className="text-xs font-bold text-slate-600">
+                            Nenhum lote disponível previsto para os próximos 5 dias.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {alertasForecastCincoDias.map((alerta) => (
+                            <div
+                              key={alerta.key}
+                              className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="truncate text-[11px] font-black uppercase text-slate-800">
+                                    {alerta.produtor}
+                                  </p>
+                                  <p className="mt-0.5 truncate text-[9px] font-bold uppercase text-slate-500">
+                                    {alerta.fazenda}
+                                  </p>
+                                </div>
+
+                                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-1 text-[9px] font-black uppercase text-amber-800">
+                                  {formatarPrazoForecast(alerta.diasRestantes)}
+                                </span>
+                              </div>
+
+                              <div className="mt-3 flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                                    Animais
+                                  </p>
+                                  <p className="text-lg font-black leading-none text-slate-800 tabular-nums">
+                                    {alerta.quantidade.toLocaleString("pt-BR")}
+                                  </p>
+                                </div>
+
+                                {alerta.whatsappUrl ? (
+                                  <a
+                                    href={alerta.whatsappUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[10px] font-black uppercase text-white shadow-sm transition-colors hover:bg-emerald-700"
+                                  >
+                                    <MessageCircle className="w-4 h-4" />
+                                    WhatsApp
+                                  </a>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-2 text-[9px] font-bold uppercase text-slate-500">
+                                    <PhoneOff className="w-3.5 h-3.5" />
+                                    Sem contato válido
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div className="flex flex-col min-w-[150px]">
+                <Label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5">Início</Label>
+                <Input
+                  type="date"
+                  value={dateStart}
+                  onChange={(e) => setDateStart(e.target.value)}
+                  className="h-9 text-xs font-bold bg-slate-50 border-slate-200"
+                />
+              </div>
+
+              <div className="flex flex-col min-w-[150px]">
                 <Label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5">Fim</Label>
-                <Input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} className="h-9 text-xs font-bold bg-slate-50 border-slate-200" />
+                <Input
+                  type="date"
+                  value={dateEnd}
+                  onChange={(e) => setDateEnd(e.target.value)}
+                  className="h-9 text-xs font-bold bg-slate-50 border-slate-200"
+                />
+              </div>
+
+              <div className="flex flex-col min-w-[220px]">
+                <Label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5">Comprador</Label>
+                <select
+                  value={selectedBuyer}
+                  onChange={(e) => setSelectedBuyer(e.target.value)}
+                  className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 shadow-sm outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">TODOS OS COMPRADORES</option>
+                  {compradoresDisponiveis.map((comprador) => (
+                    <option key={comprador.id} value={comprador.id}>
+                      {comprador.nome}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
         </header>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {isLoading ? (
-            Array(4).fill(0).map((_, i) => (
-              <Card key={i} className="h-[140px] flex items-center justify-center border-none shadow-sm"><Loader2 className="w-6 h-6 text-slate-300 animate-spin" /></Card>
+            Array(5).fill(0).map((_, i) => (
+              <div key={i} className="pt-11">
+                <Card className="h-[140px] flex items-center justify-center border-none shadow-sm">
+                  <Loader2 className="w-6 h-6 text-slate-300 animate-spin" />
+                </Card>
+              </div>
             ))
           ) : (
             <>
-              <MetricCard title="Gado Prospectado" value={kpis.totalHeads.toLocaleString('pt-BR')} icon={<TrendingUp className="w-7 h-7 text-blue-600" />} colorClass="bg-blue-50 text-blue-600" sub="Efetivo total registrado em visitas" />
-              <MetricCard title="Visitas Realizadas" value={kpis.totalVisitas} icon={<Navigation className="w-7 h-7 text-indigo-600" />} colorClass="bg-indigo-50 text-indigo-600" sub="Total de registros no banco" />
-              <MetricCard title="Novos Pecuaristas" value={kpis.novosPecuaristas} icon={<Users className="w-7 h-7 text-emerald-600" />} colorClass="bg-emerald-50 text-emerald-600" sub="Visitas com natureza de Prospecção" />
-              <MetricCard title="Cidades Cobertas" value={kpis.cidadesCobertas} icon={<Building2 className="w-7 h-7 text-amber-600" />} colorClass="bg-amber-50 text-amber-600" sub="Abrangência geográfica real" />
+              <div className="relative pt-11">
+                <div
+                  className="absolute left-2 right-2 top-0 z-20 flex min-h-9 items-center justify-center gap-2 rounded-2xl border border-emerald-300 bg-white/95 px-3 py-2 text-[9px] font-black uppercase tracking-wide text-emerald-800 shadow-[0_10px_24px_rgba(16,185,129,0.22)] backdrop-blur-sm"
+                  title="Pecuaristas distintos com redução de distância identificada na visita e distância já alterada no ERP."
+                >
+                  <Truck className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <span className="shrink-0 text-[12px]">
+                    {fretesReduzidosAtualizados.totalPecuaristas}
+                  </span>
+                  <span className="truncate">
+                    {fretesReduzidosAtualizados.totalPecuaristas === 1
+                      ? "pecuarista com frete reduzido e atualizado"
+                      : "pecuaristas com frete reduzido e atualizado"}
+                  </span>
+                  <span className="absolute -bottom-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-b border-r border-emerald-300 bg-white" />
+                </div>
+
+                <MetricCard
+                  title="Gado Prospectado"
+                  value={kpis.totalHeads.toLocaleString("pt-BR")}
+                  icon={<TrendingUp className="w-7 h-7 text-blue-600" />}
+                  colorClass="bg-blue-50 text-blue-600"
+                  sub="Efetivo total registrado em visitas"
+                  onClick={() => openMetricDetails("prospectado")}
+                />
+              </div>
+
+              <div className="pt-11">
+                <MetricCard
+                  title="Quantidade Comprada"
+                  value={kpis.totalComprada.toLocaleString("pt-BR")}
+                  icon={<ShoppingCart className="w-7 h-7 text-violet-600" />}
+                  colorClass="bg-violet-50 text-violet-600"
+                  sub="Total comprado no período filtrado"
+                  onClick={() => openMetricDetails("comprado")}
+                />
+              </div>
+
+              <div className="pt-11">
+                <MetricCard
+                  title="Visitas Realizadas"
+                  value={kpis.totalVisitas}
+                  icon={<Navigation className="w-7 h-7 text-indigo-600" />}
+                  colorClass="bg-indigo-50 text-indigo-600"
+                  sub="Total de registros no banco"
+                  onClick={() => openMetricDetails("visitas")}
+                />
+              </div>
+
+              <div className="pt-11">
+                <MetricCard
+                  title="Novos Pecuaristas"
+                  value={kpis.novosPecuaristas}
+                  icon={<Users className="w-7 h-7 text-emerald-600" />}
+                  colorClass="bg-emerald-50 text-emerald-600"
+                  sub="Visitas com natureza de Prospecção"
+                  onClick={() => openMetricDetails("novos")}
+                />
+              </div>
+
+              <div className="pt-11">
+                <MetricCard
+                  title="Cidades Cobertas"
+                  value={kpis.cidadesCobertas}
+                  icon={<Building2 className="w-7 h-7 text-amber-600" />}
+                  colorClass="bg-amber-50 text-amber-600"
+                  sub="Abrangência geográfica real"
+                  onClick={() => openMetricDetails("cidades")}
+                />
+              </div>
             </>
           )}
         </div>
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-black text-slate-800">Participação por Comprador</h2>
+          </div>
+
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+              {Array(5).fill(0).map((_, index) => (
+                <Card key={index} className="h-[180px] flex items-center justify-center border-slate-200 shadow-sm">
+                  <Loader2 className="w-6 h-6 animate-spin text-slate-300" />
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 items-start">
+              <BuyerParticipationChart
+                title="Gado Prospectado"
+                items={participacaoCompradores.prospectado}
+                centerLabel="Cabeças"
+                selectedBuyerId={selectedBuyer || undefined}
+                buyerColorMap={buyerColorMap}
+              />
+
+              <BuyerParticipationChart
+                title="Quantidade Comprada"
+                items={participacaoCompradores.comprado}
+                centerLabel="Cabeças"
+                selectedBuyerId={selectedBuyer || undefined}
+                buyerColorMap={buyerColorMap}
+              />
+
+              <BuyerParticipationChart
+                title="Visitas Realizadas"
+                items={participacaoCompradores.visitas}
+                centerLabel="Visitas"
+                selectedBuyerId={selectedBuyer || undefined}
+                buyerColorMap={buyerColorMap}
+              />
+
+              <BuyerParticipationChart
+                title="Novos Pecuaristas"
+                items={participacaoCompradores.novos}
+                centerLabel="Prospecções"
+                selectedBuyerId={selectedBuyer || undefined}
+                buyerColorMap={buyerColorMap}
+              />
+
+              <BuyerParticipationChart
+                title="Cidades Cobertas"
+                items={participacaoCompradores.cidades}
+                centerLabel="Coberturas"
+                selectedBuyerId={selectedBuyer || undefined}
+                buyerColorMap={buyerColorMap}
+              />
+            </div>
+          )}
+        </section>
 
         <Card className={`overflow-hidden border-slate-200 shadow-sm transition-all duration-300 bg-white ${isMapExpanded ? 'fixed inset-4 z-[200] flex flex-col' : ''}`}>
           <CardHeader className="bg-white border-b pb-4 shrink-0 flex flex-row items-center justify-between">
@@ -576,6 +1676,142 @@ export function Dashboard() {
 
         </div>
       </div>
+
+      {selectedMetric && metricConfig && (
+        <div className="fixed inset-0 z-[9998] bg-slate-900/65 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <Card className="w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl border-none overflow-hidden">
+            <CardHeader className="bg-white border-b shrink-0 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="text-xl font-black text-slate-800">
+                    {metricConfig.title}
+                  </CardTitle>
+                  <CardDescription className="mt-1 font-medium">
+                    {metricConfig.description}
+                  </CardDescription>
+                  <p className="mt-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Período: {dateStart ? new Date(`${dateStart}T12:00:00`).toLocaleDateString("pt-BR") : "Início livre"}
+                    {" até "}
+                    {dateEnd ? new Date(`${dateEnd}T12:00:00`).toLocaleDateString("pt-BR") : "Fim livre"}
+                    {selectedBuyer ? ` • Comprador: ${getNomeComprador(Number(selectedBuyer))}` : " • Todos os compradores"}
+                  </p>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSelectedMetric(null)}
+                  className="shrink-0"
+                >
+                  <X className="w-5 h-5 text-slate-500" />
+                </Button>
+              </div>
+
+              <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative w-full sm:max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    value={metricSearch}
+                    onChange={(event) => setMetricSearch(event.target.value)}
+                    placeholder="Pesquisar código, pecuarista, fazenda ou informação..."
+                    className="pl-9 h-10 bg-slate-50"
+                  />
+                </div>
+
+                <div className="text-xs font-bold text-slate-500 whitespace-nowrap">
+                  {sortedMetricRows.length.toLocaleString("pt-BR")} registro(s)
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-0 overflow-auto flex-1 bg-white">
+              <Table>
+                <TableHeader className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                  <TableRow>
+                    <TableHead
+                      className={`font-bold text-xs uppercase cursor-pointer select-none hover:bg-slate-100 ${metricSortBy === "codigo" ? "text-primary bg-primary/5" : "text-slate-500"}`}
+                      onClick={() => handleMetricSort("codigo")}
+                    >
+                      <div className="flex items-center gap-1">
+                        Cód. Pecuarista
+                        <ArrowUpDown className={`w-3.5 h-3.5 ${metricSortBy === "codigo" ? "opacity-100" : "opacity-30"}`} />
+                      </div>
+                    </TableHead>
+
+                    <TableHead
+                      className={`font-bold text-xs uppercase cursor-pointer select-none hover:bg-slate-100 min-w-[240px] ${metricSortBy === "nome" ? "text-primary bg-primary/5" : "text-slate-500"}`}
+                      onClick={() => handleMetricSort("nome")}
+                    >
+                      <div className="flex items-center gap-1">
+                        Pecuarista
+                        <ArrowUpDown className={`w-3.5 h-3.5 ${metricSortBy === "nome" ? "opacity-100" : "opacity-30"}`} />
+                      </div>
+                    </TableHead>
+
+                    <TableHead
+                      className={`font-bold text-xs uppercase cursor-pointer select-none hover:bg-slate-100 min-w-[240px] ${metricSortBy === "fazenda" ? "text-primary bg-primary/5" : "text-slate-500"}`}
+                      onClick={() => handleMetricSort("fazenda")}
+                    >
+                      <div className="flex items-center gap-1">
+                        Fazenda
+                        <ArrowUpDown className={`w-3.5 h-3.5 ${metricSortBy === "fazenda" ? "opacity-100" : "opacity-30"}`} />
+                      </div>
+                    </TableHead>
+
+                    <TableHead
+                      className={`font-bold text-xs uppercase text-right cursor-pointer select-none hover:bg-slate-100 min-w-[190px] ${metricSortBy === "informacao" ? "text-primary bg-primary/5" : "text-slate-500"}`}
+                      onClick={() => handleMetricSort("informacao")}
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        {metricConfig.infoLabel}
+                        <ArrowUpDown className={`w-3.5 h-3.5 ${metricSortBy === "informacao" ? "opacity-100" : "opacity-30"}`} />
+                      </div>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+
+                <TableBody>
+                  {sortedMetricRows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-14 text-slate-500 font-medium">
+                        Nenhum registro encontrado para os filtros selecionados.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    sortedMetricRows.map((row, index) => (
+                      <TableRow key={row.key} className="hover:bg-slate-50 transition-colors">
+                        <TableCell className="font-black text-slate-700 tabular-nums whitespace-nowrap">
+                          {row.codigo}
+                        </TableCell>
+                        <TableCell>
+                          <p className="font-bold text-sm text-slate-800 uppercase">{row.nome}</p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="font-semibold text-sm text-slate-600 uppercase">{row.fazenda}</p>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className="inline-flex rounded-md bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-700 whitespace-nowrap tabular-nums">
+                            {row.informacao}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+
+            <div className="border-t bg-slate-50 px-5 py-3 flex items-center justify-between gap-3">
+              <p className="text-[11px] font-medium text-slate-400">
+                A tabela abre ordenada do maior para o menor. Clique nos títulos para alterar a ordenação.
+              </p>
+              <Button onClick={() => setSelectedMetric(null)} className="font-bold shrink-0">
+                Fechar
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {forecastModal && forecastModal.isOpen && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">

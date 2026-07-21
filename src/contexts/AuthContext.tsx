@@ -17,23 +17,39 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (loginInput: string, senhaInput: string, empresa: string) => Promise<boolean>;
+  login: (
+    loginInput: string,
+    senhaInput: string,
+    empresa: string
+  ) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
+  isAuthLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+
+  // Indica se o usuário salvo ainda está sendo recuperado
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   
   //👇 ESTADO DO MODAL DE EXPIRAÇÃO 👇
   const [isSessionExpired, setIsSessionExpired] = useState(false);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('@OriginaGoias:user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    try {
+      const storedUser = localStorage.getItem('@OriginaGoias:user');
+
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
+    } catch (error) {
+      console.error("Erro ao recuperar usuário salvo:", error);
+    } finally {
+      // Só libera as rotas depois de verificar o localStorage
+      setIsAuthLoading(false);
     }
 
     //👇 OUVINTE DO EVENTO DE EXPIRAÇÃO DE SESSÃO 👇
@@ -48,9 +64,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const login = async (loginInput: string, senhaInput: string, empresa: string): Promise<boolean> => {
+  const login = async (
+    loginInput: string,
+    senhaInput: string,
+    empresa: string
+  ): Promise<boolean> => {
     try {
-      const response = await api.realizarLogin(loginInput, senhaInput, empresa);
+      const response = await api.realizarLogin(
+        loginInput,
+        senhaInput,
+        empresa
+      );
       
       if (response.success && response.user) {
         const loggedUser: User = {
@@ -59,17 +83,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           login: response.user.login,
           role: response.user.role || "COMPRADOR",
           empresa: empresa, 
-          modulos: response.user.modulos || [] ,
+          modulos: response.user.modulos || [],
           nivel: response.user.nivel || 0,
         };
 
         setUser(loggedUser);
-        localStorage.setItem('@OriginaGoias:user', JSON.stringify(loggedUser));
+
+        localStorage.setItem(
+          '@OriginaGoias:user',
+          JSON.stringify(loggedUser)
+        );
+
         toast.success(`Bem-vindo(a), ${loggedUser.name}!`);
 
         return true;
       } else {
-        toast.error(response.message || "Login, senha ou empresa incorretos.");
+        toast.error(
+          response.message || "Login, senha ou empresa incorretos."
+        );
+
         return false;
       }
     } catch (error) {
@@ -92,7 +124,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        logout,
+        isAuthenticated: !!user,
+        isAuthLoading,
+      }}
+    >
       {children}
 
       {/*👇 MODAL GIGANTE DE BLOQUEIO👇*/}
@@ -103,10 +143,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">
                 <AlertCircle className="w-8 h-8" />
               </div>
-              <h2 className="text-xl font-black text-slate-800 mb-2">Sessão Expirada</h2>
+
+              <h2 className="text-xl font-black text-slate-800 mb-2">
+                Sessão Expirada
+              </h2>
+
               <p className="text-sm text-slate-500 font-medium mb-6">
-                Por motivos de segurança, seu acesso expirou ou é inválido. Por favor, faça login novamente para continuar.
+                Por motivos de segurança, seu acesso expirou ou é inválido.
+                Por favor, faça login novamente para continuar.
               </p>
+
               <Button 
                 onClick={handleForcarLogin} 
                 className="w-full h-12 bg-red-600 hover:bg-red-700 text-white font-bold text-base shadow-md"
@@ -123,8 +169,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
+
   if (context === undefined) {
-    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
+    throw new Error(
+      'useAuth deve ser usado dentro de um AuthProvider'
+    );
   }
+
   return context;
 }
