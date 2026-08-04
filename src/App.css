@@ -1,42 +1,83 @@
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  min-height: 100vh;
+  width: 100%;
+  background: hsl(var(--background));
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/*
+ * Estrutura principal do sistema.
+ * Não limita a largura e não centraliza todos os textos globalmente.
+ */
+.app-shell {
+  min-height: 100vh;
+  width: 100%;
+  background: hsl(var(--background));
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+/*
+ * Faixa institucional utilizada nos cabeçalhos e na barra lateral.
+ */
+.brand-stripe {
+  display: grid;
+  grid-template-columns: 1fr 1fr 0.38fr;
+  height: 0.375rem;
+  width: 100%;
+  overflow: hidden;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.brand-stripe__navy {
+  background: hsl(var(--brand-navy));
 }
 
-.card {
-  padding: 2em;
+.brand-stripe__blue {
+  background: hsl(var(--brand-blue));
 }
 
-.read-the-docs {
-  color: #888;
+.brand-stripe__red {
+  background: hsl(var(--brand-red));
+}
+
+/*
+ * Superfícies reutilizáveis para áreas que não usam o componente Card.
+ */
+.app-surface {
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-soft);
+}
+
+.app-surface-muted {
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--surface));
+}
+
+/*
+ * Scrollbar discreta e alinhada à identidade institucional.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color:
+    hsl(var(--brand-navy) / 0.35)
+    hsl(var(--muted));
+}
+
+*::-webkit-scrollbar {
+  width: 0.625rem;
+  height: 0.625rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 0.1875rem solid hsl(var(--muted));
+  border-radius: 999px;
+  background: hsl(var(--brand-navy) / 0.35);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--brand-blue) / 0.55);
 }

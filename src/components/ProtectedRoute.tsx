@@ -3,23 +3,39 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface ProtectedRouteProps {
-  allowedRoles?: Array<string>; 
+  allowedRoles?: string[];
+  allowedModules?: string[];
 }
 
-export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
+const normalize = (value: unknown) => String(value || "").trim().toUpperCase();
+
+export function ProtectedRoute({
+  allowedRoles = [],
+  allowedModules = [],
+}: ProtectedRouteProps) {
   const { user, isAuthenticated } = useAuth();
 
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles) {
-    const hasRole = allowedRoles.includes(user.role);
-    const hasModulo = allowedRoles.some((role) => user.modulos?.includes(role));
-    if (!hasRole && !hasModulo) {
-      toast.error("Acesso Negado: Você não tem permissão para acessar esta área.");
-      return <Navigate to="/" replace />;
-    }
+  const userRole = normalize(user.role);
+  const userModules = (user.modulos || []).map(normalize);
+  const isAdmin = userRole === "ADMIN" || userModules.includes("ADMIN");
+
+  const roleAllowed =
+    allowedRoles.length === 0 ||
+    allowedRoles.map(normalize).includes(userRole);
+
+  const moduleAllowed =
+    allowedModules.length === 0 ||
+    allowedModules.map(normalize).some((module) => userModules.includes(module));
+
+  if (!isAdmin && !roleAllowed && !moduleAllowed) {
+    toast.error("Acesso Negado: Você não tem permissão para acessar esta área.", {
+      id: "rota-sem-permissao",
+    });
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <Outlet />;

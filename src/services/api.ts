@@ -193,6 +193,70 @@ const checkSessionExpired = (response: Response) => {
   }
 };
 
+
+/**
+ * Função genérica para consumir os webhooks autenticados do n8n.
+ * Reaproveita o mesmo Header Auth e o mesmo JWT utilizados pelo restante do sistema.
+ */
+export async function n8nPost<T>(
+  url: string | undefined,
+  body: unknown
+): Promise<T> {
+  if (!url) {
+    throw new Error("URL do webhook n8n não configurada no arquivo .env.");
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: getAuthHeaders(true),
+    cache: "no-store",
+    body: JSON.stringify(body),
+  });
+
+  checkSessionExpired(response);
+
+  const contentType = response.headers.get("content-type") || "";
+  let responseBody: unknown;
+
+  try {
+    responseBody = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+  } catch {
+    responseBody = null;
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof responseBody === "object" &&
+      responseBody !== null &&
+      "message" in responseBody
+        ? String(
+            (responseBody as { message?: unknown }).message ||
+              `Erro HTTP ${response.status}.`
+          )
+        : String(responseBody || `Erro HTTP ${response.status}.`);
+
+    throw new Error(message);
+  }
+
+  if (
+    typeof responseBody === "object" &&
+    responseBody !== null &&
+    "success" in responseBody &&
+    (responseBody as { success?: boolean }).success === false
+  ) {
+    throw new Error(
+      String(
+        (responseBody as { message?: unknown }).message ||
+          "A API retornou uma falha."
+      )
+    );
+  }
+
+  return responseBody as T;
+}
+
 export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise<ApiRancher[]> => {
   if (cachedPecuaristas && cachedPecuaristas.length > 0 && !forceRefresh) {
     return cachedPecuaristas;
@@ -656,7 +720,8 @@ export interface LoginResponse {
     name: string;
     role: "ADMIN" | "COMPRADOR";
     modulos?: string[];
-    nivel?: number; 
+    nivel?: number;
+    nroempresa?: number;
   };
   access_token?: string; 
 }

@@ -409,6 +409,43 @@ const getDiffEmDias = (dataVisita: string, periodoOriginal: string | number) => 
   return Math.ceil(diffEmTempo / (1000 * 60 * 60 * 24));
 };
 
+/*
+ * Gado prospectado:
+ * soma somente os lotes marcados como DISPONIVEL que possuem
+ * quantidade e prazo em dias informados.
+ *
+ * EFETIVO_TOTAL_ANIMAIS não entra neste cálculo, porque representa
+ * todo o rebanho existente na propriedade.
+ */
+const getQuantidadeProspectadaLotes = (lotes?: ApiLote[]): number => {
+  if (!Array.isArray(lotes)) return 0;
+
+  return lotes.reduce((total, lote) => {
+    const status = String(lote.status_lote || "")
+      .trim()
+      .toUpperCase();
+
+    const quantidade = Number(lote.quantidade_cabecas) || 0;
+
+    const prazoInformado =
+      lote.prazo_dias !== null &&
+      lote.prazo_dias !== undefined &&
+      String(lote.prazo_dias).trim() !== "" &&
+      Number.isFinite(Number(lote.prazo_dias));
+
+    if (
+      status !== "DISPONIVEL" ||
+      quantidade <= 0 ||
+      !prazoInformado
+    ) {
+      return total;
+    }
+
+    return total + quantidade;
+  }, 0);
+};
+
+
 export function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -541,6 +578,20 @@ export function Dashboard() {
     const usuario = usuariosData.find(u => Number(u.SEQUSUARIO) === Number(id));
     return usuario ? usuario.CODUSUARIO : `ID: ${id}`;
   };
+
+
+  /*
+   * Total geral de gado prospectado.
+   * Usa visitasBrutas, portanto não respeita os filtros de período
+   * nem o filtro de comprador.
+   */
+  const totalGadoProspectadoSemFiltro = useMemo(() => {
+    return visitasBrutas.reduce(
+      (total, visita) =>
+        total + getQuantidadeProspectadaLotes(visita.lotesDaApi),
+      0,
+    );
+  }, [visitasBrutas]);
 
   // Mesma regra do selo verde no painel de Visitas:
   // 1) o KM atual do ERP foi alterado em relação ao KM existente no dia da visita;
@@ -755,17 +806,25 @@ export function Dashboard() {
   const participacaoCompradores = useMemo(() => {
     const agrupados = new Map<string, BuyerParticipationAccumulator>();
 
-    visitasPeriodo.forEach((visita) => {
-      const compradorId = visita.ID_COMPRADOR !== null && visita.ID_COMPRADOR !== undefined
-        ? String(visita.ID_COMPRADOR)
-        : "SEM_COMPRADOR";
+    const obterOuCriarComprador = (
+      visita: ApiVisita & { lotesDaApi: ApiLote[] },
+    ) => {
+      const compradorId =
+        visita.ID_COMPRADOR !== null &&
+        visita.ID_COMPRADOR !== undefined
+          ? String(visita.ID_COMPRADOR)
+          : "SEM_COMPRADOR";
 
       const usuario = usuariosData.find(
-        (item) => Number(item.SEQUSUARIO) === Number(visita.ID_COMPRADOR)
+        (item) =>
+          Number(item.SEQUSUARIO) === Number(visita.ID_COMPRADOR),
       );
 
-      const compradorNome = usuario?.CODUSUARIO ||
-        (compradorId === "SEM_COMPRADOR" ? "NÃO DEFINIDO" : `ID: ${compradorId}`);
+      const compradorNome =
+        usuario?.CODUSUARIO ||
+        (compradorId === "SEM_COMPRADOR"
+          ? "NÃO DEFINIDO"
+          : `ID: ${compradorId}`);
 
       const atual = agrupados.get(compradorId) || {
         id: compradorId,
@@ -777,31 +836,64 @@ export function Dashboard() {
         cidades: new Set<string>(),
       };
 
-      atual.prospectado += Number(visita.EFETIVO_TOTAL_ANIMAIS) || 0;
+      return { compradorId, atual };
+    };
+
+    /*
+     * Métricas que continuam respeitando o filtro de período.
+     */
+    visitasPeriodo.forEach((visita) => {
+      const { compradorId, atual } = obterOuCriarComprador(visita);
+
       atual.comprado += Number(visita.QUANTIDADECOMPRADA) || 0;
       atual.visitas += 1;
 
-      if (String(visita.NATUREZA_VISITA || "").trim().toUpperCase() === "PROSPECÇÃO") {
+      if (
+        String(visita.NATUREZA_VISITA || "")
+          .trim()
+          .toUpperCase() === "PROSPECÇÃO"
+      ) {
         atual.novos += 1;
       }
 
-      const municipio = String(visita.MUNICIPIO || "").trim().toUpperCase();
+      const municipio = String(visita.MUNICIPIO || "")
+        .trim()
+        .toUpperCase();
+
       if (municipio) atual.cidades.add(municipio);
 
       agrupados.set(compradorId, atual);
     });
 
+    /*
+     * Gado prospectado usa todas as visitas e somente os lotes
+     * disponíveis com quantidade e prazo informados.
+     */
+    visitasBrutas.forEach((visita) => {
+      const quantidadeProspectada =
+        getQuantidadeProspectadaLotes(visita.lotesDaApi);
+
+      if (quantidadeProspectada <= 0) return;
+
+      const { compradorId, atual } = obterOuCriarComprador(visita);
+
+      atual.prospectado += quantidadeProspectada;
+      agrupados.set(compradorId, atual);
+    });
+
     const compradores = Array.from(agrupados.values());
+
     const converter = (
-      obterValor: (item: BuyerParticipationAccumulator) => number
-    ): BuyerParticipationItem[] => compradores
-      .map((item) => ({
-        id: item.id,
-        nome: item.nome,
-        valor: obterValor(item),
-      }))
-      .filter((item) => item.valor > 0)
-      .sort((a, b) => b.valor - a.valor);
+      obterValor: (item: BuyerParticipationAccumulator) => number,
+    ): BuyerParticipationItem[] =>
+      compradores
+        .map((item) => ({
+          id: item.id,
+          nome: item.nome,
+          valor: obterValor(item),
+        }))
+        .filter((item) => item.valor > 0)
+        .sort((a, b) => b.valor - a.valor);
 
     return {
       prospectado: converter((item) => item.prospectado),
@@ -810,7 +902,7 @@ export function Dashboard() {
       novos: converter((item) => item.novos),
       cidades: converter((item) => item.cidades.size),
     };
-  }, [visitasPeriodo, usuariosData]);
+  }, [visitasBrutas, visitasPeriodo, usuariosData]);
 
   const mapVisitaToReport = (v: ApiVisita & { lotesDaApi: ApiLote[] }): CheckinReport => ({
     id: String(v.ID_VISITA),
@@ -850,55 +942,109 @@ export function Dashboard() {
   };
 
   const { mapData, kpis } = useMemo(() => {
-    let totalHeads = 0;
     let totalComprada = 0;
     let novosPecuaristas = 0;
-    const cidadesSet = new Set<string>(); const citiesMap = new Map<string, CityData>();
 
-    visitas.forEach(v => {
-      const cabecas = Number(v.EFETIVO_TOTAL_ANIMAIS) || 0;
-      const quantidadeComprada = Number(v.QUANTIDADECOMPRADA) || 0;
+    const cidadesSet = new Set<string>();
+    const citiesMap = new Map<string, CityData>();
 
-      totalHeads += cabecas;
+    /*
+     * Mapa e demais indicadores continuam respeitando os filtros.
+     */
+    visitas.forEach((visita) => {
+      const efetivoTotalPropriedade =
+        Number(visita.EFETIVO_TOTAL_ANIMAIS) || 0;
+
+      const quantidadeComprada =
+        Number(visita.QUANTIDADECOMPRADA) || 0;
+
       totalComprada += quantidadeComprada;
-      
-      if (v.NATUREZA_VISITA?.toUpperCase() === "PROSPECÇÃO") novosPecuaristas += 1;
-      
-      if (v.MUNICIPIO) cidadesSet.add(v.MUNICIPIO.toUpperCase());
 
-      if (v.GPS_LATITUDE && v.GPS_LONGITUDE) {
-        const city = (v.MUNICIPIO || "Não Informado").toUpperCase();
-        if (!citiesMap.has(city)) citiesMap.set(city, { city, lat: v.GPS_LATITUDE, lng: v.GPS_LONGITUDE, ranchersCount: 0, ranchersList: [] });
-        
+      if (
+        visita.NATUREZA_VISITA?.toUpperCase() === "PROSPECÇÃO"
+      ) {
+        novosPecuaristas += 1;
+      }
+
+      if (visita.MUNICIPIO) {
+        cidadesSet.add(visita.MUNICIPIO.toUpperCase());
+      }
+
+      if (visita.GPS_LATITUDE && visita.GPS_LONGITUDE) {
+        const city = (
+          visita.MUNICIPIO || "Não Informado"
+        ).toUpperCase();
+
+        if (!citiesMap.has(city)) {
+          citiesMap.set(city, {
+            city,
+            lat: visita.GPS_LATITUDE,
+            lng: visita.GPS_LONGITUDE,
+            ranchersCount: 0,
+            ranchersList: [],
+          });
+        }
+
         const cityData = citiesMap.get(city)!;
         cityData.ranchersCount += 1;
-        cityData.ranchersList.push({ id: String(v.ID_VISITA), name: v.NOME_PRODUTOR || "Sem Nome", farm: v.NOME_FAZENDA || "Sem Fazenda", headCount: cabecas });
+
+        cityData.ranchersList.push({
+          id: String(visita.ID_VISITA),
+          name: visita.NOME_PRODUTOR || "Sem Nome",
+          farm: visita.NOME_FAZENDA || "Sem Fazenda",
+          headCount: efetivoTotalPropriedade,
+        });
       }
     });
 
     return {
       mapData: Array.from(citiesMap.values()),
       kpis: {
-        totalHeads,
+        totalProspectado: totalGadoProspectadoSemFiltro,
         totalComprada,
         totalVisitas: visitas.length,
         novosPecuaristas,
-        cidadesCobertas: cidadesSet.size
-      }
+        cidadesCobertas: cidadesSet.size,
+      },
     };
-  }, [visitas]);
+  }, [visitas, totalGadoProspectadoSemFiltro]);
 
+  /*
+   * Detalhamento das métricas que continuam filtradas.
+   */
   const metricDetailRows = useMemo<MetricDetailRow[]>(() => {
     const agrupados = new Map<string, MetricDetailRow>();
 
     visitas.forEach((visita) => {
-      const codigo = visita.COD_PRODUTOR !== null && visita.COD_PRODUTOR !== undefined
-        ? String(visita.COD_PRODUTOR)
-        : "SEM CADASTRO";
-      const nome = String(visita.NOME_PRODUTOR || "NÃO INFORMADO").trim().toUpperCase();
-      const fazenda = String(visita.NOME_FAZENDA || "NÃO INFORMADA").trim().toUpperCase();
-      const municipio = String(visita.MUNICIPIO || "NÃO INFORMADO").trim().toUpperCase();
-      const inscricao = String(visita.INSCRICAO || "").replace(/\D/g, "");
+      const codigo =
+        visita.COD_PRODUTOR !== null &&
+        visita.COD_PRODUTOR !== undefined
+          ? String(visita.COD_PRODUTOR)
+          : "SEM CADASTRO";
+
+      const nome = String(
+        visita.NOME_PRODUTOR || "NÃO INFORMADO",
+      )
+        .trim()
+        .toUpperCase();
+
+      const fazenda = String(
+        visita.NOME_FAZENDA || "NÃO INFORMADA",
+      )
+        .trim()
+        .toUpperCase();
+
+      const municipio = String(
+        visita.MUNICIPIO || "NÃO INFORMADO",
+      )
+        .trim()
+        .toUpperCase();
+
+      const inscricao = String(visita.INSCRICAO || "").replace(
+        /\D/g,
+        "",
+      );
+
       const chave = `${codigo}|${inscricao}|${fazenda}`;
 
       const atual = agrupados.get(chave) || {
@@ -914,10 +1060,13 @@ export function Dashboard() {
       };
 
       atual.visitas += 1;
-      atual.prospectado += Number(visita.EFETIVO_TOTAL_ANIMAIS) || 0;
       atual.comprado += Number(visita.QUANTIDADECOMPRADA) || 0;
 
-      if (String(visita.NATUREZA_VISITA || "").trim().toUpperCase() === "PROSPECÇÃO") {
+      if (
+        String(visita.NATUREZA_VISITA || "")
+          .trim()
+          .toUpperCase() === "PROSPECÇÃO"
+      ) {
         atual.prospeccoes += 1;
       }
 
@@ -927,11 +1076,73 @@ export function Dashboard() {
     return Array.from(agrupados.values());
   }, [visitas]);
 
+  /*
+   * Detalhamento geral do Gado Prospectado.
+   */
+  const metricDetailRowsProspectado =
+    useMemo<MetricDetailRow[]>(() => {
+      const agrupados = new Map<string, MetricDetailRow>();
+
+      visitasBrutas.forEach((visita) => {
+        const quantidadeProspectada =
+          getQuantidadeProspectadaLotes(visita.lotesDaApi);
+
+        if (quantidadeProspectada <= 0) return;
+
+        const codigo =
+          visita.COD_PRODUTOR !== null &&
+          visita.COD_PRODUTOR !== undefined
+            ? String(visita.COD_PRODUTOR)
+            : "SEM CADASTRO";
+
+        const nome = String(
+          visita.NOME_PRODUTOR || "NÃO INFORMADO",
+        )
+          .trim()
+          .toUpperCase();
+
+        const fazenda = String(
+          visita.NOME_FAZENDA || "NÃO INFORMADA",
+        )
+          .trim()
+          .toUpperCase();
+
+        const municipio = String(
+          visita.MUNICIPIO || "NÃO INFORMADO",
+        )
+          .trim()
+          .toUpperCase();
+
+        const inscricao = String(
+          visita.INSCRICAO || "",
+        ).replace(/\D/g, "");
+
+        const chave = `${codigo}|${inscricao}|${fazenda}`;
+
+        const atual = agrupados.get(chave) || {
+          key: chave,
+          codigo,
+          nome,
+          fazenda,
+          municipio,
+          visitas: 0,
+          prospectado: 0,
+          comprado: 0,
+          prospeccoes: 0,
+        };
+
+        atual.prospectado += quantidadeProspectada;
+        agrupados.set(chave, atual);
+      });
+
+      return Array.from(agrupados.values());
+    }, [visitasBrutas]);
+
   const metricConfig = useMemo(() => {
     const configs: Record<MetricKey, { title: string; description: string; infoLabel: string }> = {
       prospectado: {
         title: "Detalhamento — Gado Prospectado",
-        description: "Efetivo total informado nas visitas do período e comprador selecionados.",
+        description: "Quantidade dos lotes disponíveis com prazo informado, considerando o total geral sem filtros.",
         infoLabel: "Gado prospectado",
       },
       comprado: {
@@ -962,7 +1173,12 @@ export function Dashboard() {
   const metricRows = useMemo<MetricDisplayRow[]>(() => {
     if (!selectedMetric) return [];
 
-    return metricDetailRows
+    const rowsBase =
+      selectedMetric === "prospectado"
+        ? metricDetailRowsProspectado
+        : metricDetailRows;
+
+    return rowsBase
       .filter((row) => {
         if (selectedMetric === "prospectado") return row.prospectado > 0;
         if (selectedMetric === "comprado") return row.comprado > 0;
@@ -1023,7 +1239,11 @@ export function Dashboard() {
           sortValue: row.visitas,
         };
       });
-  }, [metricDetailRows, selectedMetric]);
+  }, [
+    metricDetailRows,
+    metricDetailRowsProspectado,
+    selectedMetric,
+  ]);
 
   const sortedMetricRows = useMemo(() => {
     const pesquisa = metricSearch.trim().toLocaleLowerCase("pt-BR");
@@ -1408,10 +1628,10 @@ export function Dashboard() {
 
                 <MetricCard
                   title="Gado Prospectado"
-                  value={kpis.totalHeads.toLocaleString("pt-BR")}
+                  value={kpis.totalProspectado.toLocaleString("pt-BR")}
                   icon={<TrendingUp className="w-7 h-7 text-blue-600" />}
                   colorClass="bg-blue-50 text-blue-600"
-                  sub="Efetivo total registrado em visitas"
+                  sub="Lotes disponíveis com prazo • total sem filtros"
                   onClick={() => openMetricDetails("prospectado")}
                 />
               </div>
@@ -1690,10 +1910,29 @@ export function Dashboard() {
                     {metricConfig.description}
                   </CardDescription>
                   <p className="mt-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    Período: {dateStart ? new Date(`${dateStart}T12:00:00`).toLocaleDateString("pt-BR") : "Início livre"}
-                    {" até "}
-                    {dateEnd ? new Date(`${dateEnd}T12:00:00`).toLocaleDateString("pt-BR") : "Fim livre"}
-                    {selectedBuyer ? ` • Comprador: ${getNomeComprador(Number(selectedBuyer))}` : " • Todos os compradores"}
+                    {selectedMetric === "prospectado" ? (
+                      "Total geral • sem filtro de período ou comprador"
+                    ) : (
+                      <>
+                        Período:{" "}
+                        {dateStart
+                          ? new Date(
+                              `${dateStart}T12:00:00`,
+                            ).toLocaleDateString("pt-BR")
+                          : "Início livre"}
+                        {" até "}
+                        {dateEnd
+                          ? new Date(
+                              `${dateEnd}T12:00:00`,
+                            ).toLocaleDateString("pt-BR")
+                          : "Fim livre"}
+                        {selectedBuyer
+                          ? ` • Comprador: ${getNomeComprador(
+                              Number(selectedBuyer),
+                            )}`
+                          : " • Todos os compradores"}
+                      </>
+                    )}
                   </p>
                 </div>
 

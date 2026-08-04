@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -6,46 +6,76 @@
 
 @layer base {
   :root {
-    --background: 210 33% 99%;
-    --foreground: 225 71% 10%;
+    /*
+     * Identidade Beauvallet
+     * Azul-marinho: #173D6E
+     * Azul real:    #1B58A0
+     * Vermelho:     #E30613
+     */
+    --brand-navy: 214 65% 26%;
+    --brand-blue: 213 71% 37%;
+    --brand-red: 357 95% 46%;
+    --brand-orange: 25 86% 51%;
+    --brand-petrol: 196 89% 33%;
+
+    /*
+     * Estrutura geral predominantemente branca.
+     */
+    --background: 214 41% 97%;
+    --foreground: 209 34% 30%;
 
     --card: 0 0% 100%;
-    --card-foreground: 225 71% 10%;
+    --card-foreground: 209 34% 30%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 225 71% 10%;
+    --popover-foreground: 209 34% 30%;
 
-    --primary: 228 100% 29%;
+    /*
+     * Ação principal: azul-marinho.
+     * O azul real fica disponível para foco, links e hover.
+     */
+    --primary: 214 65% 26%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 225 71% 10%;
+    --secondary: 212 45% 95%;
+    --secondary-foreground: 214 65% 26%;
 
-    --muted: 210 33% 97%;
-    --muted-foreground: 215 14% 45%;
+    --muted: 210 40% 98%;
+    --muted-foreground: 209 23% 42%;
 
-    --accent: 356 83% 55%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 212 45% 95%;
+    --accent-foreground: 214 65% 26%;
 
-    --destructive: 356 83% 55%;
+    --destructive: 357 95% 46%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 20% 90%;
-    --input: 214 20% 90%;
-    --ring: 228 100% 29%;
+    --border: 209 33% 83%;
+    --input: 209 33% 83%;
+    --ring: 213 71% 37%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --surface: 210 33% 98%;
+    --surface: 210 40% 98%;
+    --surface-strong: 211 43% 95%;
 
-    --sidebar-background: 228 100% 29%;
-    --sidebar-foreground: 0 0% 100%;
-    --sidebar-primary: 0 0% 100%;
-    --sidebar-primary-foreground: 228 100% 29%;
-    --sidebar-accent: 228 100% 24%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 228 80% 35%;
-    --sidebar-ring: 0 0% 100%;
+    /*
+     * Sidebar clara: o branco predomina e as cores aparecem
+     * nos estados ativos, ícones, bordas e ações.
+     */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 209 34% 30%;
+    --sidebar-primary: 214 65% 26%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 212 45% 95%;
+    --sidebar-accent-foreground: 214 65% 26%;
+    --sidebar-border: 209 33% 83%;
+    --sidebar-ring: 213 71% 37%;
+
+    /*
+     * Sombras padronizadas.
+     */
+    --shadow-soft: 0 4px 18px hsl(var(--brand-navy) / 0.06);
+    --shadow-raised: 0 10px 30px hsl(var(--brand-navy) / 0.10);
   }
 }
 
@@ -53,10 +83,47 @@
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground font-sans antialiased;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+
+  html {
+    min-height: 100%;
+    background: hsl(var(--background));
+    scroll-behavior: smooth;
   }
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family:
+      "Inter",
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+    @apply antialiased;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  ::selection {
+    background: hsl(var(--brand-blue) / 0.18);
+    color: hsl(var(--brand-navy));
+  }
+
+  :focus-visible {
+    outline-color: hsl(var(--ring));
+  }
+
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }

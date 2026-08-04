@@ -1,47 +1,55 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   BrowserRouter,
+  Navigate,
+  Outlet,
   Route,
   Routes,
-  Navigate,
-  Outlet
 } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   SidebarProvider,
-  SidebarTrigger
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import {
   AuthProvider,
-  useAuth
+  useAuth,
 } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+
 import Index from "./pages/Index";
 import FieldPage from "./pages/FieldPage";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import Pecuaristas from "./pages/Visitas";
-import Agendamento from "./pages/Agendamento"; 
-import AgendamentoGerenciador from "./pages/AgendamentoGerenciador"; 
-import { ProtectedRoute } from "@/components/ProtectedRoute";
+import Agendamento from "./pages/Agendamento";
+import AgendamentoGerenciador from "./pages/AgendamentoGerenciador";
+import Escala from "./pages/Escala";
+import EscalaGerenciador from "./pages/EscalaGerenciador";
 
 const queryClient = new QueryClient();
 
-// 👇 NOVO "GUARDA-COSTAS" PERSONALIZADO PARA O AGENDAMENTO 👇
-// Ele deixa passar se for ADMIN *OU* se o nível for 3 ou maior.
+// Permite acesso ao Agendamento para ADMIN
+// ou para usuários com nível 3 ou superior.
 function AgendamentoGuard() {
   const { user } = useAuth();
-  
-  const userModules = (user as any)?.modulos || [];
-  const userNivel = (user as any)?.nivel || 0;
-  
+
+  const userModules = ((user as { modulos?: string[] } | null)?.modulos || []).map(
+    (module) => String(module).trim().toUpperCase(),
+  );
+
+  const userNivel = Number((user as { nivel?: number } | null)?.nivel || 0);
+  const userRole = String((user as { role?: string } | null)?.role || "")
+    .trim()
+    .toUpperCase();
+
   const hasAccess =
+    userRole === "ADMIN" ||
     userModules.includes("ADMIN") ||
     userNivel >= 3;
 
-  // Se tiver acesso, renderiza as rotas filhas.
-  // Se não, chuta pro dashboard.
   return hasAccess
     ? <Outlet />
     : <Navigate to="/dashboard" replace />;
@@ -49,7 +57,7 @@ function AgendamentoGuard() {
 
 function ProtectedLayout() {
   const { user } = useAuth();
-  
+
   if (!user) {
     return <Navigate to="/login" replace />;
   }
@@ -59,24 +67,18 @@ function ProtectedLayout() {
       <div className="min-h-screen flex w-full">
         <AppSidebar />
 
-        <div className="flex-1 flex flex-col">
-          <header className="h-12 flex items-center border-b border-border bg-background px-2">
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="h-12 flex items-center border-b border-border bg-background px-2 shrink-0">
             <SidebarTrigger className="ml-1" />
           </header>
 
-          <main className="flex-1">
+          <main className="flex-1 min-w-0 overflow-auto">
             <Routes>
               <Route
                 path="/"
-                element={
-                  <Navigate
-                    to="/dashboard"
-                    replace
-                  />
-                }
+                element={<Navigate to="/dashboard" replace />}
               />
-              
-              {/* 🟢 ROTAS GERAIS: Tanto ADMIN quanto COMPRADOR podem acessar */}
+
               <Route
                 path="/dashboard"
                 element={<Index />}
@@ -91,8 +93,7 @@ function ProtectedLayout() {
                 path="/visitas"
                 element={<Pecuaristas />}
               />
-              
-              {/* 👇 ROTAS DO AGENDAMENTO (Usando o nosso novo guarda-costas) 👇 */}
+
               <Route element={<AgendamentoGuard />}>
                 <Route
                   path="/agendamento"
@@ -104,7 +105,34 @@ function ProtectedLayout() {
                   element={<AgendamentoGerenciador />}
                 />
               </Route>
-              
+
+              {/* Uma única opção no menu: /escala.
+                  As rotas de gerenciar continuam internas,
+                  abertas pelos botões da própria página Escala. */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    allowedRoles={["ADMIN"]}
+                    allowedModules={["ESCALA", "ADMIN"]}
+                  />
+                }
+              >
+                <Route
+                  path="/escala"
+                  element={<Escala />}
+                />
+
+                <Route
+                  path="/escala/gerenciar"
+                  element={<EscalaGerenciador />}
+                />
+
+                <Route
+                  path="/escala/gerenciar/:idEscala"
+                  element={<EscalaGerenciador />}
+                />
+              </Route>
+
               <Route
                 path="*"
                 element={<NotFound />}
@@ -120,7 +148,6 @@ function ProtectedLayout() {
 function AppContent() {
   const { user, isAuthLoading } = useAuth();
 
-  // Aguarda a recuperação do usuário salvo antes de avaliar as rotas
   if (isAuthLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
