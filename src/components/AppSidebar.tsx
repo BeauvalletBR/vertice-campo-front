@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  CalendarDays,
   CalendarPlus,
   ChevronDown,
   Folder,
@@ -88,13 +89,16 @@ export function AppSidebar() {
   const isAdmin = userRole === "ADMIN" || userModules.includes("ADMIN");
 
   const isAgendamentoActive = location.pathname.startsWith("/agendamento");
+  const isEscalaActive = location.pathname.startsWith("/escala");
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     campo: true,
+    administrativo: isEscalaActive,
   });
 
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
     agendamentos: isAgendamentoActive,
+    escala: isEscalaActive,
   });
 
   const possuiAlgumModulo = (requiredModules?: string[]) => {
@@ -116,7 +120,18 @@ export function AppSidebar() {
         agendamentos: true,
       }));
     }
-  }, [collapsed, isAgendamentoActive]);
+
+    if (isEscalaActive) {
+      setOpenGroups((previous) => ({
+        ...previous,
+        administrativo: true,
+      }));
+      setOpenSubmenus((previous) => ({
+        ...previous,
+        escala: true,
+      }));
+    }
+  }, [collapsed, isAgendamentoActive, isEscalaActive]);
 
   const toggleGroup = (groupId: string) => {
     if (collapsed) return;
@@ -182,10 +197,29 @@ export function AppSidebar() {
         },
       ],
     },
+    {
+      id: "administrativo",
+      title: "Operações",
+      icon: ShieldCheck,
+      items: [
+        {
+          id: "escala",
+          title: "Escala",
+          url: "/escala",
+          icon: CalendarDays,
+          reqModules: ["ESCALA", "ADMIN"],
+        },
+      ],
+    },
   ];
 
-  const isSubItemActive = (url: string) =>
-    location.pathname === url;
+  const isSubItemActive = (url: string) => {
+    if (url === "/escala") {
+      return location.pathname === "/escala";
+    }
+
+    return location.pathname === url;
+  };
 
   return (
     <Sidebar
@@ -465,27 +499,6 @@ export function AppSidebar() {
             </SidebarGroup>
           );
         })}
-        {possuiAlgumModulo(["ESCALA", "ADMIN"]) && (
-          <div className="px-2 pb-3">
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <div
-                  className="flex w-full cursor-default select-none items-center rounded-lg px-3 py-2.5 text-sm font-bold text-[#CFDCE9]"
-                  title="Operações"
-                  aria-label="Operações"
-                >
-                  <ShieldCheck className="h-[18px] w-[18px] shrink-0 text-[#AFC8DF]" />
-
-                  {!collapsed && (
-                    <span className="ml-3 truncate">
-                      Operações
-                    </span>
-                  )}
-                </div>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </div>
-        )}
       </SidebarContent>
 
       {/* Rodapé azul, simples como a referência */}
