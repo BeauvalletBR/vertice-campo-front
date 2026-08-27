@@ -99,6 +99,12 @@ export interface EscalaPedidoErp {
   CHINA?: string | null;
   AGROTOOLS_ERP?: string | null;
 
+  VLRUNITARIO_VACA?: number | null;
+  VLRUNITARIO_BOI?: number | null;
+  VLRUNITARIO_PREMIO?: number | null;
+  PRECO_BOI?: number | null;
+  PRECO_VACA?: number | null;
+  VALOR_PREMIO?: number | null;
   VLRUNITARIO_MIN?: number | null;
   VLRUNITARIO_MAX?: number | null;
   VLRUNITARIO_MEDIO_POND?: number | null;
@@ -156,13 +162,16 @@ export interface EscalaLinha {
 
   VLRUNITARIO_VACA?: number | null;
   VLRUNITARIO_BOI?: number | null;
+  PRECO_BOI?: number | null;
+  PRECO_VACA?: number | null;
+  VALOR_PREMIO?: number | null;
   VLRUNITARIO_MIN?: number | null;
   VLRUNITARIO_MAX?: number | null;
   VLRUNITARIO_MEDIO_POND?: number | null;
   VLRUNITARIO_PREMIO?: number | null;
 
   PRAZO_DIAS?: number | null;
-  CURRAL?: string | null;
+  CURRAL?: number | null;
 
   QTD_CHINA_TOTAL?: number | null;
   QTD_CHINA?: number | null;
@@ -225,6 +234,8 @@ export interface CriarVinculoPedidoPayload {
   seqpedido?: number;
   observacao?: string | null;
   ordem_exibicao?: number;
+  qtd_china_vaca?: number | null;
+  qtd_china_boi?: number | null;
 }
 
 export interface CriarVinculosPedidosDiaPayload {
@@ -243,7 +254,7 @@ export interface EditarVinculoPedidoPayload {
   observacao?: string | null;
   vlrunitario_premio?: number | null;
   prazo_dias?: number | null;
-  curral?: string | null;
+  curral?: number | null;
 
   arrobas_vaca?: number | null;
   arrobas_boi?: number | null;
@@ -284,7 +295,7 @@ export interface RegistroManualPayload {
 
   vlrunitario_premio?: number | null;
   prazo_dias?: number | null;
-  curral?: string | null;
+  curral?: number | null;
 
   qtd_china_vaca: number;
   qtd_china_boi: number;

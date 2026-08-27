@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CalendarDays,
   CalendarPlus,
+  CalendarRange,
   ChevronDown,
   Folder,
   LayoutDashboard,
@@ -18,6 +19,11 @@ import type { LucideIcon } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
+import type { AccessRule } from "@/lib/access";
+import {
+  APP_ROUTE_ACCESS,
+  hasAccessToRule,
+} from "@/lib/access";
 import {
   Sidebar,
   SidebarContent,
@@ -35,7 +41,7 @@ interface MenuSubItem {
   title: string;
   url: string;
   icon: LucideIcon;
-  reqModules?: string[];
+  access?: AccessRule;
 }
 
 interface MenuItem {
@@ -43,8 +49,7 @@ interface MenuItem {
   title: string;
   icon: LucideIcon;
   url?: string;
-  reqModules?: string[];
-  minNivel?: number;
+  access?: AccessRule;
   subItems?: MenuSubItem[];
 }
 
@@ -65,10 +70,6 @@ const formatarNomeCurto = (nomeCompleto: string) => {
   return `${partes[0]} ${partes[partes.length - 1]}`;
 };
 
-const normalizarModulo = (modulo: unknown) =>
-  String(modulo || "")
-    .trim()
-    .toUpperCase();
 
 export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
@@ -76,39 +77,17 @@ export function AppSidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
 
-  const userModules = useMemo(
-    () =>
-      ((user as { modulos?: string[] } | null)?.modulos || []).map(
-        normalizarModulo,
-      ),
-    [user],
-  );
-
-  const userNivel = Number((user as { nivel?: number } | null)?.nivel || 0);
-  const userRole = normalizarModulo((user as { role?: string } | null)?.role);
-  const isAdmin = userRole === "ADMIN" || userModules.includes("ADMIN");
-
   const isAgendamentoActive = location.pathname.startsWith("/agendamento");
   const isEscalaActive = location.pathname.startsWith("/escala");
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     campo: true,
-    administrativo: isEscalaActive,
+    escala: isEscalaActive,
   });
 
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
     agendamentos: isAgendamentoActive,
-    escala: isEscalaActive,
   });
-
-  const possuiAlgumModulo = (requiredModules?: string[]) => {
-    if (!requiredModules || requiredModules.length === 0) return true;
-    if (isAdmin) return true;
-
-    return requiredModules
-      .map(normalizarModulo)
-      .some((module) => userModules.includes(module));
-  };
 
   useEffect(() => {
     if (collapsed) return;
@@ -123,10 +102,6 @@ export function AppSidebar() {
 
     if (isEscalaActive) {
       setOpenGroups((previous) => ({
-        ...previous,
-        administrativo: true,
-      }));
-      setOpenSubmenus((previous) => ({
         ...previous,
         escala: true,
       }));
@@ -160,24 +135,25 @@ export function AppSidebar() {
           title: "Dashboard",
           url: "/dashboard",
           icon: LayoutDashboard,
-          reqModules: ["GERENCIAL"],
+          access: APP_ROUTE_ACCESS.dashboard,
         },
         {
           id: "agendamentos",
           title: "Agendamentos",
           icon: CalendarPlus,
-          reqModules: ["ADMIN"],
-          minNivel: 3,
+          access: APP_ROUTE_ACCESS.agendamento,
           subItems: [
             {
               title: "Agendar",
               url: "/agendamento",
               icon: PlusCircle,
+              access: APP_ROUTE_ACCESS.agendamento,
             },
             {
               title: "Gerenciar",
               url: "/agendamento/gerenciar",
               icon: ListTodo,
+              access: APP_ROUTE_ACCESS.agendamento,
             },
           ],
         },
@@ -186,14 +162,14 @@ export function AppSidebar() {
           title: "Campo",
           url: "/campo",
           icon: MapPin,
-          reqModules: ["OPERACIONAL"],
+          access: APP_ROUTE_ACCESS.campo,
         },
         {
           id: "visitas",
           title: "Visitas",
           url: "/visitas",
           icon: Users,
-          reqModules: ["RELATORIOS"],
+          access: APP_ROUTE_ACCESS.visitas,
         },
       ],
     },
@@ -205,13 +181,69 @@ export function AppSidebar() {
         {
           id: "escala",
           title: "Escala",
-          url: "/escala",
           icon: CalendarDays,
-          reqModules: ["ESCALA", "ADMIN"],
+          access: APP_ROUTE_ACCESS.escala,
+          subItems: [
+            {
+              title: "Dashboard",
+              url: "/escala/dashboard",
+              icon: LayoutDashboard,
+              access: APP_ROUTE_ACCESS.escala,
+            },
+            {
+              title: "Planejamento",
+              url: "/escala",
+              icon: CalendarDays,
+              access: APP_ROUTE_ACCESS.escala,
+            },
+            {
+              title: "Análise mensal",
+              url: "/escala/analise-mensal",
+              icon: CalendarRange,
+              access: APP_ROUTE_ACCESS.escala,
+            },
+          ],
         },
       ],
     },
   ];
+
+  const normalizedMenuGroups = menuGroups.flatMap((group) => {
+    if (group.id !== "administrativo") {
+      return [group];
+    }
+
+    return [
+      {
+        id: "escala",
+        title: "Escala",
+        icon: ShieldCheck,
+        items: [
+          {
+            id: "escala-dashboard",
+            title: "Dashboard",
+            url: "/escala/dashboard",
+            icon: LayoutDashboard,
+            access: APP_ROUTE_ACCESS.escala,
+          },
+          {
+            id: "escala-planejamento",
+            title: "Planejamento",
+            url: "/escala",
+            icon: CalendarDays,
+            access: APP_ROUTE_ACCESS.escala,
+          },
+          {
+            id: "escala-analise-mensal",
+            title: "Análise mensal",
+            url: "/escala/analise-mensal",
+            icon: CalendarRange,
+            access: APP_ROUTE_ACCESS.escala,
+          },
+        ],
+      },
+    ];
+  });
 
   const isSubItemActive = (url: string) => {
     if (url === "/escala") {
@@ -300,13 +332,13 @@ export function AppSidebar() {
 
       {/* Área dos módulos com predominância do azul-marinho */}
       <SidebarContent className="bg-[#173D6E] px-0 py-3">
-        {menuGroups.map((group) => {
+        {normalizedMenuGroups.map((group) => {
           const isGroupOpen = openGroups[group.id];
 
           const filteredItems = group.items
             .map((item) => {
               const filteredSubItems = item.subItems?.filter((subItem) =>
-                possuiAlgumModulo(subItem.reqModules),
+                hasAccessToRule(user, subItem.access),
               );
 
               return {
@@ -315,19 +347,16 @@ export function AppSidebar() {
               };
             })
             .filter((item) => {
-              const hasLevelAccess =
-                item.minNivel !== undefined && userNivel >= item.minNivel;
-
-              const hasModuleAccess = possuiAlgumModulo(item.reqModules);
+              const hasItemAccess = hasAccessToRule(user, item.access);
 
               if (item.subItems) {
                 return (
                   item.subItems.length > 0 &&
-                  (hasLevelAccess || hasModuleAccess)
+                  hasItemAccess
                 );
               }
 
-              return hasLevelAccess || hasModuleAccess;
+              return hasItemAccess;
             });
 
           return (
@@ -384,9 +413,12 @@ export function AppSidebar() {
                           const isSubmenuOpen =
                             openSubmenus[item.id] || false;
 
-                          const isParentActive = item.subItems.some(
-                            (subItem) => isSubItemActive(subItem.url),
-                          );
+                          const isParentActive =
+                            item.id === "escala"
+                              ? location.pathname.startsWith("/escala")
+                              : item.subItems.some((subItem) =>
+                                  isSubItemActive(subItem.url),
+                                );
 
                           return (
                             <div
@@ -525,3 +557,4 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+

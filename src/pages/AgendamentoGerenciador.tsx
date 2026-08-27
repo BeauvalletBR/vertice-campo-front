@@ -28,6 +28,11 @@ import {
   type ApiUsuario,
   type ApiRancher
 } from "@/services/api";
+import {
+  buildBuyerDirectory,
+  getBuyerDisplayName,
+  getBuyerNameById,
+} from "@/lib/buyer-display";
 
 export default function AgendamentoGerenciador() {
   const { user } = useAuth();
@@ -104,10 +109,14 @@ export default function AgendamentoGerenciador() {
       .slice(0, 5);
   }, [buscaProdutor, pecuaristasData, produtorSelecionado]);
 
+  const buyerDirectory = useMemo(
+    () => buildBuyerDirectory(usuariosData),
+    [usuariosData],
+  );
+
   const getNomeComprador = (id?: number) => {
     if (!id) return "NÃO ATRIBUÍDO";
-    const usuario = usuariosData.find(u => Number(u.SEQUSUARIO) === Number(id));
-    return usuario ? usuario.CODUSUARIO : `ID: ${id}`;
+    return getBuyerNameById(buyerDirectory, id) || "COMPRADOR NÃO ENCONTRADO";
   };
 
   const handleAbrirEdicao = (ag: ApiAgendamento) => {
@@ -244,7 +253,7 @@ export default function AgendamentoGerenciador() {
                 >
                   <option value="">TODOS</option>
                   {usuariosData.map(u => (
-                    <option key={`filtro-${u.SEQUSUARIO}`} value={u.SEQUSUARIO}>{u.CODUSUARIO}</option>
+                    <option key={`filtro-${u.SEQUSUARIO}`} value={u.SEQUSUARIO}>{getBuyerDisplayName(u)}</option>
                   ))}
                 </select>
               </div>
@@ -432,7 +441,7 @@ export default function AgendamentoGerenciador() {
                     >
                       <option value="" disabled>Selecione...</option>
                       {usuariosData.map(u => (
-                        <option key={`edit-${u.SEQUSUARIO}`} value={u.SEQUSUARIO}>{u.CODUSUARIO}</option>
+                        <option key={`edit-${u.SEQUSUARIO}`} value={u.SEQUSUARIO}>{getBuyerDisplayName(u)}</option>
                       ))}
                     </select>
                   </div>

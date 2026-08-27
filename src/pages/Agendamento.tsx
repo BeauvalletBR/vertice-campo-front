@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import {
   Table,
@@ -55,6 +55,10 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { api, fetchPecuaristasAgendamento, saveAgendamento, type ApiUsuario, type ApiHistoricoCompra } from "@/services/api";
 import { calculateScoreVolume, calculateScoreProspeccao, calculateScoreLogistica } from "@/services/pecuaristas";
+import {
+  findBuyerUserBySearch,
+  getBuyerDisplayName,
+} from "@/lib/buyer-display";
 
 // 👇 ATUALIZADO: Inclui nome_representante e as novas métricas de histórico 👇
 export interface ApiRancher {
@@ -152,6 +156,22 @@ export default function Agendamento() {
   
   const [scheduleDate, setScheduleDate] = useState("");
   const [searchUser, setSearchUser] = useState("");
+  const [buyerSearchFocused, setBuyerSearchFocused] = useState(false);
+  const selectedBuyerUser = useMemo(
+    () => findBuyerUserBySearch(usuariosData, searchUser),
+    [searchUser, usuariosData],
+  );
+  const buyerSuggestions = useMemo(() => {
+    const search = searchUser.trim().toLocaleUpperCase("pt-BR");
+    return usuariosData
+      .filter((usuario) => {
+        if (!search) return true;
+        const name = getBuyerDisplayName(usuario).toLocaleUpperCase("pt-BR");
+        const code = String(usuario.CODUSUARIO || "").toLocaleUpperCase("pt-BR");
+        return name.includes(search) || code.includes(search);
+      })
+      .slice(0, 30);
+  }, [searchUser, usuariosData]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -163,8 +183,8 @@ export default function Agendamento() {
         api.fetchHistoricoCompras() // <-- BATE NA API DO HISTÓRICO
       ]);
       
-      const uniqueDataMap = new Map();
-      dataPecuaristas.forEach((item: any) => {
+      const uniqueDataMap = new Map<string, ApiRancher>();
+      dataPecuaristas.forEach((item) => {
         const uid = getUniqueId(item);
         if (!uniqueDataMap.has(uid)) {
           uniqueDataMap.set(uid, item);
@@ -320,13 +340,13 @@ export default function Agendamento() {
   };
 
   // 👇 LÓGICA DE EXIBIÇÃO DE QUANTIDADE (Usa os campos calculados agora) 👇
-  const getDisplayQuantidade = (r: ApiRancher) => {
+  const getDisplayQuantidade = useCallback((r: ApiRancher) => {
     const china = r.totalChinaCalculado || 0;
     const naoChina = r.totalNaoChinaCalculado || 0;
     if (filterHab === "China") return china;
     if (filterHab === "Não China") return naoChina;
     return china + naoChina; 
-  };
+  }, [filterHab]);
 
   const activeRegionData = useMemo(() => {
     if (!expandedRegion) return null;
@@ -365,7 +385,8 @@ export default function Agendamento() {
       });
     } else if (sortColumn && sortDirection) {
       visibleRanchers.sort((a, b) => {
-        let valA: any, valB: any;
+        let valA: string | number = "";
+        let valB: string | number = "";
         
         if (sortColumn === 'cidade') { valA = a.MUNICIPIO; valB = b.MUNICIPIO; }
         else if (sortColumn === 'distancia') { valA = Number(a.DISTANCIA_CADASTRADA) || 0; valB = Number(b.DISTANCIA_CADASTRADA) || 0; }
@@ -394,7 +415,7 @@ export default function Agendamento() {
       currentTotalComprados,
       displayedRanchers
     };
-  }, [expandedRegion, regionsData, filterText, filterCar, filterHab, filterJaVendeu, filterRepStatus, filterNomeRep, aiMode, sortColumn, sortDirection, visibleCount, mesesFiltro]);
+  }, [expandedRegion, regionsData, filterText, filterCar, filterHab, filterJaVendeu, filterRepStatus, filterNomeRep, aiMode, sortColumn, sortDirection, visibleCount, getDisplayQuantidade]);
 
   const handleSort = (column: string) => {
     setAiMode(null); 
@@ -435,7 +456,7 @@ export default function Agendamento() {
       return;
     }
 
-    const userObj = usuariosData.find(u => u.CODUSUARIO.toUpperCase() === searchUser.toUpperCase());
+    const userObj = selectedBuyerUser;
     
     if (!userObj) {
       toast.error("Usuário não encontrado! Escolha uma opção válida da lista.");
@@ -511,18 +532,18 @@ export default function Agendamento() {
 
   if (isSchedulingMode) {
     return (
-      <div className="p-6 lg:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in">
-        <div className="flex items-center gap-4 border-b pb-4">
+      <div className="min-h-[100dvh] p-3 pb-8 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-4 sm:space-y-6 animate-fade-in">
+        <div className="flex items-start gap-3 border-b pb-4 sm:items-center sm:gap-4">
           <Button variant="outline" size="icon" onClick={() => setIsSchedulingMode(false)} disabled={isSaving}>
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-primary">Finalizar Agendamento</h1>
+            <h1 className="text-xl font-bold text-primary sm:text-2xl">Finalizar Agendamento</h1>
             <p className="text-muted-foreground text-sm">Atribua a data e o comprador para as visitas.</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
           <Card className="md:col-span-1 border-primary/20 shadow-md h-fit">
             <CardHeader className="bg-slate-50 border-b">
               <CardTitle className="text-base flex items-center gap-2">
@@ -539,23 +560,62 @@ export default function Agendamento() {
               </div>
               <div className="space-y-2">
                 <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Comprador Responsável</Label>
-                <div className="relative">
+                <div className="relative z-30">
                   <UserSquare2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <Input 
-                    list="usuarios-list"
                     className="pl-9 h-11 bg-white uppercase"
                     placeholder="Digite para buscar usuário..."
                     value={searchUser}
                     onChange={(e) => setSearchUser(e.target.value.toUpperCase())}
+                    onFocus={() => setBuyerSearchFocused(true)}
+                    onBlur={() => {
+                      window.setTimeout(() => setBuyerSearchFocused(false), 150);
+                    }}
                     disabled={isSaving}
                     autoComplete="off"
                   />
-                  <datalist id="usuarios-list">
-                    {usuariosData.map(u => (
-                      <option key={u.SEQUSUARIO} value={u.CODUSUARIO} />
-                    ))}
-                  </datalist>
+                  {buyerSearchFocused && (
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl">
+                      {buyerSuggestions.length === 0 ? (
+                        <p className="px-3 py-4 text-center text-xs font-semibold text-slate-500">
+                          Nenhum comprador encontrado.
+                        </p>
+                      ) : (
+                        buyerSuggestions.map((usuario) => {
+                          const displayName = getBuyerDisplayName(usuario);
+                          return (
+                            <button
+                              key={usuario.SEQUSUARIO}
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-bold text-slate-700 hover:bg-blue-50 hover:text-primary focus:bg-blue-50 focus:outline-none"
+                              onPointerDown={(event) => {
+                                event.preventDefault();
+                                setSearchUser(displayName.toUpperCase());
+                                setBuyerSearchFocused(false);
+                              }}
+                            >
+                              <UserSquare2 className="h-4 w-4 shrink-0 text-primary" />
+                              <span className="truncate">{displayName}</span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
                 </div>
+                {searchUser && (
+                  <p
+                    className={`text-[11px] font-semibold ${
+                      selectedBuyerUser
+                        ? "text-emerald-700"
+                        : "text-amber-700"
+                    }`}
+                  >
+                    {selectedBuyerUser
+                      ? `Comprador selecionado: ${getBuyerDisplayName(selectedBuyerUser)}`
+                      : "Digite o nome do comprador cadastrado na base de usuários."}
+                  </p>
+                )}
               </div>
             </CardContent>
             <CardFooter className="bg-slate-50 border-t p-4">
@@ -569,8 +629,8 @@ export default function Agendamento() {
             <CardHeader className="border-b bg-white">
               <CardTitle className="text-base text-slate-700">Pecuaristas Selecionados ({selectedRanchers.length})</CardTitle>
             </CardHeader>
-            <CardContent className="p-0 overflow-hidden">
-              <Table>
+            <CardContent className="overflow-x-auto p-0 overscroll-x-contain">
+              <Table className="min-w-[560px]">
                 <TableHeader className="bg-slate-50">
                   <TableRow>
                     <TableHead className="font-semibold text-xs">Produtor / Fazenda</TableHead>
@@ -613,7 +673,7 @@ export default function Agendamento() {
     : regionsData;
 
   return (
-    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-fade-in relative pb-24">
+    <div className="relative mx-auto max-w-7xl animate-fade-in space-y-5 p-3 pb-28 sm:p-6 sm:pb-24 lg:p-8">
       
       <header className="border-b border-border pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
@@ -731,10 +791,10 @@ export default function Agendamento() {
       </div>
 
       {expandedRegion && activeRegionData && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 sm:p-6 animate-in fade-in duration-200">
-          <div className="bg-slate-50 w-full max-w-7xl max-h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 relative border border-slate-700/20">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-0 backdrop-blur-sm animate-in fade-in duration-200 sm:p-6">
+          <div className="relative flex h-[100dvh] max-h-[100dvh] w-full max-w-7xl flex-col overflow-hidden rounded-none border border-slate-700/20 bg-slate-50 shadow-2xl animate-in zoom-in-95 duration-200 sm:h-auto sm:max-h-[95vh] sm:rounded-2xl">
             
-            <div className="bg-white border-b border-slate-200 p-5 md:p-6 shrink-0 flex flex-col gap-4 relative z-20 shadow-sm">
+            <div className="relative z-20 flex shrink-0 flex-col gap-3 border-b border-slate-200 bg-white p-3 shadow-sm sm:p-5 md:p-6">
               <div className="flex justify-between items-start gap-4">
                 <div className="flex-1 pr-8">
                   <h2 className="text-xl md:text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -757,7 +817,7 @@ export default function Agendamento() {
               </div>
 
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-2">
-                <div className="flex items-center gap-3">
+                <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 sm:w-auto sm:gap-3">
                   <span className="inline-flex items-center text-[10px] md:text-xs font-bold bg-slate-100 text-slate-600 px-2.5 py-1.5 rounded-md border border-slate-200">
                     <Building2 className="w-3.5 h-3.5 mr-1" /> {activeRegionData.currentCitiesCount} Cidades
                   </span>
@@ -769,7 +829,7 @@ export default function Agendamento() {
                   </span>
                 </div>
 
-                <div className="relative">
+                <div className="relative w-full sm:w-auto">
                   {showAiMenu && (
                     <div 
                       className="absolute top-full right-0 mt-2 w-56 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 flex flex-col gap-2 z-[150] animate-in fade-in slide-in-from-top-2"
@@ -814,7 +874,7 @@ export default function Agendamento() {
 
                   <Button 
                     size="sm"
-                    className={`h-9 text-xs font-bold px-4 ${aiMode ? "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white border-none shadow-md shadow-amber-500/30" : "bg-gradient-to-r from-orange-50 to-amber-50 border border-amber-500 text-amber-600 hover:from-amber-100 hover:to-orange-100"}`}
+                    className={`h-9 w-full px-4 text-xs font-bold sm:w-auto ${aiMode ? "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white border-none shadow-md shadow-amber-500/30" : "bg-gradient-to-r from-orange-50 to-amber-50 border border-amber-500 text-amber-600 hover:from-amber-100 hover:to-orange-100"}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setShowAiMenu(!showAiMenu);
@@ -829,8 +889,8 @@ export default function Agendamento() {
 
             <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/30 relative">
               
-              <div className="bg-white p-4 border-b border-slate-200 flex flex-col md:flex-row flex-wrap gap-3 items-end shrink-0 shadow-sm z-10">
-                <div className="space-y-1.5 flex-1 w-full min-w-[200px]">
+              <div className="z-10 flex shrink-0 flex-row flex-nowrap items-end gap-3 overflow-x-auto border-b border-slate-200 bg-white p-3 shadow-sm md:flex-wrap md:p-4">
+                <div className="w-[240px] min-w-[240px] shrink-0 space-y-1.5 md:flex-1">
                   <Label className="text-[10px] font-bold text-slate-500 uppercase">Buscar Produtor, Fazenda ou Cidade</Label>
                   <Input 
                     placeholder="Digite para buscar nesta região..." 
@@ -839,7 +899,7 @@ export default function Agendamento() {
                     onChange={(e) => setFilterText(e.target.value)}
                   />
                 </div>
-                <div className="space-y-1.5 w-full md:w-28">
+                <div className="w-28 shrink-0 space-y-1.5">
                   <Label className="text-[10px] font-bold text-slate-500 uppercase">CAR</Label>
                   <select 
                     className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -852,7 +912,7 @@ export default function Agendamento() {
                 </div>
                 
                 {filterJaVendeu !== "N" && (
-                  <div className="space-y-1.5 w-full md:w-32">
+                  <div className="w-32 shrink-0 space-y-1.5">
                     <Label className="text-[10px] font-bold text-slate-500 uppercase">Habilitação</Label>
                     <select 
                       className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -865,7 +925,7 @@ export default function Agendamento() {
                   </div>
                 )}
 
-                <div className="space-y-1.5 w-full md:w-28">
+                <div className="w-28 shrink-0 space-y-1.5">
                   <Label className="text-[10px] font-bold text-slate-500 uppercase">Já Compramos?</Label>
                   <select 
                     className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -885,7 +945,7 @@ export default function Agendamento() {
                 {/* 👇 FILTROS DO REPRESENTANTE 👇 */}
                 {filterJaVendeu !== "N" && (
                   <>
-                    <div className="space-y-1.5 w-full md:w-32">
+                    <div className="w-32 shrink-0 space-y-1.5">
                       <Label className="text-[10px] font-bold text-slate-500 uppercase">Representação?</Label>
                       <select 
                         className="flex h-9 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary"
@@ -901,7 +961,7 @@ export default function Agendamento() {
                       </select>
                     </div>
                     {filterRepStatus === "S" && (
-                      <div className="space-y-1.5 w-full md:w-40 animate-in fade-in">
+                      <div className="w-40 shrink-0 animate-in space-y-1.5 fade-in">
                         <Label className="text-[10px] font-bold text-slate-500 uppercase">Nome Representante</Label>
                         <Input 
                           placeholder="Buscar rep..." 
@@ -936,7 +996,7 @@ export default function Agendamento() {
                 </Button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 relative">
+              <div className="relative flex-1 overflow-y-auto p-2 pb-28 sm:p-4 md:p-6 md:pb-24">
                 {activeRegionData.visibleRanchers.length === 0 ? (
                   <div className="py-16 text-center text-muted-foreground flex flex-col items-center justify-center">
                     <div className="bg-white p-4 rounded-full shadow-sm border border-slate-100 mb-4">
@@ -947,8 +1007,8 @@ export default function Agendamento() {
                   </div>
                 ) : (
                   <Card className="shadow-sm border-slate-200 overflow-hidden bg-white">
-                    <div className="overflow-x-auto">
-                      <Table>
+                    <div className="overflow-x-auto overscroll-x-contain">
+                      <Table className="min-w-[920px]">
                         <TableHeader className="bg-slate-50 border-b border-slate-200">
                           <TableRow>
                             <TableHead className="w-[50px] text-center">
@@ -1103,15 +1163,15 @@ export default function Agendamento() {
       )}
 
       {selectedRanchers.length > 0 && (
-        <div className="fixed bottom-6 left-0 right-0 z-[200] flex justify-center animate-in slide-in-from-bottom-5">
-          <div className="bg-slate-900 text-white px-6 py-4 rounded-full shadow-2xl flex items-center gap-6 border border-slate-700">
+        <div className="fixed bottom-0 left-0 right-0 z-[200] flex justify-center px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] animate-in slide-in-from-bottom-5 sm:bottom-6 sm:px-4 sm:pb-0">
+          <div className="flex w-full max-w-lg flex-col items-stretch gap-2 rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3 text-white shadow-2xl sm:w-auto sm:max-w-none sm:flex-row sm:items-center sm:gap-6 sm:rounded-full sm:px-6 sm:py-4">
             <div className="flex items-center gap-2">
               <CheckSquare className="w-5 h-5 text-green-400" />
               <span className="font-bold text-sm">
                 {selectedRanchers.length} {selectedRanchers.length === 1 ? 'propriedade selecionada' : 'propriedades selecionadas'}
               </span>
             </div>
-            <Button className="bg-primary hover:bg-primary/90 text-white font-bold rounded-full px-8" onClick={() => setIsSchedulingMode(true)}>
+            <Button className="w-full rounded-xl bg-primary px-8 font-bold text-white hover:bg-primary/90 sm:w-auto sm:rounded-full" onClick={() => setIsSchedulingMode(true)}>
               AGENDAR VISITAS
             </Button>
           </div>

@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
+import { getDefaultAuthorizedRoute } from "@/lib/access";
 
 export default function LoginPage() {
   const [loginInput, setLoginInput] = useState("");
@@ -59,15 +60,19 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const success = await login(usuario, senha, empresa);
+      const loggedUser = await login(usuario, senha, empresa);
 
-      if (!success) {
+      if (!loggedUser) {
         setErrorMsg("Usuário, senha ou empresa incorretos.");
         return;
       }
 
       const isMobile = window.innerWidth < 1024;
-      navigate(isMobile ? "/campo" : "/dashboard");
+      const nextRoute = getDefaultAuthorizedRoute(loggedUser, {
+        preferOperational: isMobile,
+      });
+
+      navigate(nextRoute || (isMobile ? "/campo" : "/dashboard"));
     } catch {
       setErrorMsg(
         "Não foi possível acessar o sistema. Tente novamente em instantes.",
@@ -336,3 +341,4 @@ export default function LoginPage() {
     </main>
   );
 }
+

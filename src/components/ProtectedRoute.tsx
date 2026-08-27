@@ -1,17 +1,24 @@
+﻿import { useEffect } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  getDefaultAuthorizedRoute,
+  hasAccessToRule,
+} from "@/lib/access";
 import { toast } from "sonner";
 
 interface ProtectedRouteProps {
   allowedRoles?: string[];
   allowedModules?: string[];
+  minNivel?: number;
+  redirectTo?: string;
 }
-
-const normalize = (value: unknown) => String(value || "").trim().toUpperCase();
 
 export function ProtectedRoute({
   allowedRoles = [],
   allowedModules = [],
+  minNivel,
+  redirectTo,
 }: ProtectedRouteProps) {
   const { user, isAuthenticated } = useAuth();
 
@@ -19,23 +26,23 @@ export function ProtectedRoute({
     return <Navigate to="/login" replace />;
   }
 
-  const userRole = normalize(user.role);
-  const userModules = (user.modulos || []).map(normalize);
-  const isAdmin = userRole === "ADMIN" || userModules.includes("ADMIN");
+  const hasAccess = hasAccessToRule(user, {
+    allowedRoles,
+    allowedModules,
+    minNivel,
+  });
+  const fallbackRoute = redirectTo || getDefaultAuthorizedRoute(user) || "/login";
 
-  const roleAllowed =
-    allowedRoles.length === 0 ||
-    allowedRoles.map(normalize).includes(userRole);
+  useEffect(() => {
+    if (!hasAccess) {
+      toast.error("Acesso Negado: Voce nao tem permissao para acessar esta area.", {
+        id: "rota-sem-permissao",
+      });
+    }
+  }, [hasAccess]);
 
-  const moduleAllowed =
-    allowedModules.length === 0 ||
-    allowedModules.map(normalize).some((module) => userModules.includes(module));
-
-  if (!isAdmin && !roleAllowed && !moduleAllowed) {
-    toast.error("Acesso Negado: Você não tem permissão para acessar esta área.", {
-      id: "rota-sem-permissao",
-    });
-    return <Navigate to="/dashboard" replace />;
+  if (!hasAccess) {
+    return <Navigate to={fallbackRoute} replace />;
   }
 
   return <Outlet />;

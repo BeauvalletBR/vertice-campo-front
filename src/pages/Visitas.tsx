@@ -141,6 +141,7 @@ const formatarDataBruta = (dataString: string | null | undefined) => {
   }
   return dataString; 
 };
+
 function InfoLegendaLogistica() {
   return (
     <div className="relative group">

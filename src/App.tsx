@@ -1,8 +1,7 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+﻿import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   BrowserRouter,
   Navigate,
-  Outlet,
   Route,
   Routes,
 } from "react-router-dom";
@@ -18,6 +17,10 @@ import {
   useAuth,
 } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import {
+  APP_ROUTE_ACCESS,
+  getDefaultAuthorizedRoute,
+} from "@/lib/access";
 
 import Index from "./pages/Index";
 import FieldPage from "./pages/FieldPage";
@@ -27,38 +30,18 @@ import Pecuaristas from "./pages/Visitas";
 import Agendamento from "./pages/Agendamento";
 import AgendamentoGerenciador from "./pages/AgendamentoGerenciador";
 import Escala from "./pages/Escala";
+import EscalaDashboardScreen from "./pages/EscalaDashboardScreen";
+import EscalaAnaliseMensal from "./pages/EscalaAnaliseMensal";
 import EscalaGerenciador from "./pages/EscalaGerenciador";
+import EscalaTVScreen from "./pages/EscalaTVScreen";
 
 const queryClient = new QueryClient();
 
-// Permite acesso ao Agendamento para ADMIN
-// ou para usuários com nível 3 ou superior.
-function AgendamentoGuard() {
-  const { user } = useAuth();
-
-  const userModules = ((user as { modulos?: string[] } | null)?.modulos || []).map(
-    (module) => String(module).trim().toUpperCase(),
-  );
-
-  const userNivel = Number((user as { nivel?: number } | null)?.nivel || 0);
-  const userRole = String((user as { role?: string } | null)?.role || "")
-    .trim()
-    .toUpperCase();
-
-  const hasAccess =
-    userRole === "ADMIN" ||
-    userModules.includes("ADMIN") ||
-    userNivel >= 3;
-
-  return hasAccess
-    ? <Outlet />
-    : <Navigate to="/dashboard" replace />;
-}
-
 function ProtectedLayout() {
   const { user } = useAuth();
+  const defaultRoute = getDefaultAuthorizedRoute(user);
 
-  if (!user) {
+  if (!user || !defaultRoute) {
     return <Navigate to="/login" replace />;
   }
 
@@ -76,25 +59,31 @@ function ProtectedLayout() {
             <Routes>
               <Route
                 path="/"
-                element={<Navigate to="/dashboard" replace />}
+                element={<Navigate to={defaultRoute} replace />}
               />
 
-              <Route
-                path="/dashboard"
-                element={<Index />}
-              />
+              <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.dashboard} />}>
+                <Route
+                  path="/dashboard"
+                  element={<Index />}
+                />
+              </Route>
 
-              <Route
-                path="/campo"
-                element={<FieldPage />}
-              />
+              <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.campo} />}>
+                <Route
+                  path="/campo"
+                  element={<FieldPage />}
+                />
+              </Route>
 
-              <Route
-                path="/visitas"
-                element={<Pecuaristas />}
-              />
+              <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.visitas} />}>
+                <Route
+                  path="/visitas"
+                  element={<Pecuaristas />}
+                />
+              </Route>
 
-              <Route element={<AgendamentoGuard />}>
+              <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.agendamento} />}>
                 <Route
                   path="/agendamento"
                   element={<Agendamento />}
@@ -106,17 +95,23 @@ function ProtectedLayout() {
                 />
               </Route>
 
-              {/* Uma única opção no menu: /escala.
-                  As rotas de gerenciar continuam internas,
-                  abertas pelos botões da própria página Escala. */}
               <Route
                 element={
                   <ProtectedRoute
-                    allowedRoles={["ADMIN"]}
-                    allowedModules={["ESCALA", "ADMIN"]}
+                    {...APP_ROUTE_ACCESS.escala}
                   />
                 }
               >
+                <Route
+                  path="/escala/dashboard"
+                  element={<EscalaDashboardScreen />}
+                />
+
+                <Route
+                  path="/escala/analise-mensal"
+                  element={<EscalaAnaliseMensal />}
+                />
+
                 <Route
                   path="/escala"
                   element={<Escala />}
@@ -147,6 +142,7 @@ function ProtectedLayout() {
 
 function AppContent() {
   const { user, isAuthLoading } = useAuth();
+  const defaultRoute = getDefaultAuthorizedRoute(user);
 
   if (isAuthLoading) {
     return (
@@ -167,11 +163,18 @@ function AppContent() {
       <Route
         path="/login"
         element={
-          user
-            ? <Navigate to="/dashboard" replace />
+          user && defaultRoute
+            ? <Navigate to={defaultRoute} replace />
             : <LoginPage />
         }
       />
+
+      <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.escala} />}>
+        <Route
+          path="/escala/tv"
+          element={<EscalaTVScreen />}
+        />
+      </Route>
 
       <Route
         path="/*"

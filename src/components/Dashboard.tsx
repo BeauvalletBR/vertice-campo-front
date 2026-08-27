@@ -395,6 +395,11 @@ const formatarPrazoForecast = (dias: number): string => {
   return `prontos em ${dias} dias`;
 };
 
+const formatDateInputValue = (date: Date): string => {
+  const tzOffset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - tzOffset).toISOString().split("T")[0];
+};
+
 const getDiffEmDias = (dataVisita: string, periodoOriginal: string | number) => {
   if (!dataVisita) return 0;
   const visitDate = new Date(dataVisita.split('T')[0] + 'T12:00:00');
@@ -451,9 +456,12 @@ export function Dashboard() {
   const navigate = useNavigate();
   const temPermissaoAdmin = user?.modulos?.includes('ADMIN') || false;
 
-  const [dateStart, setDateStart] = useState("2026-04-01");
+  const [dateStart, setDateStart] = useState(() => {
+    const hoje = new Date();
+    return formatDateInputValue(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
+  });
   const [dateEnd, setDateEnd] = useState(() => {
-    return new Date().toISOString().split('T')[0];
+    return formatDateInputValue(new Date());
   });
   const [selectedBuyer, setSelectedBuyer] = useState("");
 
@@ -496,7 +504,7 @@ export function Dashboard() {
           temPermissaoAdmin ? fetchPecuaristasAgendamento() : Promise.resolve([])
         ]);
         
-        // 👇 BUSCANDO OS LOTES DE CADA VISITA PARA O FORECAST FUNCIONAR 👇
+        // ðŸ‘‡ BUSCANDO OS LOTES DE CADA VISITA PARA O FORECAST FUNCIONAR ðŸ‘‡
         const visitasComLotes = await Promise.all(
           dadosVisitas.map(async (v) => {
             const lotes = await api.fetchLotesVisita(v.ID_VISITA);
@@ -585,13 +593,13 @@ export function Dashboard() {
    * Usa visitasBrutas, portanto não respeita os filtros de período
    * nem o filtro de comprador.
    */
-  const totalGadoProspectadoSemFiltro = useMemo(() => {
-    return visitasBrutas.reduce(
+  const totalGadoProspectadoFiltrado = useMemo(() => {
+    return visitas.reduce(
       (total, visita) =>
         total + getQuantidadeProspectadaLotes(visita.lotesDaApi),
       0,
     );
-  }, [visitasBrutas]);
+  }, [visitas]);
 
   // Mesma regra do selo verde no painel de Visitas:
   // 1) o KM atual do ERP foi alterado em relação ao KM existente no dia da visita;
@@ -1000,14 +1008,14 @@ export function Dashboard() {
     return {
       mapData: Array.from(citiesMap.values()),
       kpis: {
-        totalProspectado: totalGadoProspectadoSemFiltro,
+        totalProspectado: totalGadoProspectadoFiltrado,
         totalComprada,
         totalVisitas: visitas.length,
         novosPecuaristas,
         cidadesCobertas: cidadesSet.size,
       },
     };
-  }, [visitas, totalGadoProspectadoSemFiltro]);
+  }, [visitas, totalGadoProspectadoFiltrado]);
 
   /*
    * Detalhamento das métricas que continuam filtradas.
@@ -1302,7 +1310,7 @@ export function Dashboard() {
     setMetricSortOrder(column === "informacao" || column === "codigo" ? "desc" : "asc");
   };
 
-  // 👇 NOVA LÓGICA DO FORECAST BASEADO NOS LOTES DINÂMICOS 👇
+  // ðŸ‘‡ NOVA LÓGICA DO FORECAST BASEADO NOS LOTES DINÃ‚MICOS ðŸ‘‡
   const { forecast, auditoriaFrete } = useMemo(() => {
     let f30 = 0, f60 = 0, f90 = 0;
     const alertasFrete: any[] = [];
@@ -1364,7 +1372,7 @@ export function Dashboard() {
     return { text: `Faltam ${diffEmDias} dias`, style: 'text-emerald-700 bg-emerald-100' };
   };
 
-  // 👇 LÓGICA DO MODAL DO FORECAST ATUALIZADA 👇
+  // ðŸ‘‡ LÓGICA DO MODAL DO FORECAST ATUALIZADA ðŸ‘‡
   const getDetalhesForecast = () => {
     if (!forecastModal) return [];
     const targetBucket = forecastModal.periodo;
@@ -1631,7 +1639,7 @@ export function Dashboard() {
                   value={kpis.totalProspectado.toLocaleString("pt-BR")}
                   icon={<TrendingUp className="w-7 h-7 text-blue-600" />}
                   colorClass="bg-blue-50 text-blue-600"
-                  sub="Lotes disponíveis com prazo • total sem filtros"
+                  sub="Lotes disponíveis com prazo no período filtrado"
                   onClick={() => openMetricDetails("prospectado")}
                 />
               </div>
@@ -1653,7 +1661,7 @@ export function Dashboard() {
                   value={kpis.totalVisitas}
                   icon={<Navigation className="w-7 h-7 text-indigo-600" />}
                   colorClass="bg-indigo-50 text-indigo-600"
-                  sub="Total de registros no banco"
+                  sub="Total de visitas no período filtrado"
                   onClick={() => openMetricDetails("visitas")}
                 />
               </div>
@@ -2230,7 +2238,7 @@ export function Dashboard() {
                   </div>
                 </div>
 
-                {/* BLOCO C 👇 ATUALIZADO PARA LOTES DINÂMICOS 👇 */}
+                {/* BLOCO C ðŸ‘‡ ATUALIZADO PARA LOTES DINÃ‚MICOS ðŸ‘‡ */}
                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b pb-2">C. Rebanho e Lotes para Abate</h3>
                   

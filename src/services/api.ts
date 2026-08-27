@@ -44,6 +44,8 @@ export interface ApiRancher {
   DATA_ULTIMA_VISITA?: string | null; 
   VENDAREPRESENTANTE: "S" | "N";
   NOME_REPRESENTANTE?: string | null; 
+  LATITUDE?: number | string | null;
+  LONGITUDE?: number | string | null;
 }
 
 export interface ApiAgendamento {
@@ -140,6 +142,12 @@ export interface ApiAuditoria {
 export interface ApiUsuario {
   SEQUSUARIO: number;
   CODUSUARIO: string;
+  NOME?: string;
+  NOMEUSUARIO?: string;
+  NOME_USUARIO?: string;
+  USUARIO_NOME?: string;
+  DESCRICAO?: string;
+  DESCUSUARIO?: string;
 }
 
 export interface ApiHistoricoCompra {

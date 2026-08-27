@@ -15,14 +15,15 @@ import {
   Plus,
   Save,
   Search,
+  Sparkles,
   Trash2,
   UserRound,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { fetchUsuarios } from "@/services/api";
-import type { ApiUsuario } from "@/services/api";
+import { fetchHistoricoCompras, fetchUsuarios } from "@/services/api";
+import type { ApiHistoricoCompra, ApiUsuario } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +50,10 @@ import type {
   EscalaStatus,
   EscalaTurno,
 } from "@/types/escala";
+import {
+  getAnimalBasePrice,
+  getEffectivePremium,
+} from "@/lib/escala-pricing";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -63,6 +68,10 @@ const currencyFormat = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 2,
 });
 
+const percentFormat = new Intl.NumberFormat("pt-BR", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 1,
+});
 const getEmpresaLogada = (user: unknown) => {
   const userCompany = Number(
     (user as { nroempresa?: number } | null)?.nroempresa,
@@ -200,6 +209,14 @@ interface ManualForm {
   ordem_exibicao: string;
 }
 
+interface ChinaEditSuggestion {
+  suggestedQuantity: number;
+  chinaAnimals: number;
+  totalAnimals: number;
+  chinaPercent: number;
+  periodLabel: string;
+}
+
 const emptyInsertOrderForm = (): InsertOrderForm => ({
   nro_pedido: "",
   seqpedido: null,
@@ -255,6 +272,74 @@ const emptyManualForm = (): ManualForm => ({
   ordem_exibicao: "0",
 });
 
+const getMonthKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+const getTwelveMonthPeriod = () => {
+  const todayDate = new Date();
+  const startDate = new Date(
+    todayDate.getFullYear(),
+    todayDate.getMonth() - 11,
+    1,
+    12,
+  );
+
+  return {
+    startMonth: getMonthKey(startDate),
+    endMonth: getMonthKey(todayDate),
+    label: "12 meses",
+  };
+};
+
+const buildChinaEditSuggestion = (
+  row: EscalaLinha | undefined,
+  sex: "VACA" | "BOI",
+  history: ApiHistoricoCompra[],
+): ChinaEditSuggestion | null => {
+  const producerId = toNumber(row?.SEQPRODUTOR);
+  const quantity =
+    sex === "VACA" ? toNumber(row?.QTD_VACA) : toNumber(row?.QTD_BOI);
+
+  if (!row || producerId <= 0 || quantity <= 0) {
+    return null;
+  }
+
+  const period = getTwelveMonthPeriod();
+  const relevantHistory = history.filter(
+    (entry) =>
+      Number(entry.COD_PRODUTOR) === producerId &&
+      entry.MES_ANO >= period.startMonth &&
+      entry.MES_ANO <= period.endMonth,
+  );
+
+  const chinaAnimals = relevantHistory.reduce(
+    (total, entry) => total + toNumber(entry.QTD_CHINA),
+    0,
+  );
+  const nonChinaAnimals = relevantHistory.reduce(
+    (total, entry) => total + toNumber(entry.QTD_NAO_CHINA),
+    0,
+  );
+  const totalAnimals = chinaAnimals + nonChinaAnimals;
+
+  if (totalAnimals <= 0) {
+    return null;
+  }
+
+  const chinaPercent = chinaAnimals / totalAnimals;
+
+  return {
+    suggestedQuantity: Math.max(
+      0,
+      Math.min(quantity, Math.round(quantity * chinaPercent)),
+    ),
+    chinaAnimals,
+    totalAnimals,
+    chinaPercent,
+    periodLabel: period.label,
+  };
+};
+
 export default function EscalaGerenciador() {
   const { idEscala } = useParams();
   const [searchParams] = useSearchParams();
@@ -279,6 +364,9 @@ export default function EscalaGerenciador() {
 
   const [lines, setLines] = useState<EscalaLinha[]>([]);
   const [buyers, setBuyers] = useState<ApiUsuario[]>([]);
+  const [historicoCompras, setHistoricoCompras] = useState<ApiHistoricoCompra[]>(
+    [],
+  );
   const [loadingBuyers, setLoadingBuyers] = useState(false);
   const [buyerSearch, setBuyerSearch] = useState("");
   const [buyerOpen, setBuyerOpen] = useState(false);
@@ -353,6 +441,33 @@ export default function EscalaGerenciador() {
       .slice(0, 30);
   }, [buyerOpen, buyerSearch, buyers]);
 
+  const editingOrderRow = useMemo(
+    () =>
+      linkedOrders.find(
+        (row) =>
+          toNumber(row.ID_ESCALA_PEDIDO_VINCULO) ===
+          editOrderForm.id_escala_pedido_vinculo,
+      ),
+    [editOrderForm.id_escala_pedido_vinculo, linkedOrders],
+  );
+
+  const chinaSuggestionVaca = useMemo(
+    () => buildChinaEditSuggestion(editingOrderRow, "VACA", historicoCompras),
+    [editingOrderRow, historicoCompras],
+  );
+  const chinaSuggestionBoi = useMemo(
+    () => buildChinaEditSuggestion(editingOrderRow, "BOI", historicoCompras),
+    [editingOrderRow, historicoCompras],
+  );
+
+  const showChinaVacaSuggestion =
+    Boolean(chinaSuggestionVaca) &&
+    toNumber(editOrderForm.qtd_china_vaca) !==
+      chinaSuggestionVaca?.suggestedQuantity;
+  const showChinaBoiSuggestion =
+    Boolean(chinaSuggestionBoi) &&
+    toNumber(editOrderForm.qtd_china_boi) !== chinaSuggestionBoi?.suggestedQuantity;
+
   const loadScale = async () => {
     if (!scaleId) return;
     setLoading(true);
@@ -425,6 +540,28 @@ export default function EscalaGerenciador() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadHistory = async () => {
+      try {
+        const data = await fetchHistoricoCompras();
+        if (!cancelled) {
+          setHistoricoCompras(Array.isArray(data) ? data : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setHistoricoCompras([]);
+        }
+      }
+    };
+
+    void loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!modalMode) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -459,6 +596,29 @@ export default function EscalaGerenciador() {
         },
       );
     }, 120);
+  };
+
+  const showChinaSuggestionDetails = (
+    suggestion: ChinaEditSuggestion | null,
+    sexLabel: string,
+    quantity: number,
+  ) => {
+    if (!suggestion) return;
+
+    toast.info(
+      `Nos últimos ${suggestion.periodLabel}, esse produtor matou ${numberFormat.format(
+        suggestion.totalAnimals,
+      )} animais. Destes, ${numberFormat.format(
+        suggestion.chinaAnimals,
+      )} foram China, gerando ${percentFormat.format(
+        suggestion.chinaPercent * 100,
+      )}%. Para ${numberFormat.format(quantity)} ${sexLabel.toLowerCase()}, a sugestão fica em ${numberFormat.format(
+        suggestion.suggestedQuantity,
+      )}.`,
+      {
+        duration: 7000,
+      },
+    );
   };
 
   useEffect(() => {
@@ -518,15 +678,14 @@ export default function EscalaGerenciador() {
       comprador_nome_snapshot: buyerName,
       observacao: row.OBSERVACAO_REGISTRO || "",
       vlrunitario_premio:
-        row.VLRUNITARIO_PREMIO === null ||
-        row.VLRUNITARIO_PREMIO === undefined
+        getEffectivePremium(row) === null
           ? ""
-          : String(row.VLRUNITARIO_PREMIO),
+          : String(getEffectivePremium(row)),
       prazo_dias:
         row.PRAZO_DIAS === null || row.PRAZO_DIAS === undefined
           ? "2"
           : String(row.PRAZO_DIAS),
-      curral: row.CURRAL || "",
+      curral: row.CURRAL == null ? "" : String(row.CURRAL),
       arrobas_vaca:
         row.ARROBAS_VACA === null || row.ARROBAS_VACA === undefined
           ? ""
@@ -589,16 +748,20 @@ export default function EscalaGerenciador() {
       arrobas_vaca: row.ARROBAS_VACA == null ? "" : String(row.ARROBAS_VACA),
       arrobas_boi: row.ARROBAS_BOI == null ? "" : String(row.ARROBAS_BOI),
       vlrunitario_vaca:
-        row.VLRUNITARIO_VACA == null ? "" : String(row.VLRUNITARIO_VACA),
-      vlrunitario_boi:
-        row.VLRUNITARIO_BOI == null ? "" : String(row.VLRUNITARIO_BOI),
-      vlrunitario_premio:
-        row.VLRUNITARIO_PREMIO == null
+        getAnimalBasePrice(row, "VACA") == null
           ? ""
-          : String(row.VLRUNITARIO_PREMIO),
+          : String(getAnimalBasePrice(row, "VACA")),
+      vlrunitario_boi:
+        getAnimalBasePrice(row, "BOI") == null
+          ? ""
+          : String(getAnimalBasePrice(row, "BOI")),
+      vlrunitario_premio:
+        getEffectivePremium(row) === null
+          ? ""
+          : String(getEffectivePremium(row)),
       prazo_dias:
         row.PRAZO_DIAS == null ? "2" : String(row.PRAZO_DIAS),
-      curral: row.CURRAL || "",
+      curral: row.CURRAL == null ? "" : String(row.CURRAL),
       qtd_china_vaca: String(toNumber(row.QTD_CHINA_VACA)),
       qtd_china_boi: String(toNumber(row.QTD_CHINA_BOI)),
       qtd_agrotools_vaca: String(toNumber(row.QTD_AGROTOOLS_VACA)),
@@ -872,8 +1035,8 @@ export default function EscalaGerenciador() {
       return;
     }
 
-    if (premium === null || premium < 0) {
-      toast.warning("Informe o prêmio unitário.");
+    if (premium !== null && premium < 0) {
+      toast.warning("O prêmio unitário não pode ser negativo.");
       focusModalField("vlrunitario_premio");
       return;
     }
@@ -888,8 +1051,9 @@ export default function EscalaGerenciador() {
       return;
     }
 
-    if (!normalizeText(editOrderForm.curral)) {
-      toast.warning("Informe o curral.");
+    const curral = toNullableNumber(editOrderForm.curral);
+    if (curral === null || curral < 0 || !Number.isInteger(curral)) {
+      toast.warning("Informe o curral com um número inteiro maior ou igual a zero.");
       focusModalField("curral");
       return;
     }
@@ -927,7 +1091,7 @@ export default function EscalaGerenciador() {
         observacao: editOrderForm.observacao.trim() || null,
         vlrunitario_premio: premium,
         prazo_dias: toNullableNumber(editOrderForm.prazo_dias),
-        curral: normalizeText(editOrderForm.curral) || null,
+        curral,
         arrobas_vaca: toNullableNumber(editOrderForm.arrobas_vaca),
         arrobas_boi: toNullableNumber(editOrderForm.arrobas_boi),
         qtd_china_vaca: toNullableNumber(editOrderForm.qtd_china_vaca),
@@ -1007,8 +1171,8 @@ export default function EscalaGerenciador() {
     }
 
     const premium = toNullableNumber(manualForm.vlrunitario_premio);
-    if (premium === null || premium < 0) {
-      toast.warning("Informe o prêmio unitário.");
+    if (premium !== null && premium < 0) {
+      toast.warning("O prêmio unitário não pode ser negativo.");
       focusModalField("vlrunitario_premio");
       return false;
     }
@@ -1024,8 +1188,9 @@ export default function EscalaGerenciador() {
       return false;
     }
 
-    if (!normalizeText(manualForm.curral)) {
-      toast.warning("Informe o curral.");
+    const curral = toNullableNumber(manualForm.curral);
+    if (curral === null || curral < 0 || !Number.isInteger(curral)) {
+      toast.warning("Informe o curral com um número inteiro maior ou igual a zero.");
       focusModalField("curral");
       return false;
     }
@@ -1050,6 +1215,7 @@ export default function EscalaGerenciador() {
   const handleSaveManual = async () => {
     if (!scaleId || !validateManualForm()) return;
 
+    const curral = toNullableNumber(manualForm.curral);
     const payload = {
       nroempresa,
       id_escala: scaleId,
@@ -1070,7 +1236,7 @@ export default function EscalaGerenciador() {
         manualForm.vlrunitario_premio,
       ),
       prazo_dias: toNullableNumber(manualForm.prazo_dias),
-      curral: normalizeText(manualForm.curral) || null,
+      curral,
       qtd_china_vaca: toNumber(manualForm.qtd_china_vaca),
       qtd_china_boi: toNumber(manualForm.qtd_china_boi),
       qtd_agrotools_vaca: toNumber(manualForm.qtd_agrotools_vaca),
@@ -1523,7 +1689,7 @@ export default function EscalaGerenciador() {
             })}
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-              <Field label="Prêmio unitário" required>
+              <Field label="Prêmio unitário">
                 <Input
                   data-focus-field="vlrunitario_premio"
                   type="number"
@@ -1556,7 +1722,9 @@ export default function EscalaGerenciador() {
               <Field label="Curral" required>
                 <Input
                   data-focus-field="curral"
-                  maxLength={100}
+                  type="number"
+                  min={0}
+                  step={1}
                   value={editOrderForm.curral}
                   onChange={(event) =>
                     setEditOrderForm((current) => ({
@@ -1612,8 +1780,66 @@ export default function EscalaGerenciador() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <NumericField label="China vaca" value={editOrderForm.qtd_china_vaca} onChange={(value) => setEditOrderForm((current) => ({ ...current, qtd_china_vaca: value }))} />
-              <NumericField label="China boi" value={editOrderForm.qtd_china_boi} onChange={(value) => setEditOrderForm((current) => ({ ...current, qtd_china_boi: value }))} />
+              <NumericField
+                label={
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>China vaca</span>
+                    {showChinaVacaSuggestion && chinaSuggestionVaca && (
+                      <button
+                        type="button"
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] transition hover:border-[#E28A2E] hover:bg-[#FFEBD6]"
+                        title="Ver cálculo da sugestão de China vaca"
+                        onClick={() =>
+                          showChinaSuggestionDetails(
+                            chinaSuggestionVaca,
+                            "Vacas",
+                            toNumber(editingOrderRow?.QTD_VACA),
+                          )
+                        }
+                      >
+                        <Sparkles className="h-2.5 w-2.5" />
+                      </button>
+                    )}
+                  </span>
+                }
+                value={editOrderForm.qtd_china_vaca}
+                onChange={(value) =>
+                  setEditOrderForm((current) => ({
+                    ...current,
+                    qtd_china_vaca: value,
+                  }))
+                }
+              />
+              <NumericField
+                label={
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>China boi</span>
+                    {showChinaBoiSuggestion && chinaSuggestionBoi && (
+                      <button
+                        type="button"
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] transition hover:border-[#E28A2E] hover:bg-[#FFEBD6]"
+                        title="Ver cálculo da sugestão de China boi"
+                        onClick={() =>
+                          showChinaSuggestionDetails(
+                            chinaSuggestionBoi,
+                            "Bois",
+                            toNumber(editingOrderRow?.QTD_BOI),
+                          )
+                        }
+                      >
+                        <Sparkles className="h-2.5 w-2.5" />
+                      </button>
+                    )}
+                  </span>
+                }
+                value={editOrderForm.qtd_china_boi}
+                onChange={(value) =>
+                  setEditOrderForm((current) => ({
+                    ...current,
+                    qtd_china_boi: value,
+                  }))
+                }
+              />
               <NumericField label="Agrotools vaca" value={editOrderForm.qtd_agrotools_vaca} onChange={(value) => setEditOrderForm((current) => ({ ...current, qtd_agrotools_vaca: value }))} />
               <NumericField label="Agrotools boi" value={editOrderForm.qtd_agrotools_boi} onChange={(value) => setEditOrderForm((current) => ({ ...current, qtd_agrotools_boi: value }))} />
             </div>
@@ -1789,7 +2015,7 @@ export default function EscalaGerenciador() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-              <Field label="Prêmio unitário" required>
+              <Field label="Prêmio unitário">
                 <Input
                   data-focus-field="vlrunitario_premio"
                   type="number"
@@ -1822,7 +2048,9 @@ export default function EscalaGerenciador() {
               <Field label="Curral" required>
                 <Input
                   data-focus-field="curral"
-                  maxLength={100}
+                  type="number"
+                  min={0}
+                  step={1}
                   value={manualForm.curral}
                   onChange={(event) =>
                     setManualForm((current) => ({
@@ -1906,7 +2134,7 @@ function Field({
   className = "",
   required = false,
 }: {
-  label: string;
+  label: ReactNode;
   children: ReactNode;
   className?: string;
   required?: boolean;
@@ -1948,7 +2176,7 @@ function NumericField({
   required = false,
   focusField,
 }: {
-  label: string;
+  label: ReactNode;
   value: string;
   onChange: (value: string) => void;
   required?: boolean;
@@ -2116,7 +2344,7 @@ function renderBuyerSelector({
             ) : (
               buyerSuggestions.map((buyer) => (
                 <button
-                  key={buyer.SEQUSUARIO}
+                  key={buyer.CODUSUARIO}
                   type="button"
                   className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-xs hover:bg-[#EEF4FA]"
                   onClick={() => selectBuyer(buyer)}
@@ -2295,7 +2523,7 @@ function RecordCard({
             <span>{numberFormat.format(toNumber(row.QTD_VACA))} vacas</span>
             <span>{numberFormat.format(toNumber(row.QTD_BOI))} bois</span>
             <span>
-              Prêmio: {row.VLRUNITARIO_PREMIO == null ? "não informado" : currencyFormat.format(toNumber(row.VLRUNITARIO_PREMIO))}
+              Prêmio: {getEffectivePremium(row) == null ? "não informado" : currencyFormat.format(getEffectivePremium(row) ?? 0)}
             </span>
           </div>
         </div>
