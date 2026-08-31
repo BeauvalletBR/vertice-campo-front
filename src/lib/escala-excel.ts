@@ -17,16 +17,22 @@ interface ScaleExcelReportOptions {
   dateEnd: string;
 }
 
-interface ScaleExcelLine {
+export interface ScaleExcelLine {
   date: string;
   producer: string;
-  bullPrice: number | null;
-  cowPrice: number | null;
-  cows: number;
-  cowArrobas: number | null;
-  bulls: number;
-  bullArrobas: number | null;
+  sex: "VACA" | "BOI";
+  animals: number;
+  arrobasPerAnimal: number | null;
+  unitPrice: number | null;
 }
+
+export const calculateScaleExcelLineTotals = (line: ScaleExcelLine) => {
+  const totalArrobas = line.animals * (line.arrobasPerAnimal ?? 0);
+  return {
+    totalArrobas,
+    totalValue: totalArrobas * (line.unitPrice ?? 0),
+  };
+};
 
 const workbookMimeType =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -41,7 +47,9 @@ const formatShortDate = (value: string) => {
   return `${day}-${month}`;
 };
 
-const buildReportLines = (rows: EscalaLinha[]): ScaleExcelLine[] => {
+export const buildScaleExcelReportLines = (
+  rows: EscalaLinha[],
+): ScaleExcelLine[] => {
   const recordsByOrder = new Map<string, EscalaLinha>();
 
   for (const row of getUniquePlanningRecords(rows)) {
@@ -69,7 +77,7 @@ const buildReportLines = (rows: EscalaLinha[]): ScaleExcelLine[] => {
       return toNumber(first.ORDEM_EXIBICAO) - toNumber(second.ORDEM_EXIBICAO);
     });
 
-  return records.map((row) => {
+  return records.flatMap((row) => {
     const date = row.DATA_ABATE?.split("T")[0] || "";
     const producer = String(row.PRODUTOR || "PRODUTOR NÃO INFORMADO").trim();
     const cows = Math.max(0, toNumber(row.QTD_VACA));
@@ -82,16 +90,31 @@ const buildReportLines = (rows: EscalaLinha[]): ScaleExcelLine[] => {
       row.ARROBAS_BOI === null || row.ARROBAS_BOI === undefined
         ? null
         : toNumber(row.ARROBAS_BOI);
-    return {
-      date,
-      producer,
-      bullPrice: getEffectivePremium(row),
-      cowPrice: getAnimalBasePrice(row, "VACA"),
-      cows,
-      cowArrobas,
-      bulls,
-      bullArrobas,
-    };
+    const lines: ScaleExcelLine[] = [];
+
+    if (cows > 0) {
+      lines.push({
+        date,
+        producer,
+        sex: "VACA",
+        animals: cows,
+        arrobasPerAnimal: cowArrobas,
+        unitPrice: getAnimalBasePrice(row, "VACA"),
+      });
+    }
+
+    if (bulls > 0) {
+      lines.push({
+        date,
+        producer,
+        sex: "BOI",
+        animals: bulls,
+        arrobasPerAnimal: bullArrobas,
+        unitPrice: getEffectivePremium(row),
+      });
+    }
+
+    return lines;
   });
 };
 
@@ -101,7 +124,7 @@ export async function exportScalePlanningToExcel({
   dateStart,
   dateEnd,
 }: ScaleExcelReportOptions) {
-  const reportLines = buildReportLines(rows);
+  const reportLines = buildScaleExcelReportLines(rows);
   if (reportLines.length === 0) {
     throw new Error("Não existem animais para exportar nesta semana.");
   }
@@ -143,26 +166,22 @@ export async function exportScalePlanningToExcel({
   worksheet.getColumn("A").width = 2;
   worksheet.getColumn("B").width = 12;
   worksheet.getColumn("C").width = 54;
-  worksheet.getColumn("D").width = 14;
-  worksheet.getColumn("E").width = 14;
-  worksheet.getColumn("F").width = 12;
-  worksheet.getColumn("G").width = 17;
-  worksheet.getColumn("H").width = 14;
-  worksheet.getColumn("I").width = 12;
-  worksheet.getColumn("J").width = 17;
-  worksheet.getColumn("K").width = 10;
+  worksheet.getColumn("D").width = 11;
+  worksheet.getColumn("E").width = 12;
+  worksheet.getColumn("F").width = 10;
+  worksheet.getColumn("G").width = 14;
+  worksheet.getColumn("H").width = 15;
+  worksheet.getColumn("I").width = 18;
 
   const headers = [
     "DATA",
     "PRODUTOR",
-    "VALOR BOI",
-    "QTD VACA",
-    "@ VACA",
-    "VALOR VACA",
-    "QTD BOI",
-    "@ BOI",
-    "R$ BOI",
-    "@ MÉDIA",
+    "SEXO",
+    "QTDE",
+    "@",
+    "QTD @",
+    "VALOR @",
+    "R$",
   ];
   headers.forEach((header, index) => {
     worksheet.getCell(1, index + 2).value = header;
@@ -170,7 +189,7 @@ export async function exportScalePlanningToExcel({
 
   const headerRange = worksheet.getRow(1);
   headerRange.height = 24;
-  for (let column = 2; column <= 11; column += 1) {
+  for (let column = 2; column <= 9; column += 1) {
     const cell = worksheet.getCell(1, column);
     cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "FF111827" } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
@@ -185,23 +204,20 @@ export async function exportScalePlanningToExcel({
 
   reportLines.forEach((line, index) => {
     const rowNumber = index + 2;
+    const { totalArrobas, totalValue } = calculateScaleExcelLineTotals(line);
     worksheet.getCell(`B${rowNumber}`).value = parseLocalDate(line.date);
     worksheet.getCell(`C${rowNumber}`).value = line.producer;
-    worksheet.getCell(`D${rowNumber}`).value = line.bullPrice;
-    worksheet.getCell(`E${rowNumber}`).value = line.cows;
-    worksheet.getCell(`F${rowNumber}`).value = {
-      formula: `E${rowNumber}*${line.cowArrobas ?? 0}`,
+    worksheet.getCell(`D${rowNumber}`).value = line.sex;
+    worksheet.getCell(`E${rowNumber}`).value = line.animals;
+    worksheet.getCell(`F${rowNumber}`).value = line.arrobasPerAnimal;
+    worksheet.getCell(`G${rowNumber}`).value = {
+      formula: `E${rowNumber}*F${rowNumber}`,
+      result: totalArrobas,
     };
-    worksheet.getCell(`G${rowNumber}`).value = line.cowPrice;
-    worksheet.getCell(`H${rowNumber}`).value = line.bulls;
+    worksheet.getCell(`H${rowNumber}`).value = line.unitPrice;
     worksheet.getCell(`I${rowNumber}`).value = {
-      formula: `H${rowNumber}*${line.bullArrobas ?? 0}`,
-    };
-    worksheet.getCell(`J${rowNumber}`).value = {
-      formula: `I${rowNumber}*D${rowNumber}`,
-    };
-    worksheet.getCell(`K${rowNumber}`).value = {
-      formula: `IFERROR((F${rowNumber}+I${rowNumber})/(E${rowNumber}+H${rowNumber}),0)`,
+      formula: `G${rowNumber}*H${rowNumber}`,
+      result: totalValue,
     };
 
     const row = worksheet.getRow(rowNumber);
@@ -211,36 +227,34 @@ export async function exportScalePlanningToExcel({
     worksheet.getCell(`B${rowNumber}`).numFmt = "dd/mm/yyyy";
     worksheet.getCell(`B${rowNumber}`).alignment = { horizontal: "center" };
     worksheet.getCell(`C${rowNumber}`).alignment = { horizontal: "left" };
-    worksheet.getCell(`D${rowNumber}`).numFmt = '"R$" #,##0.00';
     worksheet.getCell(`D${rowNumber}`).alignment = { horizontal: "center" };
-    for (const column of ["E", "F", "H", "I"]) {
+    for (const column of ["E", "F", "G"]) {
       worksheet.getCell(`${column}${rowNumber}`).numFmt = "#,##0.00";
       worksheet.getCell(`${column}${rowNumber}`).alignment = { horizontal: "center" };
     }
-    for (const column of ["G", "J"]) {
+    for (const column of ["H", "I"]) {
       worksheet.getCell(`${column}${rowNumber}`).numFmt = '"R$" #,##0.00';
       worksheet.getCell(`${column}${rowNumber}`).alignment = { horizontal: "center" };
     }
-    worksheet.getCell(`K${rowNumber}`).numFmt = "0.00";
-    worksheet.getCell(`K${rowNumber}`).alignment = { horizontal: "center" };
   });
 
   const firstDataRow = 2;
   const lastDataRow = reportLines.length + 1;
   const totalRow = lastDataRow + 1;
   worksheet.getCell(`C${totalRow}`).value = "TOTAL";
-  for (const column of ["E", "F", "H", "I", "J"]) {
+  for (const column of ["E", "G", "I"]) {
     worksheet.getCell(`${column}${totalRow}`).value = {
       formula: `SUM(${column}${firstDataRow}:${column}${lastDataRow})`,
     };
   }
-  for (let column = 2; column <= 11; column += 1) {
+  for (let column = 2; column <= 9; column += 1) {
     const cell = worksheet.getCell(totalRow, column);
     cell.font = { name: "Arial", size: 10, bold: true };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2CC" } };
     cell.border = { top: { style: "double", color: { argb: "FF475569" } } };
   }
-  worksheet.getCell(`J${totalRow}`).numFmt = '"R$" #,##0.00';
+  worksheet.getCell(`G${totalRow}`).numFmt = "#,##0.00";
+  worksheet.getCell(`I${totalRow}`).numFmt = '"R$" #,##0.00';
 
   const summaryHeaderRow = totalRow + 4;
   const bullSummaryRow = summaryHeaderRow + 1;
@@ -257,14 +271,24 @@ export async function exportScalePlanningToExcel({
   });
 
   worksheet.getCell(`D${bullSummaryRow}`).value = "BOI";
-  worksheet.getCell(`F${bullSummaryRow}`).value = { formula: `H${totalRow}` };
-  worksheet.getCell(`G${bullSummaryRow}`).value = { formula: `I${totalRow}` };
-  worksheet.getCell(`H${bullSummaryRow}`).value = { formula: `J${totalRow}` };
+  worksheet.getCell(`F${bullSummaryRow}`).value = {
+    formula: `SUMIF(D${firstDataRow}:D${lastDataRow},"BOI",E${firstDataRow}:E${lastDataRow})`,
+  };
+  worksheet.getCell(`G${bullSummaryRow}`).value = {
+    formula: `SUMIF(D${firstDataRow}:D${lastDataRow},"BOI",G${firstDataRow}:G${lastDataRow})`,
+  };
+  worksheet.getCell(`H${bullSummaryRow}`).value = {
+    formula: `SUMIF(D${firstDataRow}:D${lastDataRow},"BOI",I${firstDataRow}:I${lastDataRow})`,
+  };
   worksheet.getCell(`D${cowSummaryRow}`).value = "VACA";
-  worksheet.getCell(`F${cowSummaryRow}`).value = { formula: `E${totalRow}` };
-  worksheet.getCell(`G${cowSummaryRow}`).value = { formula: `F${totalRow}` };
+  worksheet.getCell(`F${cowSummaryRow}`).value = {
+    formula: `SUMIF(D${firstDataRow}:D${lastDataRow},"VACA",E${firstDataRow}:E${lastDataRow})`,
+  };
+  worksheet.getCell(`G${cowSummaryRow}`).value = {
+    formula: `SUMIF(D${firstDataRow}:D${lastDataRow},"VACA",G${firstDataRow}:G${lastDataRow})`,
+  };
   worksheet.getCell(`H${cowSummaryRow}`).value = {
-    formula: `SUMPRODUCT(F${firstDataRow}:F${lastDataRow},G${firstDataRow}:G${lastDataRow})`,
+    formula: `SUMIF(D${firstDataRow}:D${lastDataRow},"VACA",I${firstDataRow}:I${lastDataRow})`,
   };
   worksheet.getCell(`D${summaryTotalRow}`).value = "TOTAL";
 
@@ -310,8 +334,8 @@ export async function exportScalePlanningToExcel({
   worksheet.getRow(summaryTotalRow).font = { name: "Arial", size: 10, bold: true };
   worksheet.getRow(averageRow).font = { name: "Arial", size: 10, bold: true };
 
-  worksheet.autoFilter = `B1:K${lastDataRow}`;
-  worksheet.pageSetup.printArea = `B1:K${averageRow}`;
+  worksheet.autoFilter = `B1:I${lastDataRow}`;
+  worksheet.pageSetup.printArea = `B1:I${averageRow}`;
   worksheet.headerFooter.oddFooter =
     `Escala de abate - Semana ${selectedWeek.split("W")[1] || selectedWeek}`;
 

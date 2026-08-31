@@ -54,6 +54,12 @@ import {
   getAnimalBasePrice,
   getEffectivePremium,
 } from "@/lib/escala-pricing";
+import { getAgrotoolsPlannedQuantity } from "@/lib/escala-planning";
+import {
+  buildOrderUpdatePayload,
+  getPlanningBuyerSnapshot,
+  getPlanningObservation,
+} from "@/lib/escala-update";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -669,14 +675,14 @@ export default function EscalaGerenciador() {
     const id = toNumber(row.ID_ESCALA_PEDIDO_VINCULO);
     if (!id) return;
 
-    const buyerName = row.COMPRADOR_ESCALA || "";
+    const buyerName = getPlanningBuyerSnapshot(row) || "";
     setEditOrderForm({
       id_escala_pedido_vinculo: id,
       versao: toNumber(row.VERSAO_REGISTRO || row.VERSAO_VINCULO) || 1,
       nro_pedido: toNumber(row.NROPEDIDO),
       id_comprador: toNumber(row.ID_COMPRADOR_ESCALA) || null,
       comprador_nome_snapshot: buyerName,
-      observacao: row.OBSERVACAO_REGISTRO || "",
+      observacao: getPlanningObservation(row) || "",
       vlrunitario_premio:
         getEffectivePremium(row) === null
           ? ""
@@ -702,16 +708,8 @@ export default function EscalaGerenciador() {
         row.QTD_CHINA_BOI === null || row.QTD_CHINA_BOI === undefined
           ? ""
           : String(row.QTD_CHINA_BOI),
-      qtd_agrotools_vaca:
-        row.QTD_AGROTOOLS_VACA === null ||
-        row.QTD_AGROTOOLS_VACA === undefined
-          ? ""
-          : String(row.QTD_AGROTOOLS_VACA),
-      qtd_agrotools_boi:
-        row.QTD_AGROTOOLS_BOI === null ||
-        row.QTD_AGROTOOLS_BOI === undefined
-          ? ""
-          : String(row.QTD_AGROTOOLS_BOI),
+      qtd_agrotools_vaca: String(getAgrotoolsPlannedQuantity(row, "VACA")),
+      qtd_agrotools_boi: String(getAgrotoolsPlannedQuantity(row, "BOI")),
       status_agrotools_analise:
         row.STATUS_AGROTOOLS_ANALISE || "PENDENTE",
       id_analise_agrotools: row.ID_ANALISE_AGROTOOLS || "",
@@ -733,7 +731,7 @@ export default function EscalaGerenciador() {
     const id = toNumber(row.ID_ESCALA_ITEM_MANUAL);
     if (!id) return;
 
-    const buyerName = row.COMPRADOR_ESCALA || "";
+    const buyerName = getPlanningBuyerSnapshot(row) || "";
     setManualForm({
       id_escala_item_manual: id,
       versao: toNumber(row.VERSAO_REGISTRO) || 1,
@@ -764,12 +762,12 @@ export default function EscalaGerenciador() {
       curral: row.CURRAL == null ? "" : String(row.CURRAL),
       qtd_china_vaca: String(toNumber(row.QTD_CHINA_VACA)),
       qtd_china_boi: String(toNumber(row.QTD_CHINA_BOI)),
-      qtd_agrotools_vaca: String(toNumber(row.QTD_AGROTOOLS_VACA)),
-      qtd_agrotools_boi: String(toNumber(row.QTD_AGROTOOLS_BOI)),
+      qtd_agrotools_vaca: String(getAgrotoolsPlannedQuantity(row, "VACA")),
+      qtd_agrotools_boi: String(getAgrotoolsPlannedQuantity(row, "BOI")),
       status_agrotools_analise:
         row.STATUS_AGROTOOLS_ANALISE || "PENDENTE",
       id_analise_agrotools: row.ID_ANALISE_AGROTOOLS || "",
-      observacao: row.OBSERVACAO_REGISTRO || "",
+      observacao: getPlanningObservation(row) || "",
       ordem_exibicao: String(toNumber(row.ORDEM_EXIBICAO)),
     });
     setBuyerSearch(buyerName);
@@ -1029,6 +1027,11 @@ export default function EscalaGerenciador() {
         editOrderForm.id_escala_pedido_vinculo,
     );
 
+    if (!editingRow) {
+      toast.error("O vínculo atualizado não foi encontrado na escala.");
+      return;
+    }
+
     if (!editOrderForm.id_comprador) {
       toast.warning("Informe o comprador responsável.");
       focusModalField("comprador");
@@ -1080,34 +1083,35 @@ export default function EscalaGerenciador() {
 
     setSavingRecord(true);
     try {
-      const result = await editarVinculoPedidoEscala({
-        id_escala_pedido_vinculo:
-          editOrderForm.id_escala_pedido_vinculo,
-        nroempresa,
-        versao: editOrderForm.versao,
-        id_comprador: editOrderForm.id_comprador,
-        comprador_nome_snapshot:
-          normalizeText(editOrderForm.comprador_nome_snapshot) || null,
-        observacao: editOrderForm.observacao.trim() || null,
-        vlrunitario_premio: premium,
-        prazo_dias: toNullableNumber(editOrderForm.prazo_dias),
-        curral,
-        arrobas_vaca: toNullableNumber(editOrderForm.arrobas_vaca),
-        arrobas_boi: toNullableNumber(editOrderForm.arrobas_boi),
-        qtd_china_vaca: toNullableNumber(editOrderForm.qtd_china_vaca),
-        qtd_china_boi: toNullableNumber(editOrderForm.qtd_china_boi),
-        qtd_agrotools_vaca: toNullableNumber(
-          editOrderForm.qtd_agrotools_vaca,
-        ),
-        qtd_agrotools_boi: toNullableNumber(
-          editOrderForm.qtd_agrotools_boi,
-        ),
-        status_agrotools_analise:
-          editOrderForm.status_agrotools_analise,
-        id_analise_agrotools:
-          editOrderForm.id_analise_agrotools.trim() || null,
-        ordem_exibicao: order,
-      });
+      const result = await editarVinculoPedidoEscala(
+        buildOrderUpdatePayload(editingRow, nroempresa, {
+          id_escala_pedido_vinculo:
+            editOrderForm.id_escala_pedido_vinculo,
+          versao: editOrderForm.versao,
+          id_comprador: editOrderForm.id_comprador,
+          comprador_nome_snapshot:
+            normalizeText(editOrderForm.comprador_nome_snapshot) || null,
+          observacao: editOrderForm.observacao.trim() || null,
+          vlrunitario_premio: premium,
+          prazo_dias: toNullableNumber(editOrderForm.prazo_dias),
+          curral,
+          arrobas_vaca: toNullableNumber(editOrderForm.arrobas_vaca),
+          arrobas_boi: toNullableNumber(editOrderForm.arrobas_boi),
+          qtd_china_vaca: toNullableNumber(editOrderForm.qtd_china_vaca),
+          qtd_china_boi: toNullableNumber(editOrderForm.qtd_china_boi),
+          qtd_agrotools_vaca: toNullableNumber(
+            editOrderForm.qtd_agrotools_vaca,
+          ),
+          qtd_agrotools_boi: toNullableNumber(
+            editOrderForm.qtd_agrotools_boi,
+          ),
+          status_agrotools_analise:
+            editOrderForm.status_agrotools_analise,
+          id_analise_agrotools:
+            editOrderForm.id_analise_agrotools.trim() || null,
+          ordem_exibicao: order,
+        }),
+      );
 
       toast.success(result.message || "Informações do pedido atualizadas.");
       await finishRecordSave();
@@ -1979,6 +1983,10 @@ export default function EscalaGerenciador() {
                   setManualForm((current) => ({
                     ...current,
                     [field]: value,
+                    ...(field === "qtd_vaca" &&
+                    toNumber(current.qtd_agrotools_vaca) > 0
+                      ? { qtd_agrotools_vaca: value }
+                      : {}),
                   }))
                 }
                 fieldMap={{
@@ -2002,6 +2010,10 @@ export default function EscalaGerenciador() {
                   setManualForm((current) => ({
                     ...current,
                     [field]: value,
+                    ...(field === "qtd_boi" &&
+                    toNumber(current.qtd_agrotools_boi) > 0
+                      ? { qtd_agrotools_boi: value }
+                      : {}),
                   }))
                 }
                 fieldMap={{

@@ -168,13 +168,13 @@ function MetricCard({
           onClick();
         }
       }}
-      className={`bg-white border-slate-200 shadow-sm transition-all hover:shadow-md ${
+      className={`h-full bg-white border-slate-200 shadow-sm transition-all hover:shadow-md ${
         onClick
           ? "cursor-pointer hover:-translate-y-0.5 hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
           : ""
       }`}
     >
-      <CardContent className="p-6">
+      <CardContent className="flex h-full min-h-[178px] flex-col p-6">
         <div className="flex items-start gap-4">
           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${colorClass}`}>
             {icon}
@@ -184,7 +184,7 @@ function MetricCard({
             <h3 className="text-4xl font-black text-slate-800 tracking-tight mt-1">{value}</h3>
           </div>
         </div>
-        <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+        <div className="mt-auto flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
           <p className="text-xs font-medium text-slate-400">{sub}</p>
           {onClick && (
             <span className="text-[10px] font-black uppercase tracking-wider text-primary whitespace-nowrap">
@@ -1639,7 +1639,7 @@ export function Dashboard() {
                   value={kpis.totalProspectado.toLocaleString("pt-BR")}
                   icon={<TrendingUp className="w-7 h-7 text-blue-600" />}
                   colorClass="bg-blue-50 text-blue-600"
-                  sub="Lotes disponíveis com prazo no período filtrado"
+                  sub="Animais disponíveis nos lotes"
                   onClick={() => openMetricDetails("prospectado")}
                 />
               </div>

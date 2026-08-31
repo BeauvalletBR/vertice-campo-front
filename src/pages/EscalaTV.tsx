@@ -20,6 +20,7 @@ import {
   addDays,
   formatDate,
   formatDayTitle,
+  getAgrotoolsPlannedTotal,
   getEmpresaLogada,
   getPlanningKey,
   getOrderTotal,
@@ -53,9 +54,6 @@ const numberFormat = new Intl.NumberFormat("pt-BR", {
 const getChinaTotal = (row: EscalaLinha) =>
   Number(row.QTD_CHINA_VACA || 0) + Number(row.QTD_CHINA_BOI || 0);
 
-const getAgrotoolsTotal = (row: EscalaLinha) =>
-  Number(row.QTD_AGROTOOLS_VACA || 0) + Number(row.QTD_AGROTOOLS_BOI || 0);
-
 const getRowAveragePrice = (row: EscalaLinha) =>
   calculateBaseWeightedPrice(row) ?? 0;
 
@@ -65,7 +63,7 @@ const calculateTvDaySubtotal = (rows: EscalaLinha[]) => {
       const quantity = getOrderTotal(row);
       accumulator.quantity += quantity;
       accumulator.china += getChinaTotal(row);
-      accumulator.agrotools += getAgrotoolsTotal(row);
+      accumulator.agrotools += getAgrotoolsPlannedTotal(row);
 
       return accumulator;
     },
@@ -514,7 +512,8 @@ export default function EscalaTV() {
                             <span className="rounded-full border border-[#CBE9D4] bg-[#F0FFF4] px-4 py-2 text-[#167A59]">
                               {numberFormat.format(
                                 dayRows.reduce(
-                                  (total, row) => total + getAgrotoolsTotal(row),
+                                  (total, row) =>
+                                    total + getAgrotoolsPlannedTotal(row),
                                   0,
                                 ),
                               )} Agrotools
@@ -601,7 +600,9 @@ export default function EscalaTV() {
                                     {numberFormat.format(getChinaTotal(row))}
                                   </td>
                                   <td className="border-r border-[#E5EDF5] px-3 py-4 text-right align-top text-[16px] font-black text-[#167A59]">
-                                    {numberFormat.format(getAgrotoolsTotal(row))}
+                                    {numberFormat.format(
+                                      getAgrotoolsPlannedTotal(row),
+                                    )}
                                   </td>
                                   <td className="px-3 py-4 align-top text-[14px] font-semibold text-[#52677E]">
                                     {row.OBSERVACAO_PEDIDO_ESCALA ||

@@ -87,6 +87,30 @@ export const getNextISOWeekValue = () => {
   return getISOWeekValue(nextWeek);
 };
 
+export const getInitialPlanningWeek = (
+  rows: EscalaLinha[],
+  referenceDate = new Date(),
+) => {
+  const currentWeek = getISOWeekValue(referenceDate);
+  const nextDate = new Date(referenceDate);
+  nextDate.setDate(nextDate.getDate() + 7);
+  const nextWeek = getISOWeekValue(nextDate);
+  const nextWeekStart = getStartDateFromWeek(nextWeek);
+  const nextWeekEnd = addDays(nextWeekStart, 6);
+
+  const hasNextWeekRecords = rows.some((row) => {
+    const slaughterDate = row.DATA_ABATE?.split("T")[0];
+    return Boolean(
+      slaughterDate &&
+        slaughterDate >= nextWeekStart &&
+        slaughterDate <= nextWeekEnd &&
+        getOrderTotal(row) > 0,
+    );
+  });
+
+  return hasNextWeekRecords ? nextWeek : currentWeek;
+};
+
 export const getWeekValueFromDate = (value: string) =>
   getISOWeekValue(parseLocalDate(value));
 
@@ -168,8 +192,35 @@ export const getOrderTotal = (row: EscalaLinha) => {
 export const getChinaPlannedTotal = (row: EscalaLinha) =>
   toNumber(row.QTD_CHINA_VACA) + toNumber(row.QTD_CHINA_BOI);
 
+export const getAgrotoolsPlannedQuantity = (
+  row: EscalaLinha,
+  sex: "VACA" | "BOI",
+) => {
+  const storedQuantity =
+    sex === "VACA"
+      ? toNumber(row.QTD_AGROTOOLS_VACA)
+      : toNumber(row.QTD_AGROTOOLS_BOI);
+  const currentAnimalQuantity =
+    sex === "VACA" ? toNumber(row.QTD_VACA) : toNumber(row.QTD_BOI);
+
+  return storedQuantity > 0 ? currentAnimalQuantity : 0;
+};
+
 export const getAgrotoolsPlannedTotal = (row: EscalaLinha) =>
-  toNumber(row.QTD_AGROTOOLS_VACA) + toNumber(row.QTD_AGROTOOLS_BOI);
+  getAgrotoolsPlannedQuantity(row, "VACA") +
+  getAgrotoolsPlannedQuantity(row, "BOI");
+
+export const hasPlanningSummaryData = (summary: EscalaResumo) =>
+  [
+    summary.QTD_PEDIDOS,
+    summary.QTD_PEDIDOS_INCLUIDOS,
+    summary.QTD_PEDIDOS_PENDENTES,
+    summary.QTD_MANUAIS,
+    summary.QTD_ITENS,
+    summary.QTD_TOTAL,
+    summary.TOTAL_CABECAS,
+    summary.QTD_TOTAL_PLANEJADO,
+  ].some((value) => toNumber(value) > 0);
 
 export const getPlanningCurralTotal = (rows: EscalaLinha[]) =>
   getUniquePlanningRecords(rows).reduce(
@@ -298,21 +349,14 @@ export const buildWeekOptions = (
   const map = new Map<string, WeekOption>();
 
   for (const summary of availableSummaries) {
+    if (!hasPlanningSummaryData(summary)) continue;
+
     const key = getWeekValueFromDate(summary.DATA_ABATE);
     if (key > latestPlanningWeek) continue;
 
     const [yearText, weekText] = key.split("-W");
     map.set(key, {
       key,
-      week: Number(weekText),
-      year: Number(yearText),
-    });
-  }
-
-  if (!map.has(latestPlanningWeek)) {
-    const [yearText, weekText] = latestPlanningWeek.split("-W");
-    map.set(latestPlanningWeek, {
-      key: latestPlanningWeek,
       week: Number(weekText),
       year: Number(yearText),
     });

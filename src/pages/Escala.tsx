@@ -82,6 +82,24 @@ import {
   getEffectivePremium,
 } from "@/lib/escala-pricing";
 import { exportScalePlanningToExcel } from "@/lib/escala-excel";
+import {
+  addDays,
+  formatDateInput,
+  getAgrotoolsPlannedQuantity,
+  getAgrotoolsPlannedTotal,
+  getInitialPlanningWeek,
+  getISOWeekValue,
+  getNextISOWeekValue,
+  getStartDateFromWeek,
+  getWeekCatalogRange,
+  getWeekValueFromDate,
+  hasPlanningSummaryData,
+  parseLocalDate,
+} from "@/lib/escala-planning";
+import {
+  buildManualUpdatePayload,
+  buildOrderUpdatePayload,
+} from "@/lib/escala-update";
 
 const numberFormat = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 0,
@@ -319,13 +337,6 @@ const resolvePlanningLocation = (
     : null;
 };
 
-const getTrimmedText = (value: unknown) => String(value ?? "").trim();
-
-const getTrimmedTextOrNull = (value: unknown) => {
-  const text = getTrimmedText(value);
-  return text.length > 0 ? text : null;
-};
-
 const getInlineFieldLabel = (field: InlineEditableField) => {
   switch (field) {
     case "nome_produtor":
@@ -393,97 +404,6 @@ const getInlineFieldValue = (
     default:
       return "";
   }
-};
-
-const getCurrentPlanningObservation = (row: EscalaLinha) =>
-  getTrimmedTextOrNull(row.OBSERVACAO_PEDIDO_ESCALA) ??
-  getTrimmedTextOrNull(row.OBSERVACAO_REGISTRO);
-
-const getCurrentPlanningBuyerId = (row: EscalaLinha) => {
-  const buyerId = toNumber(row.ID_COMPRADOR_ESCALA);
-  return buyerId > 0 ? buyerId : null;
-};
-
-const getCurrentPlanningBuyerSnapshot = (row: EscalaLinha) => {
-  const buyerId = getCurrentPlanningBuyerId(row);
-  if (!buyerId) return null;
-
-  return (
-    getTrimmedTextOrNull(row.COMPRADOR_ESCALA) ??
-    getTrimmedTextOrNull(row.COMPRADOR_EXIBICAO)
-  );
-};
-
-const getCurrentOrderDisplay = (row: EscalaLinha) => {
-  const order = toNumber(row.ORDEM_EXIBICAO);
-  return order > 0 ? order : undefined;
-};
-
-const formatDateInput = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const parseLocalDate = (value: string) => {
-  const normalized = value.split("T")[0];
-  const [year, month, day] = normalized.split("-").map(Number);
-  return new Date(year, month - 1, day, 12, 0, 0);
-};
-
-const addDays = (value: string, days: number) => {
-  const date = parseLocalDate(value);
-  date.setDate(date.getDate() + days);
-  return formatDateInput(date);
-};
-
-const getISOWeekValue = (date = new Date()) => {
-  const temporary = new Date(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
-  );
-  const day = temporary.getUTCDay() || 7;
-  temporary.setUTCDate(temporary.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(temporary.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(
-    ((temporary.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
-  );
-  return `${temporary.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
-};
-
-const getNextISOWeekValue = () => {
-  const nextWeek = new Date();
-  nextWeek.setDate(nextWeek.getDate() + 7);
-  return getISOWeekValue(nextWeek);
-};
-
-const getWeekValueFromDate = (value: string) =>
-  getISOWeekValue(parseLocalDate(value));
-
-const getWeekCatalogRange = () => {
-  const currentYear = new Date().getFullYear();
-  return {
-    data_inicio: `${currentYear - 2}-01-01`,
-    data_fim: `${currentYear + 1}-12-31`,
-  };
-};
-
-const getStartDateFromWeek = (weekValue: string) => {
-  const [yearText, weekText] = weekValue.split("-W");
-  const year = Number(yearText);
-  const week = Number(weekText);
-
-  if (!Number.isFinite(year) || !Number.isFinite(week)) {
-    return formatDateInput(new Date());
-  }
-
-  const januaryFourth = new Date(year, 0, 4, 12, 0, 0);
-  const januaryFourthDay = januaryFourth.getDay() || 7;
-  const monday = new Date(januaryFourth);
-  monday.setDate(
-    januaryFourth.getDate() - januaryFourthDay + 1 + (week - 1) * 7,
-  );
-  return formatDateInput(monday);
 };
 
 const formatDate = (value?: string | null) => {
@@ -666,9 +586,6 @@ const getOrderTotal = (row: EscalaLinha) => {
 const getChinaPlannedTotal = (row: EscalaLinha) =>
   toNumber(row.QTD_CHINA_VACA) + toNumber(row.QTD_CHINA_BOI);
 
-const getAgrotoolsPlannedTotal = (row: EscalaLinha) =>
-  toNumber(row.QTD_AGROTOOLS_VACA) + toNumber(row.QTD_AGROTOOLS_BOI);
-
 const getDisplayedChinaQuantity = (item: PlanningSexRow) =>
   item.chinaSuggestionMeta &&
   item.chinaSuggestionMeta.suggestedQuantity !== item.chinaQuantity
@@ -845,9 +762,7 @@ const splitRecordsBySex = (records: EscalaLinha[]): PlanningSexRow[] =>
         chinaSuggestedQuantity: null,
         chinaSuggestionMeta: null,
         agrotoolsQuantity:
-          sex === "VACA"
-            ? toNumber(row.QTD_AGROTOOLS_VACA)
-            : toNumber(row.QTD_AGROTOOLS_BOI),
+          getAgrotoolsPlannedQuantity(row, sex),
       });
     };
 
@@ -942,7 +857,8 @@ export default function Escala() {
   );
   const defaultManualEnd = useMemo(() => formatDateInput(today), [today]);
 
-  const [selectedWeek, setSelectedWeek] = useState(getNextISOWeekValue);
+  const [selectedWeek, setSelectedWeek] = useState(getISOWeekValue);
+  const [initialWeekResolved, setInitialWeekResolved] = useState(false);
   const [availableSummaries, setAvailableSummaries] = useState<EscalaResumo[]>(
     [],
   );
@@ -1194,6 +1110,45 @@ export default function Escala() {
   }, [nroempresa]);
 
   useEffect(() => {
+    let cancelled = false;
+    const referenceDate = new Date();
+    const currentWeek = getISOWeekValue(referenceDate);
+    const nextReferenceDate = new Date(referenceDate);
+    nextReferenceDate.setDate(nextReferenceDate.getDate() + 7);
+    const nextWeek = getISOWeekValue(nextReferenceDate);
+
+    setInitialWeekResolved(false);
+
+    const resolveInitialWeek = async () => {
+      try {
+        const data = await consultarEscala({
+          nroempresa,
+          data_inicio: getStartDateFromWeek(currentWeek),
+          data_fim: addDays(getStartDateFromWeek(nextWeek), 6),
+        });
+
+        if (!cancelled) {
+          setSelectedWeek(
+            getInitialPlanningWeek(
+              Array.isArray(data) ? data : [],
+              referenceDate,
+            ),
+          );
+        }
+      } catch {
+        if (!cancelled) setSelectedWeek(currentWeek);
+      } finally {
+        if (!cancelled) setInitialWeekResolved(true);
+      }
+    };
+
+    void resolveInitialWeek();
+    return () => {
+      cancelled = true;
+    };
+  }, [nroempresa]);
+
+  useEffect(() => {
     void loadChinaHistory();
   }, []);
 
@@ -1216,9 +1171,10 @@ export default function Escala() {
   }, []);
 
   useEffect(() => {
+    if (!initialWeekResolved) return;
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateStart, dateEnd, nroempresa]);
+  }, [dateStart, dateEnd, initialWeekResolved, nroempresa]);
 
   const summaries = useMemo(
     () =>
@@ -1320,16 +1276,15 @@ export default function Escala() {
 
   const weekTotals = useMemo(() => calculateTotals(lines), [lines]);
 
-  /*
-   * A próxima semana é o limite mais recente do seletor.
-   * Ela sempre aparece como a última opção do lado direito.
-   */
+  // Semanas além da próxima continuam fora do planejamento operacional.
   const latestPlanningWeek = useMemo(() => getNextISOWeekValue(), []);
 
   const weekOptions = useMemo(() => {
     const map = new Map<string, { key: string; week: number; year: number }>();
 
     for (const summary of availableSummaries) {
+      if (!hasPlanningSummaryData(summary)) continue;
+
       const key = getWeekValueFromDate(summary.DATA_ABATE);
 
       /*
@@ -1341,19 +1296,6 @@ export default function Escala() {
       const [yearText, weekText] = key.split("-W");
       map.set(key, {
         key,
-        week: Number(weekText),
-        year: Number(yearText),
-      });
-    }
-
-    /*
-     * Garante que a próxima semana exista no seletor mesmo que ainda
-     * não tenha escala ou pedidos cadastrados.
-     */
-    if (!map.has(latestPlanningWeek)) {
-      const [yearText, weekText] = latestPlanningWeek.split("-W");
-      map.set(latestPlanningWeek, {
-        key: latestPlanningWeek,
         week: Number(weekText),
         year: Number(yearText),
       });
@@ -1491,58 +1433,22 @@ export default function Escala() {
           : toNumber(row.QTD_CHINA_BOI);
 
       if (row.ORIGEM_REGISTRO === "MANUAL" && recordManualId > 0) {
-        const result = await editarRegistroManualEscala({
-          id_escala_item_manual: recordManualId,
-          nroempresa,
-          versao: toNumber(row.VERSAO_REGISTRO) || 1,
-          id_escala: scaleId,
-          nome_produtor: getTrimmedText(row.PRODUTOR),
-          nome_fazenda: getTrimmedTextOrNull(row.DESC_PROPRIEDADE),
-          municipio: getTrimmedTextOrNull(row.CIDADE_PROPRIEDADE),
-          uf: getTrimmedTextOrNull(row.UF_PROPRIEDADE),
-          id_comprador: getCurrentPlanningBuyerId(row),
-          comprador_nome_snapshot: getCurrentPlanningBuyerSnapshot(row),
-          qtd_vaca: toNumber(row.QTD_VACA),
-          qtd_boi: toNumber(row.QTD_BOI),
-          arrobas_vaca: toOptionalNumber(row.ARROBAS_VACA),
-          arrobas_boi: toOptionalNumber(row.ARROBAS_BOI),
-          vlrunitario_vaca: getAnimalBasePrice(row, "VACA"),
-          vlrunitario_boi: getAnimalBasePrice(row, "BOI"),
-          vlrunitario_premio: getEffectivePremium(row),
-          prazo_dias: toOptionalNumber(row.PRAZO_DIAS),
-          curral: toOptionalNumber(row.CURRAL),
-          qtd_china_vaca: nextChinaVaca,
-          qtd_china_boi: nextChinaBoi,
-          qtd_agrotools_vaca: toNumber(row.QTD_AGROTOOLS_VACA),
-          qtd_agrotools_boi: toNumber(row.QTD_AGROTOOLS_BOI),
-          status_agrotools_analise: row.STATUS_AGROTOOLS_ANALISE ?? undefined,
-          id_analise_agrotools: getTrimmedTextOrNull(row.ID_ANALISE_AGROTOOLS),
-          observacao: getCurrentPlanningObservation(row),
-          ordem_exibicao: getCurrentOrderDisplay(row),
-        });
+        const result = await editarRegistroManualEscala(
+          buildManualUpdatePayload(row, nroempresa, scaleId, {
+            qtd_china_vaca: nextChinaVaca,
+            qtd_china_boi: nextChinaBoi,
+          }),
+        );
 
         toast.success(result.message || "Quantidade China atualizada.");
       } else if (recordPedidoId > 0) {
-        const result = await editarVinculoPedidoEscala({
-          id_escala_pedido_vinculo: recordPedidoId,
-          nroempresa,
-          versao: recordPedidoVersion,
-          id_comprador: getCurrentPlanningBuyerId(row),
-          comprador_nome_snapshot: getCurrentPlanningBuyerSnapshot(row),
-          observacao: getCurrentPlanningObservation(row),
-          vlrunitario_premio: getEffectivePremium(row),
-          prazo_dias: toOptionalNumber(row.PRAZO_DIAS),
-          curral: toOptionalNumber(row.CURRAL),
-          arrobas_vaca: toOptionalNumber(row.ARROBAS_VACA),
-          arrobas_boi: toOptionalNumber(row.ARROBAS_BOI),
-          qtd_china_vaca: nextChinaVaca,
-          qtd_china_boi: nextChinaBoi,
-          qtd_agrotools_vaca: toNumber(row.QTD_AGROTOOLS_VACA),
-          qtd_agrotools_boi: toNumber(row.QTD_AGROTOOLS_BOI),
-          status_agrotools_analise: row.STATUS_AGROTOOLS_ANALISE ?? undefined,
-          id_analise_agrotools: getTrimmedTextOrNull(row.ID_ANALISE_AGROTOOLS),
-          ordem_exibicao: getCurrentOrderDisplay(row),
-        });
+        const result = await editarVinculoPedidoEscala(
+          buildOrderUpdatePayload(row, nroempresa, {
+            versao: recordPedidoVersion,
+            qtd_china_vaca: nextChinaVaca,
+            qtd_china_boi: nextChinaBoi,
+          }),
+        );
 
         toast.success(result.message || "Quantidade China atualizada.");
       } else {
@@ -1578,7 +1484,7 @@ export default function Escala() {
       }
 
       setChinaSuggestionState(null);
-      await refreshAll({ preserveScroll: true, background: true });
+      await loadData(false);
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -1816,35 +1722,7 @@ export default function Escala() {
       }
 
       if (recordIsManual) {
-        const payload: Record<string, unknown> = {
-          id_escala_item_manual: recordManualId,
-          nroempresa,
-          versao: toNumber(row.VERSAO_REGISTRO) || 1,
-          id_escala: rowScaleId,
-          nome_produtor: getTrimmedText(row.PRODUTOR),
-          nome_fazenda: getTrimmedTextOrNull(row.DESC_PROPRIEDADE),
-          municipio: getTrimmedTextOrNull(row.CIDADE_PROPRIEDADE),
-          uf: getTrimmedTextOrNull(row.UF_PROPRIEDADE),
-          id_comprador: getCurrentPlanningBuyerId(row),
-          comprador_nome_snapshot: getCurrentPlanningBuyerSnapshot(row),
-          qtd_vaca: toNumber(row.QTD_VACA),
-          qtd_boi: toNumber(row.QTD_BOI),
-          arrobas_vaca: toOptionalNumber(row.ARROBAS_VACA),
-          arrobas_boi: toOptionalNumber(row.ARROBAS_BOI),
-          vlrunitario_vaca: getAnimalBasePrice(row, "VACA"),
-          vlrunitario_boi: getAnimalBasePrice(row, "BOI"),
-          vlrunitario_premio: getEffectivePremium(row),
-          prazo_dias: toOptionalNumber(row.PRAZO_DIAS),
-          curral: toOptionalNumber(row.CURRAL),
-          qtd_china_vaca: toNumber(row.QTD_CHINA_VACA),
-          qtd_china_boi: toNumber(row.QTD_CHINA_BOI),
-          qtd_agrotools_vaca: toNumber(row.QTD_AGROTOOLS_VACA),
-          qtd_agrotools_boi: toNumber(row.QTD_AGROTOOLS_BOI),
-          status_agrotools_analise: row.STATUS_AGROTOOLS_ANALISE ?? null,
-          id_analise_agrotools: getTrimmedTextOrNull(row.ID_ANALISE_AGROTOOLS),
-          observacao: getCurrentPlanningObservation(row),
-          ordem_exibicao: getCurrentOrderDisplay(row),
-        };
+        const payload = buildManualUpdatePayload(row, nroempresa, rowScaleId);
 
         switch (focusField) {
           case "nome_produtor":
@@ -1900,32 +1778,13 @@ export default function Escala() {
             break;
         }
 
-        const result = await editarRegistroManualEscala(
-          payload as never,
-        );
+        const result = await editarRegistroManualEscala(payload);
 
         toast.success(result.message || "Registro manual atualizado.");
       } else {
-        const payload: Record<string, unknown> = {
-          id_escala_pedido_vinculo: recordPedidoId,
-          nroempresa,
+        const payload = buildOrderUpdatePayload(row, nroempresa, {
           versao: recordPedidoVersion,
-          id_comprador: getCurrentPlanningBuyerId(row),
-          comprador_nome_snapshot: getCurrentPlanningBuyerSnapshot(row),
-          observacao: getCurrentPlanningObservation(row),
-          vlrunitario_premio: getEffectivePremium(row),
-          prazo_dias: toOptionalNumber(row.PRAZO_DIAS),
-          curral: toOptionalNumber(row.CURRAL),
-          arrobas_vaca: toOptionalNumber(row.ARROBAS_VACA),
-          arrobas_boi: toOptionalNumber(row.ARROBAS_BOI),
-          qtd_china_vaca: toNumber(row.QTD_CHINA_VACA),
-          qtd_china_boi: toNumber(row.QTD_CHINA_BOI),
-          qtd_agrotools_vaca: toNumber(row.QTD_AGROTOOLS_VACA),
-          qtd_agrotools_boi: toNumber(row.QTD_AGROTOOLS_BOI),
-          status_agrotools_analise: row.STATUS_AGROTOOLS_ANALISE ?? null,
-          id_analise_agrotools: getTrimmedTextOrNull(row.ID_ANALISE_AGROTOOLS),
-          ordem_exibicao: getCurrentOrderDisplay(row),
-        };
+        });
 
         switch (focusField) {
           case "comprador":
@@ -1970,9 +1829,7 @@ export default function Escala() {
             );
         }
 
-        const result = await editarVinculoPedidoEscala(
-          payload as never,
-        );
+        const result = await editarVinculoPedidoEscala(payload);
 
         toast.success(result.message || "Informações do pedido atualizadas.");
       }

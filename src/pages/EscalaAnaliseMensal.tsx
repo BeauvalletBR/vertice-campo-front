@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  getAgrotoolsPlannedTotal,
   getEmpresaLogada,
   getOrderTotal,
   getUniquePlanningRecords,
@@ -130,8 +131,7 @@ const buildWeeklyMetrics = (
     current.cows += toNumber(row.QTD_VACA);
     current.china +=
       toNumber(row.QTD_CHINA_VACA) + toNumber(row.QTD_CHINA_BOI);
-    current.agrotools +=
-      toNumber(row.QTD_AGROTOOLS_VACA) + toNumber(row.QTD_AGROTOOLS_BOI);
+    current.agrotools += getAgrotoolsPlannedTotal(row);
     dailyMap.set(date, current);
   }
 
@@ -217,7 +217,7 @@ function MonthlyAnalysisSection({
             </div>
           </div>
 
-          <div className="-mx-1 flex max-w-full gap-2 overflow-x-auto px-1 pb-1">
+          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:w-auto xl:grid-cols-5">
             {[
               ["Animais", totals.animals],
               ["Bois", totals.bulls],
@@ -227,7 +227,7 @@ function MonthlyAnalysisSection({
             ].map(([label, value]) => (
               <div
                 key={String(label)}
-                className={`min-w-[92px] shrink-0 rounded-xl border px-3 py-2 ${softAccent}`}
+                className={`min-w-0 rounded-xl border px-3 py-2 ${softAccent}`}
               >
                 <p className="text-[9px] font-black uppercase tracking-[0.08em] opacity-75">
                   {label}
@@ -277,8 +277,16 @@ function MonthlyAnalysisSection({
                   </div>
                 </div>
 
-                <div className="overflow-x-auto overscroll-x-contain">
-                  <table className="w-full min-w-[620px] border-collapse text-xs">
+                <div className="min-w-0">
+                  <table className="w-full table-fixed border-collapse text-[10px] xl:text-xs">
+                    <colgroup>
+                      <col className="w-[25%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                    </colgroup>
                     <thead>
                       <tr className="bg-[#F7FAFC] text-[#173D6E]">
                         {[
@@ -291,7 +299,7 @@ function MonthlyAnalysisSection({
                         ].map((label) => (
                           <th
                             key={label}
-                            className="border-b border-r border-[#D7E2EC] px-3 py-2.5 text-right text-[9px] font-extrabold uppercase tracking-[0.06em] first:text-left last:border-r-0"
+                            className="border-b border-r border-[#D7E2EC] px-1.5 py-2.5 text-right text-[8px] font-extrabold uppercase tracking-[0.03em] first:text-left last:border-r-0 xl:px-2 xl:text-[9px]"
                           >
                             {label}
                           </th>
@@ -301,14 +309,17 @@ function MonthlyAnalysisSection({
                     <tbody>
                       {week.days.map((day) => (
                         <tr key={day.date} className="border-b border-[#EDF2F7]">
-                          <td className="border-r border-[#EDF2F7] px-3 py-2.5 font-bold capitalize text-[#425B73]">
+                          <td
+                            className="truncate border-r border-[#EDF2F7] px-1.5 py-2.5 font-bold capitalize text-[#425B73] xl:px-2"
+                            title={formatDay(day.date)}
+                          >
                             {formatDay(day.date)}
                           </td>
                           {[day.animals, day.bulls, day.cows, day.china, day.agrotools].map(
                             (value, index) => (
                               <td
                                 key={`${day.date}-${index}`}
-                                className="border-r border-[#EDF2F7] px-3 py-2.5 text-right font-extrabold text-[#173D6E] last:border-r-0"
+                                className="border-r border-[#EDF2F7] px-1.5 py-2.5 text-right font-extrabold text-[#173D6E] last:border-r-0 xl:px-2"
                               >
                                 {numberFormat.format(value)}
                               </td>
@@ -317,14 +328,14 @@ function MonthlyAnalysisSection({
                         </tr>
                       ))}
                       <tr className="bg-[#F0F4F8] font-black text-[#173D6E]">
-                        <td className="border-r border-[#D7E2EC] px-3 py-2.5 text-[10px] uppercase tracking-[0.08em]">
+                        <td className="border-r border-[#D7E2EC] px-1.5 py-2.5 text-[9px] uppercase tracking-[0.04em] xl:px-2">
                           Total
                         </td>
                         {[week.animals, week.bulls, week.cows, week.china, week.agrotools].map(
                           (value, index) => (
                             <td
                               key={`${week.key}-total-${index}`}
-                              className="border-r border-[#D7E2EC] px-3 py-2.5 text-right last:border-r-0"
+                              className="border-r border-[#D7E2EC] px-1.5 py-2.5 text-right last:border-r-0 xl:px-2"
                             >
                               {numberFormat.format(value)}
                             </td>
@@ -469,16 +480,16 @@ export default function EscalaAnaliseMensal() {
         ) : (
           <div className="space-y-7">
             <MonthlyAnalysisSection
-              title="Por data da escala"
-              description="Agrupamento pela data de abate informada no planejamento."
-              basis="scale"
-              weeks={scaleWeeks}
-            />
-            <MonthlyAnalysisSection
-              title="Por data do pedido (compra)"
+              title="Compra do Dia"
               description="Agrupamento pela data em que cada pedido foi comprado."
               basis="order"
               weeks={orderWeeks}
+            />
+            <MonthlyAnalysisSection
+              title="Escala do Dia"
+              description="Agrupamento pela data de abate informada no planejamento."
+              basis="scale"
+              weeks={scaleWeeks}
             />
           </div>
         )}

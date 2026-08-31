@@ -20,6 +20,8 @@ import {
   addDays,
   formatDate,
   formatDayTitle,
+  getAgrotoolsPlannedQuantity,
+  getAgrotoolsPlannedTotal,
   getEmpresaLogada,
   getOrderTotal,
   getPlanningCurralTotal,
@@ -50,9 +52,6 @@ const numberFormat = new Intl.NumberFormat("pt-BR", {
 
 const getChinaTotal = (row: EscalaLinha) =>
   Number(row.QTD_CHINA_VACA || 0) + Number(row.QTD_CHINA_BOI || 0);
-
-const getAgrotoolsTotal = (row: EscalaLinha) =>
-  Number(row.QTD_AGROTOOLS_VACA || 0) + Number(row.QTD_AGROTOOLS_BOI || 0);
 
 const getDisplayProducer = (row: EscalaLinha) =>
   String(row.PRODUTOR || "PRODUTOR NÃO INFORMADO")
@@ -132,9 +131,7 @@ const buildTvPlanningRows = (records: EscalaLinha[]): TvPlanningRow[] =>
             ? toNumber(row.QTD_CHINA_VACA)
             : toNumber(row.QTD_CHINA_BOI),
         agrotoolsQuantity:
-          sex === "VACA"
-            ? toNumber(row.QTD_AGROTOOLS_VACA)
-            : toNumber(row.QTD_AGROTOOLS_BOI),
+          getAgrotoolsPlannedQuantity(row, sex),
       });
     };
 
@@ -151,7 +148,7 @@ const buildTvPlanningRows = (records: EscalaLinha[]): TvPlanningRow[] =>
           quantity: total,
           unitValue: null,
           chinaQuantity: getChinaTotal(row),
-          agrotoolsQuantity: getAgrotoolsTotal(row),
+          agrotoolsQuantity: getAgrotoolsPlannedTotal(row),
         });
       }
     }

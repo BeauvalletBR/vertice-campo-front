@@ -39,6 +39,7 @@ import { consultarEscala } from "@/services/escala";
 import type { EscalaLinha } from "@/types/escala";
 import {
   calculatePlanningTotals,
+  getAgrotoolsPlannedTotal,
   getEmpresaLogada,
   getOrderTotal,
   getUniquePlanningRecords,
@@ -92,8 +93,6 @@ const BUYER_COLORS = [
   "#D9485F",
 ] as const;
 
-type DashboardViewMode = "month" | "week" | "year";
-type YearGrouping = "month" | "week";
 type DashboardDateBasis = "scale" | "order";
 
 interface DailyAggregate {
@@ -141,12 +140,6 @@ const getReferenceDate = (
 
 const getMonthKey = (value: string) => value.slice(0, 7);
 
-const getMonthLabel = (monthKey: string) => {
-  const [year, month] = monthKey.split("-");
-  const option = MONTH_OPTIONS.find((item) => item.value === month);
-  return option ? `${option.label}/${year}` : monthKey;
-};
-
 const formatShortDate = (value: string) => {
   const date = parseLocalDate(value);
   return date.toLocaleDateString("pt-BR", {
@@ -157,9 +150,6 @@ const formatShortDate = (value: string) => {
 
 const getChinaTotal = (row: EscalaLinha) =>
   toNumber(row.QTD_CHINA_VACA) + toNumber(row.QTD_CHINA_BOI);
-
-const getAgrotoolsTotal = (row: EscalaLinha) =>
-  toNumber(row.QTD_AGROTOOLS_VACA) + toNumber(row.QTD_AGROTOOLS_BOI);
 
 const getWeightedArrobas = (row: EscalaLinha) =>
   toNumber(row.ARROBAS_VACA) * toNumber(row.QTD_VACA) +
@@ -244,7 +234,7 @@ const buildDailyAggregates = (
 
     current.totalAnimals += getOrderTotal(row);
     current.china += getChinaTotal(row);
-    current.agrotools += getAgrotoolsTotal(row);
+    current.agrotools += getAgrotoolsPlannedTotal(row);
     map.set(day, current);
   }
 
@@ -300,45 +290,6 @@ const groupDailyByWeek = (
   });
 };
 
-const groupDailyByMonth = (days: DailyAggregate[]): PeriodBucket[] => {
-  const map = new Map<string, PeriodBucket>();
-
-  for (const day of days) {
-    const monthKey = getMonthKey(day.day);
-    const current = map.get(monthKey) || {
-      key: monthKey,
-      label: getMonthLabel(monthKey),
-      shortLabel: monthKey.split("-")[1],
-      rangeLabel: getMonthLabel(monthKey),
-      totalAnimals: 0,
-      china: 0,
-      agrotools: 0,
-      averageAnimalsPerDay: 0,
-      averageChinaPerDay: 0,
-      averageAgrotoolsPerDay: 0,
-      days: [],
-    };
-
-    current.totalAnimals += day.totalAnimals;
-    current.china += day.china;
-    current.agrotools += day.agrotools;
-    current.days.push(day);
-    map.set(monthKey, current);
-  }
-
-  return Array.from(map.values())
-    .sort((a, b) => a.key.localeCompare(b.key))
-    .map((bucket) => {
-      const size = bucket.days.length || 1;
-      return {
-        ...bucket,
-        averageAnimalsPerDay: bucket.totalAnimals / size,
-        averageChinaPerDay: bucket.china / size,
-        averageAgrotoolsPerDay: bucket.agrotools / size,
-      };
-    });
-};
-
 const buildBuyerAggregates = (records: EscalaLinha[]) => {
   const map = new Map<string, BuyerAggregate>();
 
@@ -355,7 +306,7 @@ const buildBuyerAggregates = (records: EscalaLinha[]) => {
     };
 
     current.china += getChinaTotal(row);
-    current.agrotools += getAgrotoolsTotal(row);
+    current.agrotools += getAgrotoolsPlannedTotal(row);
     current.animals += getOrderTotal(row);
     map.set(key, current);
   }
@@ -375,7 +326,7 @@ function FilterSelect({
   options: Array<{ value: string; label: string }>;
 }) {
   return (
-    <label className="flex w-[220px] shrink-0 snap-start flex-col gap-1.5 sm:w-auto sm:min-w-0 lg:min-w-[170px]">
+    <label className="flex min-w-0 flex-col gap-1.5">
       <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#60758A]">
         {label}
       </span>
@@ -481,14 +432,11 @@ const renderPieLabel = ({
 
 export default function EscalaDashboardScreen() {
   const { user } = useAuth();
-  const [viewMode, setViewMode] = useState<DashboardViewMode>("week");
   const [dateBasis, setDateBasis] = useState<DashboardDateBasis>("scale");
-  const [yearGrouping, setYearGrouping] = useState<YearGrouping>("week");
   const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState(
     String(new Date().getMonth() + 1).padStart(2, "0"),
   );
-  const [selectedWeekKey, setSelectedWeekKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [yearLines, setYearLines] = useState<EscalaLinha[]>([]);
 
@@ -560,72 +508,25 @@ export default function EscalaDashboardScreen() {
     }
   }, [monthOptions, selectedMonth]);
 
-  const monthRecords = useMemo(() => {
-    if (viewMode === "year") return referenceYearRecords;
-    return referenceYearRecords.filter(
+  const filteredRecords = useMemo(
+    () =>
+      referenceYearRecords.filter(
       (row) =>
         getMonthKey(getReferenceDate(row, dateBasis)) ===
         `${selectedYear}-${selectedMonth}`,
-    );
-  }, [dateBasis, referenceYearRecords, selectedMonth, selectedYear, viewMode]);
-
-  const weekOptions = useMemo(() => {
-    const baseRecords = viewMode === "week" ? monthRecords : referenceYearRecords;
-    const map = new Map<string, { value: string; label: string }>();
-
-    for (const row of baseRecords) {
-      const day = getReferenceDate(row, dateBasis);
-      if (!day) continue;
-
-      const week = getIsoWeekInfo(day);
-      if (!map.has(week.key)) {
-        map.set(week.key, {
-          value: week.key,
-          label: `Semana ${String(week.isoWeek).padStart(2, "0")} • ${formatShortDate(
-            week.start,
-          )} - ${formatShortDate(week.end)}`,
-        });
-      }
-    }
-
-    return Array.from(map.values()).sort((a, b) => a.value.localeCompare(b.value));
-  }, [dateBasis, monthRecords, referenceYearRecords, viewMode]);
-
-  useEffect(() => {
-    if (viewMode !== "week") return;
-    if (!weekOptions.some((option) => option.value === selectedWeekKey)) {
-      setSelectedWeekKey(weekOptions[0]?.value || "");
-    }
-  }, [selectedWeekKey, viewMode, weekOptions]);
-
-  const filteredRecords = useMemo(() => {
-    if (viewMode === "year") return referenceYearRecords;
-    if (viewMode === "month") return monthRecords;
-
-    return monthRecords.filter((row) => {
-      const day = getReferenceDate(row, dateBasis);
-      return Boolean(day && getIsoWeekInfo(day).key === selectedWeekKey);
-    });
-  }, [dateBasis, monthRecords, referenceYearRecords, selectedWeekKey, viewMode]);
+      ),
+    [dateBasis, referenceYearRecords, selectedMonth, selectedYear],
+  );
 
   const dailyAggregates = useMemo(
     () => buildDailyAggregates(filteredRecords, dateBasis),
     [dateBasis, filteredRecords],
   );
 
-  const periodBuckets = useMemo(() => {
-    if (viewMode === "year") {
-      return yearGrouping === "month"
-        ? groupDailyByMonth(dailyAggregates)
-        : groupDailyByWeek(dailyAggregates, false);
-    }
-
-    if (viewMode === "month") {
-      return groupDailyByWeek(dailyAggregates, true);
-    }
-
-    return groupDailyByWeek(dailyAggregates, false);
-  }, [dailyAggregates, viewMode, yearGrouping]);
+  const periodBuckets = useMemo(
+    () => groupDailyByWeek(dailyAggregates, true),
+    [dailyAggregates],
+  );
 
   const buyerAggregates = useMemo(
     () => buildBuyerAggregates(filteredRecords),
@@ -668,13 +569,6 @@ export default function EscalaDashboardScreen() {
   const averageArrobas =
     averageArrobasHeads > 0 ? averageArrobasBase / averageArrobasHeads : 0;
 
-  const uniqueWeeksCount = new Set(
-    dailyAggregates.map((item) => getIsoWeekInfo(item.day).key),
-  ).size;
-  const uniqueMonthsCount = new Set(
-    dailyAggregates.map((item) => getMonthKey(item.day)),
-  ).size;
-
   const chartData = useMemo(
     () =>
       periodBuckets.map((bucket) => ({
@@ -691,24 +585,11 @@ export default function EscalaDashboardScreen() {
 
   const rangeDescription = useMemo(() => {
     const suffix = ` • Por ${dateBasisLabel}`;
-    if (viewMode === "year") {
-      return yearGrouping === "month"
-        ? `Ano ${selectedYear} agrupado por mês${suffix}`
-        : `Ano ${selectedYear} detalhado por semana${suffix}`;
-    }
-
-    if (viewMode === "month") {
-      const monthLabel =
-        MONTH_OPTIONS.find((option) => option.value === selectedMonth)?.label ||
-        selectedMonth;
-      return `${monthLabel} de ${selectedYear} agrupado por semana${suffix}`;
-    }
-
-    const selectedWeek = weekOptions.find((option) => option.value === selectedWeekKey);
-    return selectedWeek
-      ? `${selectedWeek.label} em ${selectedYear}${suffix}`
-      : `Semana selecionada em ${selectedYear}${suffix}`;
-  }, [dateBasisLabel, selectedMonth, selectedWeekKey, selectedYear, viewMode, weekOptions, yearGrouping]);
+    const monthLabel =
+      MONTH_OPTIONS.find((option) => option.value === selectedMonth)?.label ||
+      selectedMonth;
+    return `${monthLabel} de ${selectedYear} agrupado por semana${suffix}`;
+  }, [dateBasisLabel, selectedMonth, selectedYear]);
 
   const cards = [
     {
@@ -791,8 +672,8 @@ export default function EscalaDashboardScreen() {
               Dashboard da Escala
             </h1>
             <p className="mt-2 max-w-3xl text-sm font-medium text-[#60758A]">
-              Acompanhamento macro de semanas, meses e compradores por data da
-              escala ou pela data em que o pedido foi comprado.
+              Acompanhamento macro do mês por data da escala ou pela data em que
+              o pedido foi comprado.
             </p>
           </div>
 
@@ -804,18 +685,7 @@ export default function EscalaDashboardScreen() {
         <Card className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_4px_18px_rgba(23,61,110,0.05)]">
           <div className="h-1 bg-[#173D6E]" />
           <CardContent className="space-y-4 p-3 sm:p-5">
-            <div className="-mx-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-3 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:px-0 lg:flex lg:flex-wrap">
-              <FilterSelect
-                label="Visão"
-                value={viewMode}
-                onChange={(value) => setViewMode(value as DashboardViewMode)}
-                options={[
-                  { value: "month", label: "Mês" },
-                  { value: "week", label: "Semana" },
-                  { value: "year", label: "Ano" },
-                ]}
-              />
-
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <FilterSelect
                 label="Data-base"
                 value={dateBasis}
@@ -835,38 +705,15 @@ export default function EscalaDashboardScreen() {
                 options={yearOptions}
               />
 
-              {viewMode !== "year" && (
-                <FilterSelect
-                  label="Mês"
-                  value={selectedMonth}
-                  onChange={setSelectedMonth}
-                  options={monthOptions.map((option) => ({
-                    value: option.value,
-                    label: option.label,
-                  }))}
-                />
-              )}
-
-              {viewMode === "week" && (
-                <FilterSelect
-                  label="Semana"
-                  value={selectedWeekKey}
-                  onChange={setSelectedWeekKey}
-                  options={weekOptions}
-                />
-              )}
-
-              {viewMode === "year" && (
-                <FilterSelect
-                  label="Agrupamento"
-                  value={yearGrouping}
-                  onChange={(value) => setYearGrouping(value as YearGrouping)}
-                  options={[
-                    { value: "month", label: "Por mês" },
-                    { value: "week", label: "Por semana" },
-                  ]}
-                />
-              )}
+              <FilterSelect
+                label="Mês"
+                value={selectedMonth}
+                onChange={setSelectedMonth}
+                options={monthOptions.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#60758A]">
@@ -1012,15 +859,7 @@ export default function EscalaDashboardScreen() {
               <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                 <div>
                   <h2 className="text-xl font-black text-[#173D6E]">
-                    {viewMode === "month"
-                      ? "Semanas do mês"
-                      : viewMode === "week"
-                        ? dateBasis === "order"
-                          ? "Quantidade comprada por dia"
-                          : "Leitura diária da semana"
-                        : yearGrouping === "month"
-                          ? "Fechamento mensal"
-                          : "Fechamento semanal"}
+                    Semanas do mês
                   </h2>
                   <p className="mt-1 text-sm font-medium text-[#60758A]">
                     Resumo operacional agrupado por {dateBasisLabel}.
@@ -1056,20 +895,26 @@ export default function EscalaDashboardScreen() {
                         </p>
                       </div>
 
-                      <div className="overflow-x-auto overscroll-x-contain">
-                        <table className="w-full min-w-[430px] border-collapse text-sm sm:min-w-0">
+                      <div className="min-w-0">
+                        <table className="w-full table-fixed border-collapse text-xs xl:text-sm">
+                          <colgroup>
+                            <col className="w-[31%]" />
+                            <col className="w-[23%]" />
+                            <col className="w-[23%]" />
+                            <col className="w-[23%]" />
+                          </colgroup>
                           <thead>
                             <tr className="bg-[#F7FAFC] text-[#173D6E]">
-                              <th className="border-b border-r border-[#D7E2EC] px-3 py-2 text-left text-[10px] font-extrabold uppercase tracking-[0.08em]">
+                              <th className="border-b border-r border-[#D7E2EC] px-2 py-2 text-left text-[9px] font-extrabold uppercase tracking-[0.04em]">
                                 Data
                               </th>
-                              <th className="border-b border-r border-[#D7E2EC] px-3 py-2 text-right text-[10px] font-extrabold uppercase tracking-[0.08em]">
+                              <th className="border-b border-r border-[#D7E2EC] px-2 py-2 text-right text-[9px] font-extrabold uppercase tracking-[0.04em]">
                                 {dateBasis === "order" ? "Comprados" : "Animais"}
                               </th>
-                              <th className="border-b border-r border-[#D7E2EC] bg-[#FFF3D7] px-3 py-2 text-right text-[10px] font-extrabold uppercase tracking-[0.08em]">
+                              <th className="border-b border-r border-[#D7E2EC] bg-[#FFF3D7] px-2 py-2 text-right text-[9px] font-extrabold uppercase tracking-[0.04em]">
                                 China
                               </th>
-                              <th className="border-b border-[#D7E2EC] bg-[#E3F8E9] px-3 py-2 text-right text-[10px] font-extrabold uppercase tracking-[0.08em]">
+                              <th className="border-b border-[#D7E2EC] bg-[#E3F8E9] px-2 py-2 text-right text-[9px] font-extrabold uppercase tracking-[0.04em]">
                                 Agrotools
                               </th>
                             </tr>
@@ -1077,16 +922,16 @@ export default function EscalaDashboardScreen() {
                           <tbody>
                             {bucket.days.map((day) => (
                               <tr key={day.day} className="border-b border-[#EDF2F7]">
-                                <td className="border-r border-[#EDF2F7] px-3 py-2 font-bold text-[#425B73]">
+                                <td className="truncate border-r border-[#EDF2F7] px-2 py-2 font-bold text-[#425B73]" title={day.label}>
                                   {day.label}
                                 </td>
-                                <td className="border-r border-[#EDF2F7] px-3 py-2 text-right font-extrabold text-[#173D6E]">
+                                <td className="border-r border-[#EDF2F7] px-2 py-2 text-right font-extrabold text-[#173D6E]">
                                   {numberFormat.format(day.totalAnimals)}
                                 </td>
-                                <td className="border-r border-[#EDF2F7] bg-[#FFF8EA] px-3 py-2 text-right font-extrabold text-[#B85B00]">
+                                <td className="border-r border-[#EDF2F7] bg-[#FFF8EA] px-2 py-2 text-right font-extrabold text-[#B85B00]">
                                   {numberFormat.format(day.china)}
                                 </td>
-                                <td className="bg-[#F0FFF4] px-3 py-2 text-right font-extrabold text-[#13795B]">
+                                <td className="bg-[#F0FFF4] px-2 py-2 text-right font-extrabold text-[#13795B]">
                                   {numberFormat.format(day.agrotools)}
                                 </td>
                               </tr>
@@ -1123,8 +968,14 @@ export default function EscalaDashboardScreen() {
                   Consolidação por comprador usando {dateBasisLabel}.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="overflow-x-auto overscroll-x-contain p-0">
-                <table className="w-full min-w-[540px] border-collapse text-sm">
+              <CardContent className="min-w-0 p-0">
+                <table className="w-full table-fixed border-collapse text-xs sm:text-sm">
+                  <colgroup>
+                    <col className="w-[55%]" />
+                    <col className="w-[15%]" />
+                    <col className="w-[15%]" />
+                    <col className="w-[15%]" />
+                  </colgroup>
                   <thead>
                     <tr className="bg-[#F8FBFD] text-[#173D6E]">
                       <th className="border-b border-r border-[#D7E2EC] px-4 py-3 text-left text-[10px] font-extrabold uppercase tracking-[0.08em]">
@@ -1157,10 +1008,12 @@ export default function EscalaDashboardScreen() {
                           key={`${buyer.code ?? "SEM"}-${buyer.buyer}`}
                           className="border-b border-[#EDF2F7] last:border-b-0"
                         >
-                          <td className="border-r border-[#EDF2F7] px-4 py-3 font-extrabold text-[#173D6E]">
-                            <div className="flex items-center gap-2">
+                          <td className="border-r border-[#EDF2F7] px-2 py-3 font-extrabold text-[#173D6E] sm:px-4">
+                            <div className="flex min-w-0 items-center gap-2">
                               <UserRound className="h-4 w-4 text-[#1B58A0]" />
-                              <span>{buyer.buyer}</span>
+                              <span className="truncate" title={buyer.buyer}>
+                                {buyer.buyer}
+                              </span>
                             </div>
                           </td>
                           <td className="border-r border-[#EDF2F7] px-4 py-3 text-right font-extrabold text-[#173D6E]">
