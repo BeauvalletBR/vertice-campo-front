@@ -58,6 +58,26 @@ describe("escala update safety", () => {
       observacao: "Manter observação",
     });
   });
+
+  it("usa o comprador automatico do ERP quando o codigo e maior que um", () => {
+    const row = createRow({
+      ID_ESCALA_PEDIDO_VINCULO: 78,
+      VERSAO_REGISTRO: 2,
+      SEQCOMPRADOR_ERP: 45,
+      COMPRADOR_ERP: "COMPRADOR AUTOMATICO",
+      ID_COMPRADOR_ESCALA: null,
+      COMPRADOR_ESCALA: null,
+      PRAZO_DIAS: null,
+      CURRAL: null,
+    });
+
+    expect(buildOrderUpdatePayload(row, 1)).toMatchObject({
+      id_comprador: 45,
+      comprador_nome_snapshot: "COMPRADOR AUTOMATICO",
+      prazo_dias: null,
+      curral: null,
+    });
+  });
 });
 
 describe("initial planning week", () => {

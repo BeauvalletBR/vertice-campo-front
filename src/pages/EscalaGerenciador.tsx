@@ -57,6 +57,7 @@ import {
 import { getAgrotoolsPlannedQuantity } from "@/lib/escala-planning";
 import {
   buildOrderUpdatePayload,
+  getPlanningBuyerId,
   getPlanningBuyerSnapshot,
   getPlanningObservation,
 } from "@/lib/escala-update";
@@ -680,7 +681,7 @@ export default function EscalaGerenciador() {
       id_escala_pedido_vinculo: id,
       versao: toNumber(row.VERSAO_REGISTRO || row.VERSAO_VINCULO) || 1,
       nro_pedido: toNumber(row.NROPEDIDO),
-      id_comprador: toNumber(row.ID_COMPRADOR_ESCALA) || null,
+      id_comprador: getPlanningBuyerId(row),
       comprador_nome_snapshot: buyerName,
       observacao: getPlanningObservation(row) || "",
       vlrunitario_premio:
@@ -689,7 +690,7 @@ export default function EscalaGerenciador() {
           : String(getEffectivePremium(row)),
       prazo_dias:
         row.PRAZO_DIAS === null || row.PRAZO_DIAS === undefined
-          ? "2"
+          ? ""
           : String(row.PRAZO_DIAS),
       curral: row.CURRAL == null ? "" : String(row.CURRAL),
       arrobas_vaca:
@@ -1032,12 +1033,6 @@ export default function EscalaGerenciador() {
       return;
     }
 
-    if (!editOrderForm.id_comprador) {
-      toast.warning("Informe o comprador responsável.");
-      focusModalField("comprador");
-      return;
-    }
-
     if (premium !== null && premium < 0) {
       toast.warning("O prêmio unitário não pode ser negativo.");
       focusModalField("vlrunitario_premio");
@@ -1045,9 +1040,8 @@ export default function EscalaGerenciador() {
     }
 
     if (
-      prazoDias === null ||
-      prazoDias < 0 ||
-      !Number.isInteger(prazoDias)
+      prazoDias !== null &&
+      (prazoDias < 0 || !Number.isInteger(prazoDias))
     ) {
       toast.warning("Informe um prazo inteiro maior ou igual a zero.");
       focusModalField("prazo_dias");
@@ -1055,27 +1049,9 @@ export default function EscalaGerenciador() {
     }
 
     const curral = toNullableNumber(editOrderForm.curral);
-    if (curral === null || curral < 0 || !Number.isInteger(curral)) {
+    if (curral !== null && (curral < 0 || !Number.isInteger(curral))) {
       toast.warning("Informe o curral com um número inteiro maior ou igual a zero.");
       focusModalField("curral");
-      return;
-    }
-
-    if (
-      toNumber(editingRow?.QTD_VACA) > 0 &&
-      (toNullableNumber(editOrderForm.arrobas_vaca) ?? 0) <= 0
-    ) {
-      toast.warning("Informe o peso em arrobas das vacas.");
-      focusModalField("arrobas_vaca");
-      return;
-    }
-
-    if (
-      toNumber(editingRow?.QTD_BOI) > 0 &&
-      (toNullableNumber(editOrderForm.arrobas_boi) ?? 0) <= 0
-    ) {
-      toast.warning("Informe o peso em arrobas dos bois.");
-      focusModalField("arrobas_boi");
       return;
     }
 
@@ -1131,12 +1107,6 @@ export default function EscalaGerenciador() {
       return false;
     }
 
-    if (!manualForm.id_comprador) {
-      toast.warning("Informe o comprador responsável.");
-      focusModalField("comprador");
-      return false;
-    }
-
     const qtdVaca = toNumber(manualForm.qtd_vaca);
     const qtdBoi = toNumber(manualForm.qtd_boi);
 
@@ -1147,12 +1117,6 @@ export default function EscalaGerenciador() {
     }
 
     if (qtdVaca > 0) {
-      if ((toNullableNumber(manualForm.arrobas_vaca) ?? 0) <= 0) {
-        toast.warning("Informe o peso em arrobas das vacas.");
-        focusModalField("arrobas_vaca");
-        return false;
-      }
-
       if ((toNullableNumber(manualForm.vlrunitario_vaca) ?? 0) <= 0) {
         toast.warning("Informe o valor unitário das vacas.");
         focusModalField("vlrunitario_vaca");
@@ -1161,12 +1125,6 @@ export default function EscalaGerenciador() {
     }
 
     if (qtdBoi > 0) {
-      if ((toNullableNumber(manualForm.arrobas_boi) ?? 0) <= 0) {
-        toast.warning("Informe o peso em arrobas dos bois.");
-        focusModalField("arrobas_boi");
-        return false;
-      }
-
       if ((toNullableNumber(manualForm.vlrunitario_boi) ?? 0) <= 0) {
         toast.warning("Informe o valor unitário dos bois.");
         focusModalField("vlrunitario_boi");
@@ -1183,9 +1141,8 @@ export default function EscalaGerenciador() {
 
     const prazoDias = toNullableNumber(manualForm.prazo_dias);
     if (
-      prazoDias === null ||
-      prazoDias < 0 ||
-      !Number.isInteger(prazoDias)
+      prazoDias !== null &&
+      (prazoDias < 0 || !Number.isInteger(prazoDias))
     ) {
       toast.warning("Informe um prazo inteiro maior ou igual a zero.");
       focusModalField("prazo_dias");
@@ -1193,7 +1150,7 @@ export default function EscalaGerenciador() {
     }
 
     const curral = toNullableNumber(manualForm.curral);
-    if (curral === null || curral < 0 || !Number.isInteger(curral)) {
+    if (curral !== null && (curral < 0 || !Number.isInteger(curral))) {
       toast.warning("Informe o curral com um número inteiro maior ou igual a zero.");
       focusModalField("curral");
       return false;
@@ -1688,7 +1645,7 @@ export default function EscalaGerenciador() {
               buyerSuggestions,
               selectBuyer,
               clearBuyer,
-              required: true,
+              required: false,
               focusField: "comprador",
             })}
 
@@ -1708,7 +1665,7 @@ export default function EscalaGerenciador() {
                   }
                 />
               </Field>
-              <Field label="Prazo (dias)" required>
+              <Field label="Prazo (dias)">
                 <Input
                   data-focus-field="prazo_dias"
                   type="number"
@@ -1723,7 +1680,7 @@ export default function EscalaGerenciador() {
                   }
                 />
               </Field>
-              <Field label="Curral" required>
+              <Field label="Curral">
                 <Input
                   data-focus-field="curral"
                   type="number"
@@ -1738,7 +1695,7 @@ export default function EscalaGerenciador() {
                   }
                 />
               </Field>
-              <Field label="@ vaca" required>
+              <Field label="@ vaca">
                 <Input
                   data-focus-field="arrobas_vaca"
                   type="number"
@@ -1753,7 +1710,7 @@ export default function EscalaGerenciador() {
                   }
                 />
               </Field>
-              <Field label="@ boi" required>
+              <Field label="@ boi">
                 <Input
                   data-focus-field="arrobas_boi"
                   type="number"
@@ -1966,7 +1923,7 @@ export default function EscalaGerenciador() {
               buyerSuggestions,
               selectBuyer,
               clearBuyer,
-              required: true,
+              required: false,
               focusField: "comprador",
             })}
 
@@ -2042,7 +1999,7 @@ export default function EscalaGerenciador() {
                   }
                 />
               </Field>
-              <Field label="Prazo (dias)" required>
+              <Field label="Prazo (dias)">
                 <Input
                   data-focus-field="prazo_dias"
                   type="number"
@@ -2057,7 +2014,7 @@ export default function EscalaGerenciador() {
                   }
                 />
               </Field>
-              <Field label="Curral" required>
+              <Field label="Curral">
                 <Input
                   data-focus-field="curral"
                   type="number"
@@ -2415,7 +2372,7 @@ function AnimalBlock({
         />
         <Field
           label="@ viva"
-          required={required && toNumber(quantity) > 0}
+          required={false}
         >
           <Input
             data-focus-field={fieldMap.arrobas}

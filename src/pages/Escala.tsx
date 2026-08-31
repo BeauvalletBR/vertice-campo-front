@@ -1922,9 +1922,15 @@ export default function Escala() {
               placeholder={
                 loadingInlineBuyers ? "Carregando compradores..." : "Nome ou código"
               }
-              onChange={(event) => {
-                setInlineBuyerSearch(event.target.value);
-                setInlineSelectedBuyerId(null);
+             onChange={(event) => {
+               setInlineBuyerSearch(event.target.value);
+               setInlineSelectedBuyerId(null);
+             }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && inlineSelectedBuyerId) {
+                  event.preventDefault();
+                  requestInlineEditConfirmation();
+                }
               }}
             />
 
@@ -1984,6 +1990,12 @@ export default function Escala() {
             value={inlineEditValue}
             className={`h-8 text-[11px] font-semibold ${textAlignClass}`}
             onChange={(event) => setInlineEditValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                requestInlineEditConfirmation();
+              }
+            }}
             placeholder={
               options?.placeholder || `Informe ${getInlineFieldLabel(field)}`
             }
@@ -2621,8 +2633,10 @@ export default function Escala() {
                               const compradorPrecisaSelecionar =
                                 (row.ORIGEM_REGISTRO === "MANUAL" &&
                                   !compradorPreenchido) ||
-                                (compradorAutomaticoErp &&
-                                  !compradorPreenchido);
+                                (registroErp &&
+                                  !compradorAutomaticoErp &&
+                                  toNumber(row.ID_COMPRADOR_ESCALA) <= 0 &&
+                                  !String(row.COMPRADOR_ESCALA || "").trim());
                               const compradorExibido = compradorPreenchido
                                 ? resolvePlanningBuyerName(row)
                                 : !compradorPrecisaSelecionar &&
@@ -3347,7 +3361,20 @@ export default function Escala() {
       </div>
 
       <Dialog open={inlineConfirmOpen} onOpenChange={setInlineConfirmOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent
+          className="sm:max-w-lg"
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              !event.repeat &&
+              !savingInlineEdit &&
+              inlineEditState
+            ) {
+              event.preventDefault();
+              void handleInlineEditSave();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>
               {inlineEditState
@@ -3384,6 +3411,7 @@ export default function Escala() {
             </Button>
             <Button
               type="button"
+              autoFocus
               disabled={savingInlineEdit || !inlineEditState}
               onClick={() => void handleInlineEditSave()}
             >
@@ -3496,7 +3524,21 @@ export default function Escala() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent
+          className="sm:max-w-lg"
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              !event.repeat &&
+              !savingChinaSuggestionKey &&
+              canManage &&
+              chinaSuggestionState?.item.chinaSuggestionMeta
+            ) {
+              event.preventDefault();
+              void applyChinaSuggestion();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Sugestão histórica de China</DialogTitle>
             <DialogDescription>
@@ -3576,6 +3618,7 @@ export default function Escala() {
             </Button>
             <Button
               type="button"
+              autoFocus
               disabled={
                 !canManage ||
                 !chinaSuggestionState?.item.chinaSuggestionMeta ||

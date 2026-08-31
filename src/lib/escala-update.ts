@@ -20,13 +20,33 @@ export const getPlanningObservation = (row: EscalaLinha) =>
   getTextOrNull(row.OBSERVACAO_REGISTRO);
 
 export const getPlanningBuyerId = (row: EscalaLinha) => {
-  const buyerId = toNumber(row.ID_COMPRADOR_ESCALA);
-  return buyerId > 0 ? buyerId : null;
+  const scaleBuyerId = toNumber(row.ID_COMPRADOR_ESCALA);
+  if (scaleBuyerId > 0) return scaleBuyerId;
+
+  const erpBuyerId = toNumber(row.SEQCOMPRADOR_ERP);
+  return erpBuyerId > 1 ? erpBuyerId : null;
 };
 
-export const getPlanningBuyerSnapshot = (row: EscalaLinha) =>
-  getTextOrNull(row.COMPRADOR_ESCALA) ??
-  getTextOrNull(row.COMPRADOR_EXIBICAO);
+export const getPlanningBuyerSnapshot = (row: EscalaLinha) => {
+  if (toNumber(row.ID_COMPRADOR_ESCALA) > 0) {
+    return (
+      getTextOrNull(row.COMPRADOR_ESCALA) ??
+      getTextOrNull(row.COMPRADOR_EXIBICAO)
+    );
+  }
+
+  if (toNumber(row.SEQCOMPRADOR_ERP) > 1) {
+    return (
+      getTextOrNull(row.COMPRADOR_ERP) ??
+      getTextOrNull(row.COMPRADOR_EXIBICAO)
+    );
+  }
+
+  return (
+    getTextOrNull(row.COMPRADOR_ESCALA) ??
+    getTextOrNull(row.COMPRADOR_EXIBICAO)
+  );
+};
 
 const getDisplayOrder = (row: EscalaLinha) => {
   const order = toNumber(row.ORDEM_EXIBICAO);

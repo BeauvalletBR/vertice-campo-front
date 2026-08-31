@@ -143,6 +143,6 @@ export const shouldWarnMissingPlanningBuyer = (
   _buyerDirectory: BuyerDirectory,
 ) =>
   row.ORIGEM_REGISTRO === "ERP" &&
-  toNumber(row.SEQCOMPRADOR_ERP) > 1 &&
+  toNumber(row.SEQCOMPRADOR_ERP) <= 1 &&
   toNumber(row.ID_COMPRADOR_ESCALA) <= 0 &&
   !normalizeBuyerText(row.COMPRADOR_ESCALA);
