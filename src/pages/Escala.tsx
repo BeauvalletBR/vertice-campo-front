@@ -92,6 +92,7 @@ import {
   formatDateInput,
   getAgrotoolsPlannedQuantity,
   getAgrotoolsPlannedTotal,
+  hasStoredPlanningChinaQuantity,
   getInitialPlanningWeek,
   getISOWeekValue,
   getNextISOWeekValue,
@@ -163,6 +164,7 @@ interface PlanningSexRow {
   arrobas: number | null;
   unitValue: number | null;
   chinaQuantity: number;
+  chinaStored: boolean;
   chinaSuggestedQuantity: number | null;
   chinaSuggestionMeta: ChinaSuggestionMeta | null;
   agrotoolsQuantity: number;
@@ -642,10 +644,9 @@ const getChinaPlannedTotal = (row: EscalaLinha) =>
   toNumber(row.QTD_CHINA_VACA) + toNumber(row.QTD_CHINA_BOI);
 
 const getDisplayedChinaQuantity = (item: PlanningSexRow) =>
-  item.chinaSuggestionMeta &&
-  item.chinaSuggestionMeta.suggestedQuantity !== item.chinaQuantity
-    ? item.chinaSuggestionMeta.suggestedQuantity
-    : item.chinaQuantity;
+  item.chinaStored
+    ? item.chinaQuantity
+    : item.chinaSuggestionMeta?.suggestedQuantity ?? item.chinaQuantity;
 
 const calculatePlanningDaySubtotal = (
   rows: PlanningSexRow[],
@@ -807,6 +808,7 @@ const splitRecordsBySex = (records: EscalaLinha[]): PlanningSexRow[] =>
           sex === "VACA"
             ? toNumber(row.QTD_CHINA_VACA)
             : toNumber(row.QTD_CHINA_BOI),
+        chinaStored: hasStoredPlanningChinaQuantity(row, sex),
         chinaSuggestedQuantity: null,
         chinaSuggestionMeta: null,
         agrotoolsQuantity:
@@ -2989,14 +2991,10 @@ export default function Escala() {
                                 !compradorPrecisaSelecionar;
                               const chinaSuggestionPending = Boolean(
                                 item.chinaSuggestionMeta &&
-                                  item.chinaSuggestionMeta.suggestedQuantity !==
-                                    item.chinaQuantity,
+                                  !item.chinaStored,
                               );
                               const displayedChinaQuantity =
-                                chinaSuggestionPending &&
-                                item.chinaSuggestionMeta
-                                  ? item.chinaSuggestionMeta.suggestedQuantity
-                                  : item.chinaQuantity;
+                                getDisplayedChinaQuantity(item);
                               const effectivePremium = getEffectivePremium(row);
                               const planningLocation = resolvePlanningLocation(
                                 row,

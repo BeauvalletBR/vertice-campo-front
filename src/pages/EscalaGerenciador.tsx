@@ -513,14 +513,6 @@ export default function EscalaGerenciador() {
     [editingOrderRow, historicoCompras],
   );
 
-  const showChinaVacaSuggestion =
-    Boolean(chinaSuggestionVaca) &&
-    toNumber(editOrderForm.qtd_china_vaca) !==
-      chinaSuggestionVaca?.suggestedQuantity;
-  const showChinaBoiSuggestion =
-    Boolean(chinaSuggestionBoi) &&
-    toNumber(editOrderForm.qtd_china_boi) !== chinaSuggestionBoi?.suggestedQuantity;
-
   const loadScale = async () => {
     if (!scaleId) return;
     setLoading(true);
@@ -692,7 +684,12 @@ export default function EscalaGerenciador() {
     sexLabel: string,
     quantity: number,
   ) => {
-    if (!suggestion) return;
+    if (!suggestion) {
+      toast.info(
+        `Não há histórico suficiente para calcular a sugestão de China para ${sexLabel.toLowerCase()} neste pedido.`,
+      );
+      return;
+    }
 
     toast.info(
       `Nos últimos ${suggestion.periodLabel}, esse produtor matou ${numberFormat.format(
@@ -1956,22 +1953,20 @@ export default function EscalaGerenciador() {
                 label={
                   <span className="inline-flex items-center gap-1.5">
                     <span>China vaca</span>
-                    {showChinaVacaSuggestion && chinaSuggestionVaca && (
-                      <button
-                        type="button"
-                        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] transition hover:border-[#E28A2E] hover:bg-[#FFEBD6]"
-                        title="Ver cálculo da sugestão de China vaca"
-                        onClick={() =>
-                          showChinaSuggestionDetails(
-                            chinaSuggestionVaca,
-                            "Vacas",
-                            toNumber(editingOrderRow?.QTD_VACA),
-                          )
-                        }
-                      >
-                        <Sparkles className="h-2.5 w-2.5" />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] transition hover:border-[#E28A2E] hover:bg-[#FFEBD6]"
+                      title="Ver cálculo da sugestão de China vaca"
+                      onClick={() =>
+                        showChinaSuggestionDetails(
+                          chinaSuggestionVaca,
+                          "Vacas",
+                          toNumber(editingOrderRow?.QTD_VACA),
+                        )
+                      }
+                    >
+                      <Sparkles className="h-2.5 w-2.5" />
+                    </button>
                   </span>
                 }
                 value={editOrderForm.qtd_china_vaca}
@@ -1986,22 +1981,20 @@ export default function EscalaGerenciador() {
                 label={
                   <span className="inline-flex items-center gap-1.5">
                     <span>China boi</span>
-                    {showChinaBoiSuggestion && chinaSuggestionBoi && (
-                      <button
-                        type="button"
-                        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] transition hover:border-[#E28A2E] hover:bg-[#FFEBD6]"
-                        title="Ver cálculo da sugestão de China boi"
-                        onClick={() =>
-                          showChinaSuggestionDetails(
-                            chinaSuggestionBoi,
-                            "Bois",
-                            toNumber(editingOrderRow?.QTD_BOI),
-                          )
-                        }
-                      >
-                        <Sparkles className="h-2.5 w-2.5" />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] transition hover:border-[#E28A2E] hover:bg-[#FFEBD6]"
+                      title="Ver cálculo da sugestão de China boi"
+                      onClick={() =>
+                        showChinaSuggestionDetails(
+                          chinaSuggestionBoi,
+                          "Bois",
+                          toNumber(editingOrderRow?.QTD_BOI),
+                        )
+                      }
+                    >
+                      <Sparkles className="h-2.5 w-2.5" />
+                    </button>
                   </span>
                 }
                 value={editOrderForm.qtd_china_boi}

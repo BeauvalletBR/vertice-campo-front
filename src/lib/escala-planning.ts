@@ -223,6 +223,21 @@ export const getOrderTotal = (row: EscalaLinha) => {
 export const getChinaPlannedTotal = (row: EscalaLinha) =>
   toNumber(row.QTD_CHINA_VACA) + toNumber(row.QTD_CHINA_BOI);
 
+export const hasStoredPlanningChinaQuantity = (
+  row: EscalaLinha,
+  sex: "VACA" | "BOI",
+) => {
+  const storedValue =
+    sex === "VACA" ? row.QTD_CHINA_VACA : row.QTD_CHINA_BOI;
+
+  if (storedValue === null || storedValue === undefined) return false;
+
+  return (
+    row.ORIGEM_REGISTRO === "MANUAL" ||
+    toNumber(row.ID_ESCALA_PEDIDO_VINCULO) > 0
+  );
+};
+
 export const getAgrotoolsPlannedQuantity = (
   row: EscalaLinha,
   sex: "VACA" | "BOI",
