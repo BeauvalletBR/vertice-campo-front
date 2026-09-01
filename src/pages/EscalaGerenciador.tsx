@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   buscarPedidoErpEscala,
   consultarEscala,
+  consultarPrazosPagamento,
   criarEscala,
   criarRegistroManualEscala,
   criarVinculoPedidoEscala,
@@ -49,18 +50,28 @@ import type {
   EscalaPedidoErp,
   EscalaStatus,
   EscalaTurno,
+  PrazoPagamento,
 } from "@/types/escala";
 import {
   getAnimalBasePrice,
   getEffectivePremium,
 } from "@/lib/escala-pricing";
-import { getAgrotoolsPlannedQuantity } from "@/lib/escala-planning";
+import {
+  ESCALA_DAILY_CURRAL_LIMIT,
+  getAgrotoolsPlannedQuantity,
+  getProjectedPlanningCurralTotal,
+} from "@/lib/escala-planning";
 import {
   buildOrderUpdatePayload,
   getPlanningBuyerId,
   getPlanningBuyerSnapshot,
   getPlanningObservation,
 } from "@/lib/escala-update";
+import {
+  createPaymentTermMap,
+  getEffectivePaymentTermDays,
+  getMappedPaymentTerm,
+} from "@/lib/escala-prazo";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -160,6 +171,16 @@ type ModalMode =
   | "insert-manual"
   | "edit-manual"
   | null;
+
+interface CurralCapacityConfirmationState {
+  action: "edit-order" | "save-manual";
+  projectedTotal: number;
+}
+
+type DeleteConfirmationState =
+  | { type: "scale" }
+  | { type: "order"; row: EscalaLinha }
+  | { type: "manual"; row: EscalaLinha };
 
 interface InsertOrderForm {
   nro_pedido: string;
@@ -366,6 +387,11 @@ export default function EscalaGerenciador() {
   const [savingRecord, setSavingRecord] = useState(false);
   const [searchingOrder, setSearchingOrder] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [curralCapacityConfirmation, setCurralCapacityConfirmation] =
+    useState<CurralCapacityConfirmationState | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] =
+    useState<DeleteConfirmationState | null>(null);
+  const [confirmingDeletion, setConfirmingDeletion] = useState(false);
   const [autoHandled, setAutoHandled] = useState("");
   const [focusHandled, setFocusHandled] = useState("");
 
@@ -374,6 +400,8 @@ export default function EscalaGerenciador() {
   const [historicoCompras, setHistoricoCompras] = useState<ApiHistoricoCompra[]>(
     [],
   );
+  const [paymentTerms, setPaymentTerms] = useState<PrazoPagamento[]>([]);
+  const [loadingPaymentTerms, setLoadingPaymentTerms] = useState(true);
   const [loadingBuyers, setLoadingBuyers] = useState(false);
   const [buyerSearch, setBuyerSearch] = useState("");
   const [buyerOpen, setBuyerOpen] = useState(false);
@@ -407,6 +435,10 @@ export default function EscalaGerenciador() {
       return toNumber(a.NROPEDIDO) - toNumber(b.NROPEDIDO);
     });
   }, [lines]);
+  const paymentTermsByCode = useMemo(
+    () => createPaymentTermMap(paymentTerms),
+    [paymentTerms],
+  );
 
   const pendingOrders = useMemo(
     () =>
@@ -456,6 +488,20 @@ export default function EscalaGerenciador() {
           editOrderForm.id_escala_pedido_vinculo,
       ),
     [editOrderForm.id_escala_pedido_vinculo, linkedOrders],
+  );
+  const editingOrderPaymentTerm = useMemo(
+    () =>
+      editingOrderRow
+        ? getMappedPaymentTerm(editingOrderRow, paymentTermsByCode)
+        : null,
+    [editingOrderRow, paymentTermsByCode],
+  );
+  const editingOrderPrazo = editingOrderRow
+    ? getEffectivePaymentTermDays(editingOrderRow, paymentTermsByCode)
+    : null;
+  const editingOrderPrazoLocked = Boolean(
+    editingOrderRow?.ORIGEM_REGISTRO === "ERP" &&
+      editingOrderPrazo !== null,
   );
 
   const chinaSuggestionVaca = useMemo(
@@ -545,6 +591,42 @@ export default function EscalaGerenciador() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPaymentTerms = async () => {
+      try {
+        const data = await consultarPrazosPagamento();
+        if (!cancelled) setPaymentTerms(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (!cancelled) {
+          setPaymentTerms([]);
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Não foi possível carregar os prazos de pagamento.",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoadingPaymentTerms(false);
+      }
+    };
+
+    void loadPaymentTerms();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!editingOrderPaymentTerm) return;
+
+    setEditOrderForm((current) => ({
+      ...current,
+      prazo_dias: String(editingOrderPaymentTerm.PRAZO),
+    }));
+  }, [editingOrderPaymentTerm]);
 
   useEffect(() => {
     let cancelled = false;
@@ -677,6 +759,10 @@ export default function EscalaGerenciador() {
     if (!id) return;
 
     const buyerName = getPlanningBuyerSnapshot(row) || "";
+    const effectivePrazo = getEffectivePaymentTermDays(
+      row,
+      paymentTermsByCode,
+    );
     setEditOrderForm({
       id_escala_pedido_vinculo: id,
       versao: toNumber(row.VERSAO_REGISTRO || row.VERSAO_VINCULO) || 1,
@@ -688,10 +774,7 @@ export default function EscalaGerenciador() {
         getEffectivePremium(row) === null
           ? ""
           : String(getEffectivePremium(row)),
-      prazo_dias:
-        row.PRAZO_DIAS === null || row.PRAZO_DIAS === undefined
-          ? ""
-          : String(row.PRAZO_DIAS),
+      prazo_dias: effectivePrazo === null ? "" : String(effectivePrazo),
       curral: row.CURRAL == null ? "" : String(row.CURRAL),
       arrobas_vaca:
         row.ARROBAS_VACA === null || row.ARROBAS_VACA === undefined
@@ -962,9 +1045,12 @@ export default function EscalaGerenciador() {
     }
   };
 
-  const handleInactivateScale = async () => {
+  const handleInactivateScale = async (confirmed = false) => {
     if (!scaleId) return;
-    if (!window.confirm("Inativar esta escala e seus registros ativos?")) return;
+    if (!confirmed) {
+      setDeleteConfirmation({ type: "scale" });
+      return;
+    }
 
     try {
       const result = await inativarEscala({
@@ -973,6 +1059,7 @@ export default function EscalaGerenciador() {
         versao: scaleForm.versao,
       });
       toast.success(result.message || "Escala inativada.");
+      setDeleteConfirmation(null);
       navigate("/escala");
     } catch (error) {
       toast.error(
@@ -983,6 +1070,10 @@ export default function EscalaGerenciador() {
 
   const handleCreateLink = async () => {
     if (!scaleId) return;
+    if (loadingPaymentTerms) {
+      toast.warning("Aguarde o carregamento do prazo de pagamento.");
+      return;
+    }
 
     const orderNumber = Number(insertOrderForm.nro_pedido);
     if (!Number.isFinite(orderNumber) || orderNumber <= 0) {
@@ -993,10 +1084,18 @@ export default function EscalaGerenciador() {
     setSavingRecord(true);
     try {
       let seqpedido = insertOrderForm.seqpedido;
-      if (!seqpedido) {
+      let selectedOrder = orderResults.find(
+        (order) => Number(order.SEQPEDIDO) === Number(seqpedido),
+      );
+
+      if (!selectedOrder) {
         const results = await searchOrder();
-        if (results.length !== 1) return;
-        seqpedido = results[0].SEQPEDIDO;
+        selectedOrder =
+          results.find(
+            (order) => Number(order.SEQPEDIDO) === Number(seqpedido),
+          ) ?? (results.length === 1 ? results[0] : undefined);
+        if (!seqpedido && !selectedOrder) return;
+        if (selectedOrder) seqpedido = selectedOrder.SEQPEDIDO;
       }
 
       const result = await criarVinculoPedidoEscala({
@@ -1006,6 +1105,9 @@ export default function EscalaGerenciador() {
         seqpedido,
         observacao: insertOrderForm.observacao.trim() || null,
         ordem_exibicao: linkedOrders.length + manualRecords.length + 1,
+        prazo_dias: selectedOrder
+          ? getEffectivePaymentTermDays(selectedOrder, paymentTermsByCode)
+          : null,
       });
 
       toast.success(result.message || "Pedido incluído na escala.");
@@ -1019,9 +1121,13 @@ export default function EscalaGerenciador() {
     }
   };
 
-  const handleEditOrder = async () => {
+  const handleEditOrder = async (curralCapacityConfirmed = false) => {
+    if (loadingPaymentTerms) {
+      toast.warning("Aguarde o carregamento do prazo de pagamento.");
+      return;
+    }
+
     const premium = toNullableNumber(editOrderForm.vlrunitario_premio);
-    const prazoDias = toNullableNumber(editOrderForm.prazo_dias);
     const editingRow = linkedOrders.find(
       (row) =>
         toNumber(row.ID_ESCALA_PEDIDO_VINCULO) ===
@@ -1032,6 +1138,13 @@ export default function EscalaGerenciador() {
       toast.error("O vínculo atualizado não foi encontrado na escala.");
       return;
     }
+
+    const mappedPaymentTerm = getMappedPaymentTerm(
+      editingRow,
+      paymentTermsByCode,
+    );
+    const prazoDias =
+      mappedPaymentTerm?.PRAZO ?? toNullableNumber(editOrderForm.prazo_dias);
 
     if (premium !== null && premium < 0) {
       toast.warning("O prêmio unitário não pode ser negativo.");
@@ -1055,38 +1168,60 @@ export default function EscalaGerenciador() {
       return;
     }
 
+    const projectedCurralTotal = getProjectedPlanningCurralTotal(
+      records,
+      editingRow.CURRAL,
+      curral,
+    );
+    if (
+      !curralCapacityConfirmed &&
+      toNumber(curral) !== toNumber(editingRow.CURRAL) &&
+      projectedCurralTotal > ESCALA_DAILY_CURRAL_LIMIT
+    ) {
+      setCurralCapacityConfirmation({
+        action: "edit-order",
+        projectedTotal: projectedCurralTotal,
+      });
+      return;
+    }
+
     const order = toNumber(editOrderForm.ordem_exibicao);
 
     setSavingRecord(true);
     try {
       const result = await editarVinculoPedidoEscala(
-        buildOrderUpdatePayload(editingRow, nroempresa, {
-          id_escala_pedido_vinculo:
-            editOrderForm.id_escala_pedido_vinculo,
-          versao: editOrderForm.versao,
-          id_comprador: editOrderForm.id_comprador,
-          comprador_nome_snapshot:
-            normalizeText(editOrderForm.comprador_nome_snapshot) || null,
-          observacao: editOrderForm.observacao.trim() || null,
-          vlrunitario_premio: premium,
-          prazo_dias: toNullableNumber(editOrderForm.prazo_dias),
-          curral,
-          arrobas_vaca: toNullableNumber(editOrderForm.arrobas_vaca),
-          arrobas_boi: toNullableNumber(editOrderForm.arrobas_boi),
-          qtd_china_vaca: toNullableNumber(editOrderForm.qtd_china_vaca),
-          qtd_china_boi: toNullableNumber(editOrderForm.qtd_china_boi),
-          qtd_agrotools_vaca: toNullableNumber(
-            editOrderForm.qtd_agrotools_vaca,
-          ),
-          qtd_agrotools_boi: toNullableNumber(
-            editOrderForm.qtd_agrotools_boi,
-          ),
-          status_agrotools_analise:
-            editOrderForm.status_agrotools_analise,
-          id_analise_agrotools:
-            editOrderForm.id_analise_agrotools.trim() || null,
-          ordem_exibicao: order,
-        }),
+        buildOrderUpdatePayload(
+          editingRow,
+          nroempresa,
+          {
+            id_escala_pedido_vinculo:
+              editOrderForm.id_escala_pedido_vinculo,
+            versao: editOrderForm.versao,
+            id_comprador: editOrderForm.id_comprador,
+            comprador_nome_snapshot:
+              normalizeText(editOrderForm.comprador_nome_snapshot) || null,
+            observacao: editOrderForm.observacao.trim() || null,
+            vlrunitario_premio: premium,
+            prazo_dias: prazoDias,
+            curral,
+            arrobas_vaca: toNullableNumber(editOrderForm.arrobas_vaca),
+            arrobas_boi: toNullableNumber(editOrderForm.arrobas_boi),
+            qtd_china_vaca: toNullableNumber(editOrderForm.qtd_china_vaca),
+            qtd_china_boi: toNullableNumber(editOrderForm.qtd_china_boi),
+            qtd_agrotools_vaca: toNullableNumber(
+              editOrderForm.qtd_agrotools_vaca,
+            ),
+            qtd_agrotools_boi: toNullableNumber(
+              editOrderForm.qtd_agrotools_boi,
+            ),
+            status_agrotools_analise:
+              editOrderForm.status_agrotools_analise,
+            id_analise_agrotools:
+              editOrderForm.id_analise_agrotools.trim() || null,
+            ordem_exibicao: order,
+          },
+          paymentTermsByCode,
+        ),
       );
 
       toast.success(result.message || "Informações do pedido atualizadas.");
@@ -1173,10 +1308,32 @@ export default function EscalaGerenciador() {
     return true;
   };
 
-  const handleSaveManual = async () => {
+  const handleSaveManual = async (curralCapacityConfirmed = false) => {
     if (!scaleId || !validateManualForm()) return;
 
     const curral = toNullableNumber(manualForm.curral);
+    const currentManualRow = records.find(
+      (row) =>
+        toNumber(row.ID_ESCALA_ITEM_MANUAL) ===
+        manualForm.id_escala_item_manual,
+    );
+    const projectedCurralTotal = getProjectedPlanningCurralTotal(
+      records,
+      currentManualRow?.CURRAL,
+      curral,
+    );
+    if (
+      !curralCapacityConfirmed &&
+      toNumber(curral) !== toNumber(currentManualRow?.CURRAL) &&
+      projectedCurralTotal > ESCALA_DAILY_CURRAL_LIMIT
+    ) {
+      setCurralCapacityConfirmation({
+        action: "save-manual",
+        projectedTotal: projectedCurralTotal,
+      });
+      return;
+    }
+
     const payload = {
       nroempresa,
       id_escala: scaleId,
@@ -1238,10 +1395,13 @@ export default function EscalaGerenciador() {
     }
   };
 
-  const handleDeleteOrder = async (row: EscalaLinha) => {
+  const handleDeleteOrder = async (row: EscalaLinha, confirmed = false) => {
     const id = toNumber(row.ID_ESCALA_PEDIDO_VINCULO);
     if (!id) return;
-    if (!window.confirm(`Remover o pedido ${row.NROPEDIDO} da escala?`)) return;
+    if (!confirmed) {
+      setDeleteConfirmation({ type: "order", row });
+      return;
+    }
 
     setDeletingId(id);
     try {
@@ -1251,6 +1411,7 @@ export default function EscalaGerenciador() {
         versao: toNumber(row.VERSAO_REGISTRO || row.VERSAO_VINCULO) || 1,
       });
       toast.success(result.message || "Pedido removido da escala.");
+      setDeleteConfirmation(null);
       await loadScale();
     } catch (error) {
       toast.error(
@@ -1261,10 +1422,13 @@ export default function EscalaGerenciador() {
     }
   };
 
-  const handleDeleteManual = async (row: EscalaLinha) => {
+  const handleDeleteManual = async (row: EscalaLinha, confirmed = false) => {
     const id = toNumber(row.ID_ESCALA_ITEM_MANUAL);
     if (!id) return;
-    if (!window.confirm(`Apagar o registro manual de ${row.PRODUTOR}?`)) return;
+    if (!confirmed) {
+      setDeleteConfirmation({ type: "manual", row });
+      return;
+    }
 
     setDeletingId(id);
     try {
@@ -1274,6 +1438,7 @@ export default function EscalaGerenciador() {
         versao: toNumber(row.VERSAO_REGISTRO) || 1,
       });
       toast.success(result.message || "Registro manual removido.");
+      setDeleteConfirmation(null);
       await loadScale();
     } catch (error) {
       toast.error(
@@ -1283,6 +1448,23 @@ export default function EscalaGerenciador() {
       );
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const confirmPendingDeletion = async () => {
+    if (!deleteConfirmation) return;
+
+    setConfirmingDeletion(true);
+    try {
+      if (deleteConfirmation.type === "scale") {
+        await handleInactivateScale(true);
+      } else if (deleteConfirmation.type === "order") {
+        await handleDeleteOrder(deleteConfirmation.row, true);
+      } else {
+        await handleDeleteManual(deleteConfirmation.row, true);
+      }
+    } finally {
+      setConfirmingDeletion(false);
     }
   };
 
@@ -1666,19 +1848,48 @@ export default function EscalaGerenciador() {
                 />
               </Field>
               <Field label="Prazo (dias)">
-                <Input
-                  data-focus-field="prazo_dias"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={editOrderForm.prazo_dias}
-                  onChange={(event) =>
-                    setEditOrderForm((current) => ({
-                      ...current,
-                      prazo_dias: event.target.value,
-                    }))
-                  }
-                />
+                <div className="space-y-1.5">
+                  <Input
+                    data-focus-field="prazo_dias"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={editOrderForm.prazo_dias}
+                    readOnly={loadingPaymentTerms || editingOrderPrazoLocked}
+                    className={
+                      loadingPaymentTerms || editingOrderPrazoLocked
+                        ? "border-[#C9D7E5] bg-[#F2F6FA] font-bold text-[#173D6E]"
+                        : undefined
+                    }
+                    onChange={(event) =>
+                      setEditOrderForm((current) => ({
+                        ...current,
+                        prazo_dias: event.target.value,
+                      }))
+                    }
+                  />
+                  {loadingPaymentTerms ? (
+                    <p className="text-[10px] font-semibold leading-tight text-[#718297]">
+                      Carregando condição de pagamento...
+                    </p>
+                  ) : editingOrderPaymentTerm ? (
+                    <p className="text-[10px] font-semibold leading-tight text-[#1B58A0]">
+                      Automático pela condição {editingOrderRow?.CODCONDPAGTO}
+                      {editingOrderPaymentTerm.DESCRICAO
+                        ? ` • ${editingOrderPaymentTerm.DESCRICAO}`
+                        : ""}
+                    </p>
+                  ) : editingOrderPrazo !== null ? (
+                    <p className="text-[10px] font-semibold leading-tight text-[#718297]">
+                      Prazo legado mantido como compatibilidade.
+                    </p>
+                  ) : (
+                    <p className="text-[10px] font-semibold leading-tight text-[#B45309]">
+                      Prazo não encontrado para a condição de pagamento. Informe
+                      manualmente para este vínculo.
+                    </p>
+                  )}
+                </div>
               </Field>
               <Field label="Curral">
                 <Input
@@ -2093,6 +2304,141 @@ export default function EscalaGerenciador() {
           </div>
         </Modal>
       )}
+
+      {curralCapacityConfirmation && (
+        <SystemConfirmationModal
+          tone="warning"
+          title="Atenção: limite de currais"
+          description={`Esta alteração deixará o dia com ${numberFormat.format(curralCapacityConfirmation.projectedTotal)} currais, ${numberFormat.format(curralCapacityConfirmation.projectedTotal - ESCALA_DAILY_CURRAL_LIMIT)} acima do limite diário de ${ESCALA_DAILY_CURRAL_LIMIT}. Tem certeza que deseja continuar?`}
+          confirmLabel="Sim, continuar"
+          onCancel={() => setCurralCapacityConfirmation(null)}
+          onConfirm={() => {
+            const action = curralCapacityConfirmation.action;
+            setCurralCapacityConfirmation(null);
+            if (action === "edit-order") {
+              void handleEditOrder(true);
+            } else {
+              void handleSaveManual(true);
+            }
+          }}
+        />
+      )}
+
+      {deleteConfirmation && (
+        <SystemConfirmationModal
+          tone="danger"
+          title={
+            deleteConfirmation.type === "scale"
+              ? "Inativar escala?"
+              : deleteConfirmation.type === "order"
+                ? "Remover pedido?"
+                : "Apagar registro manual?"
+          }
+          description={
+            deleteConfirmation.type === "scale"
+              ? "Tem certeza que deseja inativar esta escala? Todos os registros ativos vinculados a ela também serão inativados."
+              : deleteConfirmation.type === "order"
+                ? `Tem certeza que deseja remover o pedido ${deleteConfirmation.row.NROPEDIDO} da escala?`
+                : `Tem certeza que deseja apagar o registro manual de ${deleteConfirmation.row.PRODUTOR || "produtor"}?`
+          }
+          confirmLabel={
+            deleteConfirmation.type === "scale"
+              ? "Sim, inativar"
+              : "Sim, remover"
+          }
+          loading={confirmingDeletion}
+          onCancel={() => setDeleteConfirmation(null)}
+          onConfirm={() => void confirmPendingDeletion()}
+        />
+      )}
+    </div>
+  );
+}
+
+function SystemConfirmationModal({
+  tone,
+  title,
+  description,
+  confirmLabel,
+  loading = false,
+  onCancel,
+  onConfirm,
+}: {
+  tone: "warning" | "danger";
+  title: string;
+  description: string;
+  confirmLabel: string;
+  loading?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const danger = tone === "danger";
+
+  return (
+    <div
+      className="fixed inset-0 z-[140] flex items-center justify-center bg-[#102A43]/70 p-4 backdrop-blur-[2px]"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="system-confirmation-title"
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && !event.repeat && !loading) {
+          event.preventDefault();
+          onConfirm();
+        }
+      }}
+    >
+      <Card className="w-full max-w-md overflow-hidden rounded-2xl border-0 bg-white shadow-2xl">
+        <div className={`h-2 w-full ${danger ? "bg-[#C61F2A]" : "bg-[#D96B16]"}`} />
+        <CardContent className="px-6 pb-6 pt-7 text-center">
+          <div
+            className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border ${
+              danger
+                ? "border-[#F0B8BC] bg-[#FFF1F2] text-[#C61F2A]"
+                : "border-[#F2B176] bg-[#FFF4E8] text-[#A84A15]"
+            }`}
+          >
+            {danger ? (
+              <Trash2 className="h-8 w-8" />
+            ) : (
+              <AlertTriangle className="h-8 w-8" />
+            )}
+          </div>
+          <h2
+            id="system-confirmation-title"
+            className="text-2xl font-black text-[#173D6E]"
+          >
+            {title}
+          </h2>
+          <p className="mt-3 font-medium leading-relaxed text-[#60758A]">
+            {description}
+          </p>
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 flex-1 font-bold"
+              disabled={loading}
+              onClick={onCancel}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              autoFocus
+              className={`h-12 flex-1 font-bold text-white ${
+                danger
+                  ? "bg-[#C61F2A] hover:bg-[#A51D29]"
+                  : "bg-[#D96B16] hover:bg-[#B9540F]"
+              }`}
+              disabled={loading}
+              onClick={onConfirm}
+            >
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {loading ? "Processando..." : confirmLabel}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

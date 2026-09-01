@@ -1,4 +1,5 @@
 import { getAnimalBasePrice, getEffectivePremium } from "@/lib/escala-pricing";
+import { getEffectivePaymentTermDays } from "@/lib/escala-prazo";
 import {
   getAgrotoolsPlannedQuantity,
   toNumber,
@@ -8,7 +9,10 @@ import type {
   EditarRegistroManualPayload,
   EditarVinculoPedidoPayload,
   EscalaLinha,
+  PrazoPagamento,
 } from "@/types/escala";
+
+const EMPTY_PAYMENT_TERMS = new Map<number, PrazoPagamento>();
 
 const getTextOrNull = (value: unknown) => {
   const text = String(value ?? "").trim();
@@ -57,6 +61,7 @@ export const buildOrderUpdatePayload = (
   row: EscalaLinha,
   nroempresa: number,
   overrides: Partial<EditarVinculoPedidoPayload> = {},
+  paymentTermsByCode: ReadonlyMap<number, PrazoPagamento> = EMPTY_PAYMENT_TERMS,
 ): EditarVinculoPedidoPayload => ({
   id_escala_pedido_vinculo: toNumber(row.ID_ESCALA_PEDIDO_VINCULO),
   nroempresa,
@@ -65,7 +70,7 @@ export const buildOrderUpdatePayload = (
   comprador_nome_snapshot: getPlanningBuyerSnapshot(row),
   observacao: getPlanningObservation(row),
   vlrunitario_premio: getEffectivePremium(row),
-  prazo_dias: toOptionalNumber(row.PRAZO_DIAS),
+  prazo_dias: getEffectivePaymentTermDays(row, paymentTermsByCode),
   curral: toOptionalNumber(row.CURRAL),
   arrobas_vaca: toOptionalNumber(row.ARROBAS_VACA),
   arrobas_boi: toOptionalNumber(row.ARROBAS_BOI),

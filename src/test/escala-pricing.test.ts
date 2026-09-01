@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   calculateBaseWeightedPrice,
   calculateRowsWeightedBasePrice,
+  calculateScaleMacroAverages,
   getAnimalBasePrice,
   getEffectivePremium,
 } from "@/lib/escala-pricing";
@@ -81,5 +82,24 @@ describe("escala pricing", () => {
     });
 
     expect(calculateBaseWeightedPrice(item)).toBe(290);
+  });
+
+  it("calculates scale macros with the same arroba logic used by the spreadsheet", () => {
+    const item = row({
+      QTD_BOI: 20,
+      ARROBAS_BOI: 20,
+      VLRUNITARIO_PREMIO: 7,
+      QTD_VACA: 10,
+      ARROBAS_VACA: 14,
+      PRECO_VACA: 280,
+    });
+
+    expect(calculateScaleMacroAverages([item])).toEqual({
+      totalAnimals: 30,
+      totalArrobas: 540,
+      totalValue: 42000,
+      averageArrobas: 18,
+      averageValue: 42000 / 540,
+    });
   });
 });

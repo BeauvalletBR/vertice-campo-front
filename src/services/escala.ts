@@ -16,6 +16,7 @@ import type {
   InativarEscalaPayload,
   InativarRegistroManualPayload,
   InativarVinculoPedidoPayload,
+  PrazoPagamento,
   RegistroManualPayload,
 } from "../types/escala";
 
@@ -40,17 +41,41 @@ const urls = {
     env.VITE_N8N_WEBHOOK_URL_ESCALA_PEDIDO_VINCULO_EDITAR,
   pedidoVinculoInativar:
     env.VITE_N8N_WEBHOOK_URL_ESCALA_PEDIDO_VINCULO_INATIVAR,
+  prazoPagamentoSelect:
+    env.VITE_N8N_WEBHOOK_URL_ESCALA_PRAZO_PAGTO_SELECT,
 
   manualInsert: env.VITE_N8N_WEBHOOK_URL_ESCALA_MANUAL_INSERT,
   manualEditar: env.VITE_N8N_WEBHOOK_URL_ESCALA_MANUAL_EDITAR,
   manualInativar: env.VITE_N8N_WEBHOOK_URL_ESCALA_MANUAL_INATIVAR,
 } as const;
 
+let cachedPaymentTerms: PrazoPagamento[] | null = null;
+let paymentTermsPromise: Promise<PrazoPagamento[]> | null = null;
+
 export const consultarEscala = (filtro: EscalaFiltro) =>
   n8nPost<EscalaLinha[]>(urls.select, filtro);
 
 export const consultarResumoEscala = (filtro: EscalaFiltro) =>
   n8nPost<EscalaResumo[]>(urls.resumo, filtro);
+
+export const consultarPrazosPagamento = async () => {
+  if (cachedPaymentTerms) return cachedPaymentTerms;
+  if (paymentTermsPromise) return paymentTermsPromise;
+
+  paymentTermsPromise = n8nPost<PrazoPagamento[]>(
+    urls.prazoPagamentoSelect,
+    {},
+  )
+    .then((data) => {
+      cachedPaymentTerms = Array.isArray(data) ? data : [];
+      return cachedPaymentTerms;
+    })
+    .finally(() => {
+      paymentTermsPromise = null;
+    });
+
+  return paymentTermsPromise;
+};
 
 export const criarEscala = (payload: CriarEscalaPayload) =>
   n8nPost<ApiMessage>(urls.insert, payload);

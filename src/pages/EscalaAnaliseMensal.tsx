@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getAgrotoolsPlannedTotal,
+  getCompleteMonthWeekRange,
   getEmpresaLogada,
   getOrderTotal,
   getUniquePlanningRecords,
@@ -113,10 +114,17 @@ const buildWeeklyMetrics = (
   selectedMonth: string,
 ) => {
   const dailyMap = new Map<string, DailyMetrics>();
+  const monthWeekRange = getCompleteMonthWeekRange(selectedMonth);
 
   for (const row of getUniquePlanningRecords(sourceRows)) {
     const date = getReferenceDate(row, basis);
-    if (!date.startsWith(`${selectedMonth}-`)) continue;
+    if (
+      !date ||
+      date < monthWeekRange.start ||
+      date > monthWeekRange.end
+    ) {
+      continue;
+    }
 
     const current = dailyMap.get(date) || {
       date,
@@ -372,7 +380,7 @@ export default function EscalaAnaliseMensal() {
       try {
         const response = await consultarEscala({
           nroempresa,
-          data_inicio: `${year}-01-01`,
+          data_inicio: `${year - 1}-12-01`,
           data_fim: `${year + 1}-12-31`,
         });
         if (!cancelled) setRows(Array.isArray(response) ? response : []);
@@ -464,7 +472,7 @@ export default function EscalaAnaliseMensal() {
             {formatMonth(selectedMonth)}
           </Badge>
           <span className="text-xs font-semibold text-[#60758A]">
-            As semanas exibidas possuem registros dentro do mês selecionado.
+            As semanas que cruzam o mês são exibidas completas, de segunda a domingo.
           </span>
         </div>
 

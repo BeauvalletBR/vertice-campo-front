@@ -91,6 +91,8 @@ export interface EscalaPedidoErp {
   DTAABATE?: string | null;
   STATUS_NEGOCIACAO?: string | null;
   STATUS_PEDIDO?: string | null;
+  CODCONDPAGTO?: number | null;
+  PRAZO_DIAS?: number | null;
 
   QTD_PEDIDA_TOTAL?: number | null;
   QTD_VACA?: number | null;
@@ -152,6 +154,7 @@ export interface EscalaLinha {
   DTAEMBARQUE?: string | null;
   STATUS_NEGOCIACAO?: string | null;
   STATUS_PEDIDO_ERP?: string | null;
+  CODCONDPAGTO?: number | null;
 
   QTD_PEDIDA_TOTAL?: number | null;
   QTD_VACA?: number | null;
@@ -234,8 +237,15 @@ export interface CriarVinculoPedidoPayload {
   seqpedido?: number;
   observacao?: string | null;
   ordem_exibicao?: number;
+  prazo_dias?: number | null;
   qtd_china_vaca?: number | null;
   qtd_china_boi?: number | null;
+}
+
+export interface PrazoPagamento {
+  CODCONDPAGTO: number;
+  DESCRICAO?: string | null;
+  PRAZO: number;
 }
 
 export interface CriarVinculosPedidosDiaPayload {

@@ -3,7 +3,10 @@ import type {
   EscalaResumo,
   EscalaStatus,
 } from "@/types/escala";
-import { calculateRowsWeightedBasePrice } from "@/lib/escala-pricing";
+import {
+  calculateRowsWeightedBasePrice,
+  calculateScaleMacroAverages,
+} from "@/lib/escala-pricing";
 
 export interface PlanningTotals {
   erpOrders: number;
@@ -17,6 +20,7 @@ export interface PlanningTotals {
   agrotools: number;
   daysWithAnimals: number;
   averageHeadsPerDay: number;
+  averageArrobas: number;
   averagePaid: number;
   cowsPercent: number;
   bullsPercent: number;
@@ -140,6 +144,33 @@ export const getStartDateFromWeek = (weekValue: string) => {
   return formatDateInput(monday);
 };
 
+export const getCompleteMonthWeekRange = (monthValue: string) => {
+  const [year, month] = monthValue.split("-").map(Number);
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    month < 1 ||
+    month > 12
+  ) {
+    const currentWeekStart = getStartDateFromWeek(getISOWeekValue());
+    return { start: currentWeekStart, end: addDays(currentWeekStart, 6) };
+  }
+
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const monthEnd = formatDateInput(new Date(year, month, 0, 12));
+  const firstWeekStart = getStartDateFromWeek(
+    getISOWeekValue(parseLocalDate(monthStart)),
+  );
+  const lastWeekStart = getStartDateFromWeek(
+    getISOWeekValue(parseLocalDate(monthEnd)),
+  );
+
+  return {
+    start: firstWeekStart,
+    end: addDays(lastWeekStart, 6),
+  };
+};
+
 export const formatDate = (value?: string | null) => {
   if (!value) return "—";
   return parseLocalDate(value).toLocaleDateString("pt-BR");
@@ -228,6 +259,17 @@ export const getPlanningCurralTotal = (rows: EscalaLinha[]) =>
     0,
   );
 
+export const ESCALA_DAILY_CURRAL_LIMIT = 21;
+
+export const getProjectedPlanningCurralTotal = (
+  rows: EscalaLinha[],
+  currentCurral: unknown,
+  nextCurral: unknown,
+) =>
+  getPlanningCurralTotal(rows) -
+  toNumber(currentCurral) +
+  toNumber(nextCurral);
+
 export const getScaleId = (
   rows: EscalaLinha[],
   summary?: EscalaResumo | null,
@@ -281,6 +323,7 @@ export const getPlanningRowClass = (row: EscalaLinha) => {
 export const calculatePlanningTotals = (rows: EscalaLinha[]): PlanningTotals => {
   const records = getUniquePlanningRecords(rows);
   const daysWithAnimals = new Set<string>();
+  const macroAverages = calculateScaleMacroAverages(records);
 
   const base = records.reduce(
     (totals, row) => {
@@ -329,10 +372,8 @@ export const calculatePlanningTotals = (rows: EscalaLinha[]): PlanningTotals => 
   return {
     ...base,
     daysWithAnimals: daysWithAnimals.size,
-    averageHeadsPerDay:
-      daysWithAnimals.size > 0
-        ? base.plannedHeads / daysWithAnimals.size
-        : 0,
+    averageHeadsPerDay: base.plannedHeads / 5,
+    averageArrobas: macroAverages.averageArrobas ?? 0,
     averagePaid: calculateRowsWeightedBasePrice(records) ?? 0,
     cowsPercent: percentage(base.cows),
     bullsPercent: percentage(base.bulls),

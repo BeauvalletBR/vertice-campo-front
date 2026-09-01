@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
+import { useRef } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -55,6 +56,7 @@ import {
 } from "@/components/ui/table";
 import {
   consultarEscala,
+  consultarPrazosPagamento,
   consultarResumoEscala,
   criarVinculoPedidoEscala,
   criarVinculosPedidosDiaEscala,
@@ -75,9 +77,12 @@ import type {
   EscalaLinha,
   EscalaResumo,
   EscalaStatus,
+  PrazoPagamento,
 } from "@/types/escala";
 import { EscalaPlaybackDialog } from "@/components/EscalaPlaybackDialog";
 import {
+  calculateScaleMacroAverages,
+  calculateRowsWeightedBasePrice,
   getAnimalBasePrice,
   getEffectivePremium,
 } from "@/lib/escala-pricing";
@@ -90,6 +95,8 @@ import {
   getInitialPlanningWeek,
   getISOWeekValue,
   getNextISOWeekValue,
+  ESCALA_DAILY_CURRAL_LIMIT,
+  getProjectedPlanningCurralTotal,
   getStartDateFromWeek,
   getWeekCatalogRange,
   getWeekValueFromDate,
@@ -100,6 +107,11 @@ import {
   buildManualUpdatePayload,
   buildOrderUpdatePayload,
 } from "@/lib/escala-update";
+import {
+  createPaymentTermMap,
+  getEffectivePaymentTermDays,
+  getMappedPaymentTerm,
+} from "@/lib/escala-prazo";
 
 const numberFormat = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 0,
@@ -123,6 +135,7 @@ const percentFormat = new Intl.NumberFormat("pt-BR", {
 });
 
 const WEEKS_PER_PAGE = 5;
+const PLANNING_VIEW_STATE_KEY = "escala-planning-view-state";
 
 type AnimalSex = "VACA" | "BOI";
 type ChinaPeriodPreset = "2m" | "3m" | "6m" | "12m" | "manual";
@@ -169,6 +182,18 @@ interface InclusionChoiceState {
   returnToScale?: boolean;
 }
 
+type DeleteConfirmationState =
+  | {
+      type: "scale";
+      idEscala: number;
+      version: number;
+      day: string;
+    }
+  | {
+      type: "manual";
+      row: EscalaLinha;
+    };
+
 interface PlanningLocation {
   latitude: number;
   longitude: number;
@@ -214,6 +239,7 @@ interface PlanningTotals {
   agrotools: number;
   daysWithAnimals: number;
   averageHeadsPerDay: number;
+  averageArrobas: number;
   averagePaid: number;
   cowsPercent: number;
   bullsPercent: number;
@@ -223,11 +249,40 @@ interface PlanningTotals {
 
 interface PlanningDaySubtotal {
   quantity: number;
+  averageArrobas: number | null;
   averagePrice: number | null;
   curral: number;
   china: number;
   agrotools: number;
 }
+
+interface PlanningViewState {
+  selectedWeek: string;
+  openDays: Record<string, boolean>;
+  dayScrollLeft: Record<string, number>;
+  scrollLeft: number;
+  scrollTop: number;
+}
+
+const readPlanningViewState = (): PlanningViewState | null => {
+  try {
+    const stored = sessionStorage.getItem(PLANNING_VIEW_STATE_KEY);
+    if (!stored) return null;
+
+    const parsed = JSON.parse(stored) as Partial<PlanningViewState>;
+    if (!/^\d{4}-W\d{2}$/.test(parsed.selectedWeek || "")) return null;
+
+    return {
+      selectedWeek: parsed.selectedWeek as string,
+      openDays: parsed.openDays || {},
+      dayScrollLeft: parsed.dayScrollLeft || {},
+      scrollLeft: Number(parsed.scrollLeft) || 0,
+      scrollTop: Number(parsed.scrollTop) || 0,
+    };
+  } catch {
+    return null;
+  }
+};
 
 const toNumber = (value: unknown) => {
   const parsed = Number(value);
@@ -596,16 +651,13 @@ const calculatePlanningDaySubtotal = (
   rows: PlanningSexRow[],
   records: EscalaLinha[],
 ): PlanningDaySubtotal => {
+  const uniqueRecords = getUniquePlanningRecords(records);
+  const macroAverages = calculateScaleMacroAverages(uniqueRecords);
   const subtotal = rows.reduce(
     (accumulator, item) => {
       accumulator.quantity += item.quantity;
       accumulator.china += getDisplayedChinaQuantity(item);
       accumulator.agrotools += item.agrotoolsQuantity;
-
-      if (item.unitValue !== null && item.unitValue > 0) {
-        accumulator.weightedValue += item.unitValue * item.quantity;
-        accumulator.weightedQuantity += item.quantity;
-      }
 
       return accumulator;
     },
@@ -613,18 +665,14 @@ const calculatePlanningDaySubtotal = (
       quantity: 0,
       china: 0,
       agrotools: 0,
-      weightedValue: 0,
-      weightedQuantity: 0,
     },
   );
 
   return {
     quantity: subtotal.quantity,
-    averagePrice:
-      subtotal.weightedQuantity > 0
-        ? subtotal.weightedValue / subtotal.weightedQuantity
-        : null,
-    curral: getUniquePlanningRecords(records).reduce(
+    averageArrobas: macroAverages.averageArrobas,
+    averagePrice: calculateRowsWeightedBasePrice(uniqueRecords),
+    curral: uniqueRecords.reduce(
       (total, row) => total + toNumber(row.CURRAL),
       0,
     ),
@@ -774,6 +822,7 @@ const splitRecordsBySex = (records: EscalaLinha[]): PlanningSexRow[] =>
 const calculateTotals = (rows: EscalaLinha[]): PlanningTotals => {
   const records = getUniquePlanningRecords(rows);
   const daysWithAnimals = new Set<string>();
+  const macroAverages = calculateScaleMacroAverages(records);
 
   const base = records.reduce(
     (totals, row) => {
@@ -816,27 +865,15 @@ const calculateTotals = (rows: EscalaLinha[]): PlanningTotals => {
     },
   );
 
-  let paidValueSum = 0;
-  let pricedAnimals = 0;
-
-  for (const item of splitRecordsBySex(records)) {
-    if (item.unitValue !== null && item.quantity > 0) {
-      paidValueSum += item.unitValue * item.quantity;
-      pricedAnimals += item.quantity;
-    }
-  }
-
   const percentage = (value: number) =>
     base.plannedHeads > 0 ? (value / base.plannedHeads) * 100 : 0;
 
   return {
     ...base,
     daysWithAnimals: daysWithAnimals.size,
-    averageHeadsPerDay:
-      daysWithAnimals.size > 0
-        ? base.plannedHeads / daysWithAnimals.size
-        : 0,
-    averagePaid: pricedAnimals > 0 ? paidValueSum / pricedAnimals : 0,
+    averageHeadsPerDay: base.plannedHeads / 5,
+    averageArrobas: macroAverages.averageArrobas ?? 0,
+    averagePaid: calculateRowsWeightedBasePrice(records) ?? 0,
     cowsPercent: percentage(base.cows),
     bullsPercent: percentage(base.bulls),
     chinaPercent: percentage(base.china),
@@ -857,7 +894,19 @@ export default function Escala() {
   );
   const defaultManualEnd = useMemo(() => formatDateInput(today), [today]);
 
-  const [selectedWeek, setSelectedWeek] = useState(getISOWeekValue);
+  const [restoredPlanningView] = useState(readPlanningViewState);
+  const pendingScrollRestore = useRef(
+    restoredPlanningView
+      ? {
+          left: restoredPlanningView.scrollLeft,
+          top: restoredPlanningView.scrollTop,
+          dayScrollLeft: restoredPlanningView.dayScrollLeft,
+        }
+      : null,
+  );
+  const [selectedWeek, setSelectedWeek] = useState(
+    () => restoredPlanningView?.selectedWeek || getISOWeekValue(),
+  );
   const [initialWeekResolved, setInitialWeekResolved] = useState(false);
   const [availableSummaries, setAvailableSummaries] = useState<EscalaResumo[]>(
     [],
@@ -867,16 +916,22 @@ export default function Escala() {
     [],
   );
   const [ranchers, setRanchers] = useState<ApiRancher[]>([]);
+  const [paymentTerms, setPaymentTerms] = useState<PrazoPagamento[]>([]);
+  const [loadingPaymentTerms, setLoadingPaymentTerms] = useState(true);
   const [locationDialog, setLocationDialog] =
     useState<PlanningLocation | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingWeeks, setLoadingWeeks] = useState(true);
   const [loadingChinaHistory, setLoadingChinaHistory] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
-  const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
+  const [openDays, setOpenDays] = useState<Record<string, boolean>>(
+    () => restoredPlanningView?.openDays || {},
+  );
   const [weekPage, setWeekPage] = useState(0);
   const [deletingScaleId, setDeletingScaleId] = useState<number | null>(null);
   const [deletingManualId, setDeletingManualId] = useState<number | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] =
+    useState<DeleteConfirmationState | null>(null);
   const [inclusionChoice, setInclusionChoice] =
     useState<InclusionChoiceState | null>(null);
   const [includingDay, setIncludingDay] = useState(false);
@@ -933,6 +988,10 @@ export default function Escala() {
     modules.some((module) => ["ADMIN", "ESCALA"].includes(module));
 
   const nroempresa = getEmpresaLogada(user);
+  const paymentTermsByCode = useMemo(
+    () => createPaymentTermMap(paymentTerms),
+    [paymentTerms],
+  );
   const chinaPeriodConfig = useMemo(
     () =>
       getChinaPeriodConfig(chinaPeriodPreset, chinaManualStart, chinaManualEnd),
@@ -1111,6 +1170,14 @@ export default function Escala() {
 
   useEffect(() => {
     let cancelled = false;
+
+    if (restoredPlanningView) {
+      setInitialWeekResolved(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const referenceDate = new Date();
     const currentWeek = getISOWeekValue(referenceDate);
     const nextReferenceDate = new Date(referenceDate);
@@ -1146,10 +1213,37 @@ export default function Escala() {
     return () => {
       cancelled = true;
     };
-  }, [nroempresa]);
+  }, [nroempresa, restoredPlanningView]);
 
   useEffect(() => {
     void loadChinaHistory();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPaymentTerms = async () => {
+      try {
+        const data = await consultarPrazosPagamento();
+        if (!cancelled) setPaymentTerms(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (!cancelled) {
+          setPaymentTerms([]);
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Não foi possível carregar os prazos de pagamento.",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoadingPaymentTerms(false);
+      }
+    };
+
+    void loadPaymentTerms();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -1219,6 +1313,76 @@ export default function Escala() {
     return Array.from(dates).sort();
   }, [lines, summaries]);
 
+  const allDaysOpened =
+    visibleDays.length > 0 &&
+    visibleDays.every((day) => openDays[day] !== false);
+
+  const setEveryDayOpened = (opened: boolean) => {
+    setOpenDays((current) => {
+      const next = { ...current };
+      for (const day of visibleDays) next[day] = opened;
+      return next;
+    });
+  };
+
+  const persistPlanningView = () => {
+    const dayScrollLeft = Object.fromEntries(
+      visibleDays.map((day) => [
+        day,
+        document.querySelector<HTMLElement>(
+          `[data-planning-day-scroll="${day}"]`,
+        )?.scrollLeft || 0,
+      ]),
+    );
+    const state: PlanningViewState = {
+      selectedWeek,
+      openDays,
+      dayScrollLeft,
+      scrollLeft: window.scrollX,
+      scrollTop: window.scrollY,
+    };
+    sessionStorage.setItem(PLANNING_VIEW_STATE_KEY, JSON.stringify(state));
+  };
+
+  const navigateFromPlanning = (destination: string) => {
+    persistPlanningView();
+    navigate(destination);
+  };
+
+  useEffect(() => {
+    const previous = readPlanningViewState();
+    const state: PlanningViewState = {
+      selectedWeek,
+      openDays,
+      dayScrollLeft: previous?.dayScrollLeft || {},
+      scrollLeft: previous?.scrollLeft || 0,
+      scrollTop: previous?.scrollTop || 0,
+    };
+    sessionStorage.setItem(PLANNING_VIEW_STATE_KEY, JSON.stringify(state));
+  }, [openDays, selectedWeek]);
+
+  useEffect(() => {
+    const target = pendingScrollRestore.current;
+    if (loading || !initialWeekResolved || !target) return;
+
+    pendingScrollRestore.current = null;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({
+          left: target.left,
+          top: target.top,
+          behavior: "auto",
+        });
+        for (const [day, scrollLeft] of Object.entries(target.dayScrollLeft)) {
+          const container = document.querySelector<HTMLElement>(
+            `[data-planning-day-scroll="${day}"]`,
+          );
+          if (container) container.scrollLeft = scrollLeft;
+        }
+      });
+    });
+  }, [initialWeekResolved, loading, visibleDays.length]);
+
   const firstScaleShortcut = useMemo(() => {
     for (const day of visibleDays) {
       const dayRows = getUniquePlanningRecords(rowsByDay.get(day) || []);
@@ -1249,6 +1413,24 @@ export default function Escala() {
     inlineEditValue,
     inlineSelectedBuyer,
   ]);
+  const inlineCurralCapacity = useMemo(() => {
+    if (!inlineEditState || inlineEditState.focusField !== "curral") return null;
+
+    const nextCurral = Number(inlineEditValue.trim().replace(",", "."));
+    if (!Number.isFinite(nextCurral)) return null;
+
+    const projectedTotal = getProjectedPlanningCurralTotal(
+      rowsByDay.get(inlineEditState.day) || [],
+      inlineEditState.row.CURRAL,
+      nextCurral,
+    );
+
+    return {
+      projectedTotal,
+      excess: Math.max(0, projectedTotal - ESCALA_DAILY_CURRAL_LIMIT),
+      exceeded: projectedTotal > ESCALA_DAILY_CURRAL_LIMIT,
+    };
+  }, [inlineEditState, inlineEditValue, rowsByDay]);
   const inlineEditRowKey = useMemo(
     () => (inlineEditState ? getPlanningKey(inlineEditState.row) : ""),
     [inlineEditState],
@@ -1413,6 +1595,10 @@ export default function Escala() {
     const { item, scaleId } = chinaSuggestionState;
     const suggestion = item.chinaSuggestionMeta;
     const row = item.row;
+    if (row.ORIGEM_REGISTRO === "ERP" && loadingPaymentTerms) {
+      toast.warning("Aguarde o carregamento do prazo de pagamento.");
+      return;
+    }
     const recordManualId = toNumber(row.ID_ESCALA_ITEM_MANUAL);
     const recordPedidoId = toNumber(row.ID_ESCALA_PEDIDO_VINCULO);
     const recordPedidoVersion =
@@ -1443,11 +1629,16 @@ export default function Escala() {
         toast.success(result.message || "Quantidade China atualizada.");
       } else if (recordPedidoId > 0) {
         const result = await editarVinculoPedidoEscala(
-          buildOrderUpdatePayload(row, nroempresa, {
-            versao: recordPedidoVersion,
-            qtd_china_vaca: nextChinaVaca,
-            qtd_china_boi: nextChinaBoi,
-          }),
+          buildOrderUpdatePayload(
+            row,
+            nroempresa,
+            {
+              versao: recordPedidoVersion,
+              qtd_china_vaca: nextChinaVaca,
+              qtd_china_boi: nextChinaBoi,
+            },
+            paymentTermsByCode,
+          ),
         );
 
         toast.success(result.message || "Quantidade China atualizada.");
@@ -1476,6 +1667,7 @@ export default function Escala() {
             toNumber(row.ORDEM_EXIBICAO) > 0
               ? toNumber(row.ORDEM_EXIBICAO)
               : undefined,
+          prazo_dias: getEffectivePaymentTermDays(row, paymentTermsByCode),
           qtd_china_vaca: nextChinaVaca,
           qtd_china_boi: nextChinaBoi,
         });
@@ -1496,18 +1688,18 @@ export default function Escala() {
     }
   };
 
-  const handleInactivateScale = async (
+  const requestInactivateScale = (
     idEscala: number,
     version: number,
     day: string,
   ) => {
-    if (
-      !window.confirm(
-        `Inativar a escala de ${formatDate(day)} e todos os vínculos ativos?`,
-      )
-    ) {
-      return;
-    }
+    setDeleteConfirmation({ type: "scale", idEscala, version, day });
+  };
+
+  const confirmInactivateScale = async (
+    idEscala: number,
+    version: number,
+  ) => {
 
     setDeletingScaleId(idEscala);
 
@@ -1518,6 +1710,7 @@ export default function Escala() {
         versao: version,
       });
       toast.success(result.message || "Escala inativada.");
+      setDeleteConfirmation(null);
       await refreshAll();
     } catch (error) {
       toast.error(
@@ -1530,18 +1723,20 @@ export default function Escala() {
     }
   };
 
-  const handleDeleteManual = async (row: EscalaLinha) => {
+  const requestDeleteManual = (row: EscalaLinha) => {
     const id = toNumber(row.ID_ESCALA_ITEM_MANUAL);
-    const version = toNumber(row.VERSAO_REGISTRO) || 1;
 
     if (!id) {
       toast.error("O identificador do registro manual não foi retornado.");
       return;
     }
 
-    if (!window.confirm(`Apagar o registro manual de ${row.PRODUTOR || "produtor"}?`)) {
-      return;
-    }
+    setDeleteConfirmation({ type: "manual", row });
+  };
+
+  const confirmDeleteManual = async (row: EscalaLinha) => {
+    const id = toNumber(row.ID_ESCALA_ITEM_MANUAL);
+    const version = toNumber(row.VERSAO_REGISTRO) || 1;
 
     setDeletingManualId(id);
 
@@ -1552,6 +1747,7 @@ export default function Escala() {
         versao: version,
       });
       toast.success(result.message || "Registro manual removido.");
+      setDeleteConfirmation(null);
       await refreshAll();
     } catch (error) {
       toast.error(
@@ -1562,6 +1758,20 @@ export default function Escala() {
     } finally {
       setDeletingManualId(null);
     }
+  };
+
+  const confirmPendingDeletion = async () => {
+    if (!deleteConfirmation) return;
+
+    if (deleteConfirmation.type === "scale") {
+      await confirmInactivateScale(
+        deleteConfirmation.idEscala,
+        deleteConfirmation.version,
+      );
+      return;
+    }
+
+    await confirmDeleteManual(deleteConfirmation.row);
   };
 
   const openInclusionChoice = (
@@ -1591,7 +1801,7 @@ export default function Escala() {
     const row = inclusionChoice.selectedRow;
     setInclusionChoice(null);
 
-    navigate(
+    navigateFromPlanning(
       `/escala/gerenciar/${inclusionChoice.scaleId}?novoPedido=1&nroPedido=${toNumber(
         row.NROPEDIDO,
       )}&seqPedido=${toNumber(row.SEQPEDIDO)}${
@@ -1671,6 +1881,10 @@ export default function Escala() {
     if (!inlineEditState) return;
 
     const { row, rowScaleId, focusField } = inlineEditState;
+    if (row.ORIGEM_REGISTRO === "ERP" && loadingPaymentTerms) {
+      toast.warning("Aguarde o carregamento do prazo de pagamento.");
+      return;
+    }
     const rawValue = inlineEditValue.trim();
     const recordManualId = toNumber(row.ID_ESCALA_ITEM_MANUAL);
     const recordPedidoId = toNumber(row.ID_ESCALA_PEDIDO_VINCULO);
@@ -1782,9 +1996,12 @@ export default function Escala() {
 
         toast.success(result.message || "Registro manual atualizado.");
       } else {
-        const payload = buildOrderUpdatePayload(row, nroempresa, {
-          versao: recordPedidoVersion,
-        });
+        const payload = buildOrderUpdatePayload(
+          row,
+          nroempresa,
+          { versao: recordPedidoVersion },
+          paymentTermsByCode,
+        );
 
         switch (focusField) {
           case "comprador":
@@ -1856,8 +2073,34 @@ export default function Escala() {
   ) => {
     if (!canManage) return;
 
+    if (focusField === "prazo_dias" && row.ORIGEM_REGISTRO === "ERP") {
+      if (loadingPaymentTerms) {
+        toast.info("Aguarde o carregamento do prazo de pagamento.");
+        return;
+      }
+
+      const mappedPaymentTerm = getMappedPaymentTerm(row, paymentTermsByCode);
+      const effectivePrazo = getEffectivePaymentTermDays(
+        row,
+        paymentTermsByCode,
+      );
+
+      if (mappedPaymentTerm || effectivePrazo !== null) {
+        toast.info(
+          mappedPaymentTerm
+            ? `Prazo automático: ${effectivePrazo} dias${
+                mappedPaymentTerm.DESCRICAO
+                  ? ` (${mappedPaymentTerm.DESCRICAO})`
+                  : ""
+              }.`
+            : `Prazo legado mantido: ${effectivePrazo} dias.`,
+        );
+        return;
+      }
+    }
+
     if (row.STATUS_CONFIGURACAO === "PENDENTE_CRIAR_ESCALA") {
-      navigate(`/escala/gerenciar?data=${day}&incluirPendentes=1`);
+      navigateFromPlanning(`/escala/gerenciar?data=${day}&incluirPendentes=1`);
       return;
     }
 
@@ -2074,7 +2317,7 @@ export default function Escala() {
                 className="h-11 w-full shrink-0 gap-2 rounded-xl border-[#8EC7D9] bg-[#EFF8FA] px-4 text-sm font-black text-[#09759D] shadow-sm hover:border-[#57AFCB] hover:bg-[#E2F6FB] disabled:border-[#D4DFE8] disabled:bg-[#F5F8FB] disabled:text-[#90A3B7] sm:w-auto"
                 onClick={() => {
                   if (!firstScaleShortcut) return;
-                  navigate(
+                  navigateFromPlanning(
                     `/escala/gerenciar/${firstScaleShortcut.idEscala}?novoManual=1`,
                   );
                 }}
@@ -2250,19 +2493,33 @@ export default function Escala() {
           }}
         />
 
-        <div className="-mx-2.5 grid snap-x snap-mandatory grid-flow-col auto-cols-[minmax(155px,1fr)] gap-2 overflow-x-auto px-2.5 pb-2 sm:-mx-3 sm:px-3 lg:mx-0 lg:grid-flow-row lg:grid-cols-[repeat(7,minmax(0,1fr))] lg:overflow-visible lg:px-0 lg:pb-0 xl:gap-2">
+        <div className="-mx-2.5 grid snap-x snap-mandatory grid-flow-col auto-cols-[minmax(155px,1fr)] gap-2 overflow-x-auto px-2.5 pb-2 sm:-mx-3 sm:px-3 lg:mx-0 lg:grid-flow-row lg:grid-cols-[repeat(8,minmax(0,1fr))] lg:overflow-visible lg:px-0 lg:pb-0 xl:gap-2">
+          <WeekMetric
+            icon={<CalendarRange />}
+            label="Média de animais/dia"
+            value={numberFormat.format(Math.trunc(weekTotals.averageHeadsPerDay))}
+            helper="Total semanal dividido por 5 dias"
+            accent="#173D6E"
+          />
+          <WeekMetric
+            icon={<ClipboardList />}
+            label="Média de @"
+            value={`${decimalFormat.format(weekTotals.averageArrobas)} @`}
+            helper="Total de @ dividido pelos animais"
+            accent="#173D6E"
+          />
+          <WeekMetric
+            icon={<CircleDollarSign />}
+            label="Valor médio"
+            value={currencyFormat.format(weekTotals.averagePaid)}
+            helper="Valor total dividido pelo total de @"
+            accent="#173D6E"
+          />
           <WeekMetric
             icon={<CalendarDays />}
             label="Total de animais"
             value={numberFormat.format(weekTotals.plannedHeads)}
             helper={`${numberFormat.format(weekTotals.erpOrders)} pedidos ERP + ${numberFormat.format(weekTotals.manualRecords)} manuais`}
-            accent="#173D6E"
-          />
-          <WeekMetric
-            icon={<CalendarRange />}
-            label="Média de animais/dia"
-            value={decimalFormat.format(weekTotals.averageHeadsPerDay)}
-            helper={`${numberFormat.format(weekTotals.daysWithAnimals)} dias com animais`}
             accent="#173D6E"
           />
           <WeekMetric
@@ -2277,13 +2534,6 @@ export default function Escala() {
             label="Vacas"
             value={numberFormat.format(weekTotals.cows)}
             secondaryValue={`${percentFormat.format(weekTotals.cowsPercent)}%`}
-            accent="#173D6E"
-          />
-          <WeekMetric
-            icon={<CircleDollarSign />}
-            label="Valor médio pago"
-            value={currencyFormat.format(weekTotals.averagePaid)}
-            helper="Média ponderada por animal"
             accent="#173D6E"
           />
           <WeekMetric
@@ -2345,6 +2595,8 @@ export default function Escala() {
                 });
               const totals = calculateTotals(dayRows);
               const daySubtotal = calculatePlanningDaySubtotal(sexRows, dayRows);
+              const curralCapacityExceeded =
+                daySubtotal.curral > ESCALA_DAILY_CURRAL_LIMIT;
               const pendingDayOrders = dayRows.filter(
                 (row) =>
                   row.ORIGEM_REGISTRO === "ERP" &&
@@ -2380,12 +2632,50 @@ export default function Escala() {
                         </h2>
                       </div>
 
-                      <span
-                        className="inline-flex items-center text-sm font-extrabold tracking-tight text-[#173D6E]"
+                      <DayHeaderMetric
+                        label="Quantidade"
+                        value={`${numberFormat.format(totals.plannedHeads)} ${
+                          totals.plannedHeads === 1 ? "animal" : "animais"
+                        }`}
                         title={`${numberFormat.format(totals.plannedHeads)} animais no dia`}
-                      >
-                        {numberFormat.format(totals.plannedHeads)} animais
-                      </span>
+                      />
+
+                      <DayHeaderMetric
+                        label="Média de @"
+                        value={
+                          daySubtotal.averageArrobas !== null
+                            ? `${decimalFormat.format(daySubtotal.averageArrobas)} @`
+                            : "—"
+                        }
+                        title="Média de arrobas do dia"
+                      />
+
+                      <DayHeaderMetric
+                        label="Valor médio"
+                        value={
+                          daySubtotal.averagePrice !== null
+                            ? currencyFormat.format(daySubtotal.averagePrice)
+                            : "—"
+                        }
+                        title="Valor médio do dia"
+                        className="min-w-[118px]"
+                      />
+
+                      {curralCapacityExceeded && (
+                        <span
+                          className="inline-flex min-h-[46px] items-center gap-2 rounded-lg border border-[#F2B176] bg-[#FFF4E8] px-3 py-1.5 text-[#A84A15] shadow-[0_1px_2px_rgba(184,91,0,0.08)]"
+                          title={`Capacidade diária excedida: ${numberFormat.format(daySubtotal.curral)} currais para o limite de ${ESCALA_DAILY_CURRAL_LIMIT}.`}
+                        >
+                          <AlertTriangle className="h-4 w-4 shrink-0" />
+                          <span className="whitespace-nowrap text-[11px] font-black">
+                            Currais {numberFormat.format(daySubtotal.curral)}/
+                            {ESCALA_DAILY_CURRAL_LIMIT}
+                          </span>
+                          <span className="hidden whitespace-nowrap text-[10px] font-bold xl:inline">
+                            capacidade excedida
+                          </span>
+                        </span>
+                      )}
 
                       {(pendingInclusion > 0 || pendingComplement > 0) && (
                         <span
@@ -2431,10 +2721,6 @@ export default function Escala() {
                         )}%`}
                       />
                       <DayInlineMetric
-                        label="Preço médio"
-                        value={currencyFormat.format(totals.averagePaid)}
-                      />
-                      <DayInlineMetric
                         label="Agrotools"
                         value={`${numberFormat.format(
                           totals.agrotools,
@@ -2454,7 +2740,7 @@ export default function Escala() {
                           size="sm"
                           className="h-8 gap-2 rounded-lg bg-[#1B58A0] text-xs font-extrabold text-white hover:bg-[#173D6E]"
                           onClick={() =>
-                            navigate(
+                            navigateFromPlanning(
                               `/escala/gerenciar?data=${day}&incluirPendentes=1`,
                             )
                           }
@@ -2487,7 +2773,9 @@ export default function Escala() {
                             size="sm"
                             variant="outline"
                             className="h-8 rounded-lg border-[#BFCFDF] text-xs font-extrabold text-[#173D6E] hover:border-[#1B58A0] hover:bg-[#EEF4FA]"
-                            onClick={() => navigate(`/escala/gerenciar/${idEscala}`)}
+                            onClick={() =>
+                              navigateFromPlanning(`/escala/gerenciar/${idEscala}`)
+                            }
                           >
                             Gerenciar
                           </Button>
@@ -2497,7 +2785,9 @@ export default function Escala() {
                             variant="outline"
                             className="order-first h-10 w-full gap-2 rounded-lg border-[#8EC7D9] bg-[#EFF8FA] px-4 text-sm font-black text-[#09759D] shadow-sm hover:border-[#57AFCB] hover:bg-[#E2F6FB] sm:h-9 sm:w-auto sm:min-w-[172px] sm:px-3 sm:text-xs"
                             onClick={() =>
-                              navigate(`/escala/gerenciar/${idEscala}?novoManual=1`)
+                              navigateFromPlanning(
+                                `/escala/gerenciar/${idEscala}?novoManual=1`,
+                              )
                             }
                           >
                             <FilePlus2 className="h-3.5 w-3.5" />
@@ -2510,8 +2800,9 @@ export default function Escala() {
                             className="h-8 w-8 rounded-lg border-[#F0B8BC] text-[#C61F2A] hover:bg-[#FFF1F2]"
                             disabled={deletingScaleId === idEscala}
                             onClick={() =>
-                              void handleInactivateScale(idEscala, scaleVersion, day)
+                              requestInactivateScale(idEscala, scaleVersion, day)
                             }
+                            title="Inativar escala"
                           >
                             {deletingScaleId === idEscala ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2521,6 +2812,17 @@ export default function Escala() {
                           </Button>
                         </>
                       )}
+
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="h-9 w-9 rounded-lg border-[#BFCFDF] bg-white text-[#173D6E] hover:border-[#1B58A0] hover:bg-[#EEF4FA]"
+                        title={allDaysOpened ? "Recolher todos os dias" : "Expandir todos os dias"}
+                        aria-label={allDaysOpened ? "Recolher todos os dias" : "Expandir todos os dias"}
+                        onClick={() => setEveryDayOpened(!allDaysOpened)}
+                      >
+                        <TripleChevronIcon opened={allDaysOpened} />
+                      </Button>
 
                       <Button
                         size="icon"
@@ -2547,7 +2849,10 @@ export default function Escala() {
                       <p className="border-b border-[#E1E8EF] bg-[#F8FBFD] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[#60758A] sm:hidden">
                         Deslize para o lado para ver e editar todos os campos
                       </p>
-                      <div className="w-full overflow-x-auto overscroll-x-contain">
+                      <div
+                        className="w-full overflow-x-auto overscroll-x-contain"
+                        data-planning-day-scroll={day}
+                      >
                         <Table className="w-full min-w-[1380px] table-fixed text-[11px]">
                           <TableHeader>
                             <TableRow className="border-b border-[#C9D7E5] bg-[#EAF1F7] hover:bg-[#EAF1F7]">
@@ -2581,8 +2886,24 @@ export default function Escala() {
                               <TableHead className="w-[4%] h-11 border-r border-[#D7E2EC] px-1 text-[9px] font-extrabold uppercase leading-tight tracking-[0.03em] text-[#173D6E] text-right">
                                 Prazo
                               </TableHead>
-                              <TableHead className="w-[4%] h-11 border-r border-[#D7E2EC] px-1 text-[9px] font-extrabold uppercase leading-tight tracking-[0.03em] text-[#173D6E] text-center">
-                                Curral
+                              <TableHead
+                                className={`w-[4%] h-11 border-r px-1 text-[9px] font-extrabold uppercase leading-tight tracking-[0.03em] text-center ${
+                                  curralCapacityExceeded
+                                    ? "border-[#F2B176] bg-[#FFE8C7] text-[#A84A15]"
+                                    : "border-[#D7E2EC] text-[#173D6E]"
+                                }`}
+                                title={
+                                  curralCapacityExceeded
+                                    ? `Capacidade excedida: ${numberFormat.format(daySubtotal.curral)} de ${ESCALA_DAILY_CURRAL_LIMIT} currais.`
+                                    : `Limite diário: ${ESCALA_DAILY_CURRAL_LIMIT} currais`
+                                }
+                              >
+                                <span className="inline-flex items-center justify-center gap-1">
+                                  {curralCapacityExceeded && (
+                                    <AlertTriangle className="h-3.5 w-3.5" />
+                                  )}
+                                  Curral
+                                </span>
                               </TableHead>
                               <TableHead className="w-[4%] h-11 border-r border-[#D7E2EC] px-1 text-[9px] font-extrabold uppercase leading-tight tracking-[0.03em] text-[#173D6E] text-right">
                                 China
@@ -2616,6 +2937,26 @@ export default function Escala() {
                                 row.OBSERVACAO_REGISTRO ||
                                 row.OBSERVACAO_PEDIDO_ESCALA ||
                                 "";
+                              const mappedPaymentTerm = getMappedPaymentTerm(
+                                row,
+                                paymentTermsByCode,
+                              );
+                              const effectivePrazo = getEffectivePaymentTermDays(
+                                row,
+                                paymentTermsByCode,
+                              );
+                              const prazoCanEdit =
+                                row.ORIGEM_REGISTRO === "MANUAL" ||
+                                (!mappedPaymentTerm && effectivePrazo === null);
+                              const prazoTitle = mappedPaymentTerm
+                                ? `Prazo automático${
+                                    mappedPaymentTerm.DESCRICAO
+                                      ? `: ${mappedPaymentTerm.DESCRICAO}`
+                                      : ""
+                                  }`
+                                : effectivePrazo !== null
+                                  ? "Prazo legado do vínculo"
+                                  : "Prazo não encontrado para a condição de pagamento";
                               const compradorPreenchido =
                                 toNumber(row.ID_COMPRADOR_ESCALA) > 0 ||
                                 String(row.COMPRADOR_ESCALA || "").trim().length > 0 ||
@@ -2680,7 +3021,9 @@ export default function Escala() {
                                             className="h-7 w-7 rounded-md text-[#D45B17] hover:bg-[#FFF2E5]"
                                             title="Criar escala para este dia"
                                             onClick={() =>
-                                              navigate(`/escala/gerenciar?data=${day}&incluirPendentes=1`)
+                                              navigateFromPlanning(
+                                                `/escala/gerenciar?data=${day}&incluirPendentes=1`,
+                                              )
                                             }
                                           >
                                             <CalendarPlus className="h-3.5 w-3.5" />
@@ -2719,7 +3062,7 @@ export default function Escala() {
                                               className="h-7 w-7 rounded-md text-[#60758A] hover:bg-[#EAF1F8] hover:text-[#173D6E]"
                                               title="Editar informações do pedido"
                                                 onClick={() =>
-                                                  navigate(
+                                                  navigateFromPlanning(
                                                     `/escala/gerenciar/${rowScaleId}?editarPedido=${toNumber(
                                                       row.ID_ESCALA_PEDIDO_VINCULO,
                                                     )}&voltarEscala=1`,
@@ -2739,7 +3082,7 @@ export default function Escala() {
                                                 className="h-7 w-7 rounded-md text-[#60758A] hover:bg-[#EAF1F8] hover:text-[#173D6E]"
                                                 title="Editar registro manual"
                                                 onClick={() =>
-                                                  navigate(
+                                                  navigateFromPlanning(
                                                     `/escala/gerenciar/${rowScaleId}?editarManual=${toNumber(
                                                       row.ID_ESCALA_ITEM_MANUAL,
                                                     )}&voltarEscala=1`,
@@ -2761,7 +3104,7 @@ export default function Escala() {
                                                 }
                                                 title="Apagar registro manual"
                                                 onClick={() =>
-                                                  void handleDeleteManual(row)
+                                                  requestDeleteManual(row)
                                                 }
                                               >
                                                 {deletingManualId ===
@@ -3143,10 +3486,15 @@ export default function Escala() {
                                       renderInlineEditor("prazo_dias", {
                                         align: "right",
                                       })
-                                    ) : row.PRAZO_DIAS === null ||
-                                    row.PRAZO_DIAS === undefined ? (
+                                    ) : registroErp && loadingPaymentTerms ? (
+                                      <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-[#1B58A0]" />
+                                    ) : effectivePrazo === null ? (
                                       <MissingFieldButton
-                                        label="Prazo não informado"
+                                        label={
+                                          row.ORIGEM_REGISTRO === "ERP"
+                                            ? "Prazo não encontrado para a condição de pagamento"
+                                            : "Prazo não informado"
+                                        }
                                         align="right"
                                         onClick={() =>
                                           openRequiredField(
@@ -3158,7 +3506,7 @@ export default function Escala() {
                                           )
                                         }
                                       />
-                                    ) : canManage && rowScaleId > 0 ? (
+                                    ) : canManage && rowScaleId > 0 && prazoCanEdit ? (
                                       <button
                                         type="button"
                                         className="w-full rounded-md px-1 py-0.5 text-right transition hover:bg-[#EEF4FA] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30"
@@ -3173,18 +3521,27 @@ export default function Escala() {
                                           )
                                         }
                                       >
-                                        {numberFormat.format(
-                                          toNumber(row.PRAZO_DIAS),
-                                        )}
+                                        {numberFormat.format(effectivePrazo)}
                                       </button>
                                     ) : (
-                                      numberFormat.format(
-                                        toNumber(row.PRAZO_DIAS),
-                                      )
+                                      <span
+                                        className={
+                                          mappedPaymentTerm ? "text-[#1B58A0]" : undefined
+                                        }
+                                        title={prazoTitle}
+                                      >
+                                        {numberFormat.format(effectivePrazo)}
+                                      </span>
                                     )}
                                   </TableCell>
 
-                                  <TableCell className="px-1 py-2.5 text-center align-top font-bold text-[#425B73]">
+                                  <TableCell
+                                    className={`border-r px-1 py-2.5 text-center align-top font-bold ${
+                                      curralCapacityExceeded
+                                        ? "border-[#F6D19E] bg-[#FFF7E8] text-[#A84A15]"
+                                        : "border-[#E5EDF5] text-[#425B73]"
+                                    }`}
+                                  >
                                     {isInlineEditing(row, "curral") ? (
                                       renderInlineEditor("curral", {
                                         align: "center",
@@ -3335,7 +3692,18 @@ export default function Escala() {
                               <TableCell className="px-1.5 py-3 text-right text-[12px] font-black text-[#718297]">
                                 —
                               </TableCell>
-                              <TableCell className="px-1.5 py-3 text-center text-[12px] font-black text-[#718297]">
+                              <TableCell
+                                className={`px-1.5 py-3 text-center text-[12px] font-black ${
+                                  curralCapacityExceeded
+                                    ? "border border-[#F2B176] bg-[#FFE8C7] text-[#A84A15]"
+                                    : "text-[#718297]"
+                                }`}
+                                title={
+                                  curralCapacityExceeded
+                                    ? `${numberFormat.format(daySubtotal.curral - ESCALA_DAILY_CURRAL_LIMIT)} currais acima do limite diário.`
+                                    : undefined
+                                }
+                              >
                                 {numberFormat.format(daySubtotal.curral)}
                               </TableCell>
                               <TableCell className="px-1.5 py-3 text-right text-[12px] font-black text-[#B85B00]">
@@ -3362,7 +3730,11 @@ export default function Escala() {
 
       <Dialog open={inlineConfirmOpen} onOpenChange={setInlineConfirmOpen}>
         <DialogContent
-          className="sm:max-w-lg"
+          className={`sm:max-w-lg ${
+            inlineCurralCapacity?.exceeded
+              ? "border-[#F2B176] shadow-[0_24px_70px_rgba(168,74,21,0.2)]"
+              : ""
+          }`}
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&
@@ -3376,28 +3748,49 @@ export default function Escala() {
           }}
         >
           <DialogHeader>
-            <DialogTitle>
-              {inlineEditState
-                ? `Confirmar ${getInlineFieldLabel(inlineEditState.focusField)}`
-                : "Confirmar atualização"}
+            <DialogTitle
+              className={
+                inlineCurralCapacity?.exceeded ? "text-[#A84A15]" : undefined
+              }
+            >
+              {inlineCurralCapacity?.exceeded
+                ? "Atenção: limite de currais"
+                : inlineEditState
+                  ? `Confirmar ${getInlineFieldLabel(inlineEditState.focusField)}`
+                  : "Confirmar atualização"}
             </DialogTitle>
             <DialogDescription>
-              Revise o valor informado no planejamento e confirme a gravação.
+              {inlineCurralCapacity?.exceeded
+                ? `Esta alteração deixará o dia com ${numberFormat.format(inlineCurralCapacity.projectedTotal)} currais, acima do limite diário de ${ESCALA_DAILY_CURRAL_LIMIT}. Tem certeza que deseja continuar?`
+                : "Revise o valor informado no planejamento e confirme a gravação."}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-xl border border-[#CFE0EF] bg-[#EEF6FD] p-3 text-sm text-[#1B4D80]">
-            Confirme a atualização de{" "}
-            <strong>
-              {inlineEditState
-                ? getInlineFieldLabel(inlineEditState.focusField)
-                : "campo"}
-            </strong>{" "}
-            para{" "}
-            <strong>
-              {inlineEditPreview || "valor informado"}
-            </strong>
-            .
+          <div
+            className={`rounded-xl border p-3 text-sm ${
+              inlineCurralCapacity?.exceeded
+                ? "border-[#F2B176] bg-[#FFF4E8] text-[#8F4317]"
+                : "border-[#CFE0EF] bg-[#EEF6FD] text-[#1B4D80]"
+            }`}
+          >
+            {inlineCurralCapacity?.exceeded ? (
+              <span className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  O total ficará <strong>{numberFormat.format(inlineCurralCapacity.excess)} currais acima</strong> da capacidade permitida. A coluna Curral permanecerá destacada no planejamento.
+                </span>
+              </span>
+            ) : (
+              <>
+                Confirme a atualização de{" "}
+                <strong>
+                  {inlineEditState
+                    ? getInlineFieldLabel(inlineEditState.focusField)
+                    : "campo"}
+                </strong>{" "}
+                para <strong>{inlineEditPreview || "valor informado"}</strong>.
+              </>
+            )}
           </div>
 
           <DialogFooter>
@@ -3412,6 +3805,11 @@ export default function Escala() {
             <Button
               type="button"
               autoFocus
+              className={
+                inlineCurralCapacity?.exceeded
+                  ? "bg-[#D96B16] text-white hover:bg-[#B9540F]"
+                  : undefined
+              }
               disabled={savingInlineEdit || !inlineEditState}
               onClick={() => void handleInlineEditSave()}
             >
@@ -3425,6 +3823,79 @@ export default function Escala() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteConfirmation)}
+        onOpenChange={(open) => {
+          if (!open && deletingScaleId === null && deletingManualId === null) {
+            setDeleteConfirmation(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="overflow-hidden border-0 p-0 sm:max-w-md"
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              !event.repeat &&
+              deletingScaleId === null &&
+              deletingManualId === null
+            ) {
+              event.preventDefault();
+              void confirmPendingDeletion();
+            }
+          }}
+        >
+          <div className="h-2 w-full bg-[#C61F2A]" />
+          <div className="px-6 pb-6 pt-5 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[#F0B8BC] bg-[#FFF1F2] text-[#C61F2A]">
+              <Trash2 className="h-8 w-8" />
+            </div>
+            <DialogHeader className="text-center sm:text-center">
+              <DialogTitle className="text-2xl font-black text-[#173D6E]">
+                {deleteConfirmation?.type === "scale"
+                  ? "Inativar escala?"
+                  : "Apagar registro manual?"}
+              </DialogTitle>
+              <DialogDescription className="pt-2 font-medium leading-relaxed text-[#60758A]">
+                {deleteConfirmation?.type === "scale"
+                  ? `Tem certeza que deseja inativar a escala de ${formatDate(deleteConfirmation.day)}? Todos os vínculos ativos desse dia serão inativados.`
+                  : `Tem certeza que deseja apagar o registro manual de ${deleteConfirmation?.row.PRODUTOR || "produtor"}? Ele deixará de aparecer no planejamento.`}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 flex-1 font-bold"
+                disabled={deletingScaleId !== null || deletingManualId !== null}
+                onClick={() => setDeleteConfirmation(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                autoFocus
+                className="h-12 flex-1 bg-[#C61F2A] font-bold text-white hover:bg-[#A51D29]"
+                disabled={deletingScaleId !== null || deletingManualId !== null}
+                onClick={() => void confirmPendingDeletion()}
+              >
+                {deletingScaleId !== null || deletingManualId !== null ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processando...
+                  </>
+                ) : deleteConfirmation?.type === "scale" ? (
+                  "Sim, inativar"
+                ) : (
+                  "Sim, apagar"
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -3884,6 +4355,44 @@ function WeekMetric({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function TripleChevronIcon({ opened }: { opened: boolean }) {
+  const Icon = opened ? ChevronUp : ChevronDown;
+
+  return (
+    <span className="flex flex-col items-center -space-y-1.5" aria-hidden="true">
+      <Icon className="h-3 w-3" />
+      <Icon className="h-3 w-3" />
+      <Icon className="h-3 w-3" />
+    </span>
+  );
+}
+
+function DayHeaderMetric({
+  label,
+  value,
+  title,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  title: string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`inline-flex min-h-[46px] min-w-[102px] flex-col justify-center rounded-lg border border-[#CBD9E7] bg-white px-2.5 py-1.5 shadow-[0_1px_2px_rgba(23,61,110,0.03)] ${className}`}
+      title={title}
+    >
+      <span className="whitespace-nowrap text-[8px] font-extrabold uppercase leading-none tracking-[0.08em] text-[#718297]">
+        {label}
+      </span>
+      <span className="mt-1 whitespace-nowrap text-[13px] font-black leading-none tracking-tight text-[#173D6E]">
+        {value}
+      </span>
+    </span>
   );
 }
 
