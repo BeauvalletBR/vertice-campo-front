@@ -36,7 +36,7 @@ import {
 } from "@/lib/buyer-display";
 import {
   calculateBaseWeightedPrice,
-  calculateRowsWeightedBasePrice,
+  calculateScaleMacroAverages,
   getEffectivePremium,
 } from "@/lib/escala-pricing";
 
@@ -76,7 +76,7 @@ const calculateTvDaySubtotal = (rows: EscalaLinha[]) => {
 
   return {
     quantity: subtotal.quantity,
-    averagePrice: calculateRowsWeightedBasePrice(rows),
+    averagePrice: calculateScaleMacroAverages(rows).averageValue,
     china: subtotal.china,
     agrotools: subtotal.agrotools,
   };

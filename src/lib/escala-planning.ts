@@ -3,10 +3,7 @@ import type {
   EscalaResumo,
   EscalaStatus,
 } from "@/types/escala";
-import {
-  calculateRowsWeightedBasePrice,
-  calculateScaleMacroAverages,
-} from "@/lib/escala-pricing";
+import { calculateScaleMacroAverages } from "@/lib/escala-pricing";
 
 export interface PlanningTotals {
   erpOrders: number;
@@ -387,9 +384,10 @@ export const calculatePlanningTotals = (rows: EscalaLinha[]): PlanningTotals => 
   return {
     ...base,
     daysWithAnimals: daysWithAnimals.size,
-    averageHeadsPerDay: base.plannedHeads / 5,
+    averageHeadsPerDay:
+      daysWithAnimals.size > 0 ? base.plannedHeads / daysWithAnimals.size : 0,
     averageArrobas: macroAverages.averageArrobas ?? 0,
-    averagePaid: calculateRowsWeightedBasePrice(records) ?? 0,
+    averagePaid: macroAverages.averageValue ?? 0,
     cowsPercent: percentage(base.cows),
     bullsPercent: percentage(base.bulls),
     chinaPercent: percentage(base.china),

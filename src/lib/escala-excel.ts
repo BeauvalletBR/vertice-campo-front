@@ -34,6 +34,13 @@ export const calculateScaleExcelLineTotals = (line: ScaleExcelLine) => {
   };
 };
 
+export const countScaleExcelDaysWithAnimals = (lines: ScaleExcelLine[]) =>
+  new Set(
+    lines
+      .filter((line) => line.animals > 0 && line.date)
+      .map((line) => line.date),
+  ).size;
+
 const workbookMimeType =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -129,6 +136,10 @@ export async function exportScalePlanningToExcel({
     throw new Error("Não existem animais para exportar nesta semana.");
   }
 
+  const daysWithAnimals = Math.max(
+    1,
+    countScaleExcelDaysWithAnimals(reportLines),
+  );
   const ExcelJS = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Vertice Campo";
@@ -310,7 +321,7 @@ export async function exportScalePlanningToExcel({
   worksheet.getCell(`D${averageRow}`).value = "MÉDIAS";
   worksheet.getCell(`E${averageRow}`).value = "POR DIA";
   worksheet.getCell(`F${averageRow}`).value = {
-    formula: `IFERROR(F${summaryTotalRow}/5,0)`,
+    formula: `IFERROR(F${summaryTotalRow}/${daysWithAnimals},0)`,
   };
   worksheet.getCell(`G${averageRow}`).value = {
     formula: `IFERROR(G${summaryTotalRow}/F${summaryTotalRow},0)`,

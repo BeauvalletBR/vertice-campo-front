@@ -44,6 +44,8 @@ export interface ApiRancher {
   DATA_ULTIMA_VISITA?: string | null; 
   VENDAREPRESENTANTE: "S" | "N";
   NOME_REPRESENTANTE?: string | null; 
+  LATITUDE?: number | string | null;
+  LONGITUDE?: number | string | null;
 }
 
 export interface ApiAgendamento {
@@ -140,6 +142,12 @@ export interface ApiAuditoria {
 export interface ApiUsuario {
   SEQUSUARIO: number;
   CODUSUARIO: string;
+  NOME?: string;
+  NOMEUSUARIO?: string;
+  NOME_USUARIO?: string;
+  USUARIO_NOME?: string;
+  DESCRICAO?: string;
+  DESCUSUARIO?: string;
 }
 
 export interface ApiHistoricoCompra {
@@ -168,20 +176,16 @@ let cachedHistorico: ApiHistoricoCompra[] | null = null;
 let fetchHistoricoPromise: Promise<ApiHistoricoCompra[]> | null = null;
 
 const getAuthHeaders = (isJson = false) => {
-  const tokenAPI = import.meta.env.VITE_N8N_SECRET_TOKEN;
-  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key";
-  const jwtToken = localStorage.getItem("jwt_token"); 
+  const jwtToken = localStorage.getItem("jwt_token");
 
-  const headers: Record<string, string> = {
-    [headerKey]: tokenAPI,
-  };
+  const headers: Record<string, string> = {};
 
   if (isJson) {
     headers["Content-Type"] = "application/json";
   }
 
   if (jwtToken) {
-    headers["Authorization"] = `Bearer ${jwtToken}`; 
+    headers["Authorization"] = `Bearer ${jwtToken}`;
   }
 
   return headers;
@@ -192,6 +196,70 @@ const checkSessionExpired = (response: Response) => {
     window.dispatchEvent(new Event('sessao-expirada'));
   }
 };
+
+
+/**
+ * Função genérica para consumir os webhooks autenticados do n8n.
+ * Reaproveita o mesmo Header Auth e o mesmo JWT utilizados pelo restante do sistema.
+ */
+export async function n8nPost<T>(
+  url: string | undefined,
+  body: unknown
+): Promise<T> {
+  if (!url) {
+    throw new Error("URL do webhook n8n não configurada no arquivo .env.");
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: getAuthHeaders(true),
+    cache: "no-store",
+    body: JSON.stringify(body),
+  });
+
+  checkSessionExpired(response);
+
+  const contentType = response.headers.get("content-type") || "";
+  let responseBody: unknown;
+
+  try {
+    responseBody = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+  } catch {
+    responseBody = null;
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof responseBody === "object" &&
+      responseBody !== null &&
+      "message" in responseBody
+        ? String(
+            (responseBody as { message?: unknown }).message ||
+              `Erro HTTP ${response.status}.`
+          )
+        : String(responseBody || `Erro HTTP ${response.status}.`);
+
+    throw new Error(message);
+  }
+
+  if (
+    typeof responseBody === "object" &&
+    responseBody !== null &&
+    "success" in responseBody &&
+    (responseBody as { success?: boolean }).success === false
+  ) {
+    throw new Error(
+      String(
+        (responseBody as { message?: unknown }).message ||
+          "A API retornou uma falha."
+      )
+    );
+  }
+
+  return responseBody as T;
+}
 
 export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise<ApiRancher[]> => {
   if (cachedPecuaristas && cachedPecuaristas.length > 0 && !forceRefresh) {
@@ -656,26 +724,24 @@ export interface LoginResponse {
     name: string;
     role: "ADMIN" | "COMPRADOR";
     modulos?: string[];
-    nivel?: number; 
+    nivel?: number;
+    nroempresa?: number;
   };
   access_token?: string; 
 }
 
 export const realizarLogin = async (login: string, senha: string, empresa: string): Promise<LoginResponse> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_LOGIN; 
-  const tokenAPI = import.meta.env.VITE_N8N_SECRET_TOKEN;
-  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key";
-
   if (!url) return { success: false, message: "URL de login não configurada no .env" };
 
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", [headerKey]: tokenAPI },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ login, senha, empresa: Number(empresa) }) 
     });
     
-    if (response.status === 403) return { success: false, message: "Acesso Negado. Token de API inválido." };
+    if (response.status === 403) return { success: false, message: "Acesso negado pelo servidor." };
 
     if (!response.ok) {
       return { success: false, message: "Erro de comunicação com o servidor de autenticação." };

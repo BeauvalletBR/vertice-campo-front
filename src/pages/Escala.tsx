@@ -82,7 +82,6 @@ import type {
 import { EscalaPlaybackDialog } from "@/components/EscalaPlaybackDialog";
 import {
   calculateScaleMacroAverages,
-  calculateRowsWeightedBasePrice,
   getAnimalBasePrice,
   getEffectivePremium,
 } from "@/lib/escala-pricing";
@@ -672,7 +671,7 @@ const calculatePlanningDaySubtotal = (
   return {
     quantity: subtotal.quantity,
     averageArrobas: macroAverages.averageArrobas,
-    averagePrice: calculateRowsWeightedBasePrice(uniqueRecords),
+    averagePrice: macroAverages.averageValue,
     curral: uniqueRecords.reduce(
       (total, row) => total + toNumber(row.CURRAL),
       0,
@@ -873,9 +872,10 @@ const calculateTotals = (rows: EscalaLinha[]): PlanningTotals => {
   return {
     ...base,
     daysWithAnimals: daysWithAnimals.size,
-    averageHeadsPerDay: base.plannedHeads / 5,
+    averageHeadsPerDay:
+      daysWithAnimals.size > 0 ? base.plannedHeads / daysWithAnimals.size : 0,
     averageArrobas: macroAverages.averageArrobas ?? 0,
-    averagePaid: calculateRowsWeightedBasePrice(records) ?? 0,
+    averagePaid: macroAverages.averageValue ?? 0,
     cowsPercent: percentage(base.cows),
     bullsPercent: percentage(base.bulls),
     chinaPercent: percentage(base.china),
@@ -2500,7 +2500,11 @@ export default function Escala() {
             icon={<CalendarRange />}
             label="Média de animais/dia"
             value={numberFormat.format(Math.trunc(weekTotals.averageHeadsPerDay))}
-            helper="Total semanal dividido por 5 dias"
+            helper={
+              weekTotals.daysWithAnimals === 1
+                ? "Total semanal dividido por 1 dia com escala"
+                : `Total semanal dividido por ${weekTotals.daysWithAnimals} dias com escala`
+            }
             accent="#173D6E"
           />
           <WeekMetric

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildScaleExcelReportLines,
   calculateScaleExcelLineTotals,
+  countScaleExcelDaysWithAnimals,
 } from "@/lib/escala-excel";
 import type { EscalaLinha } from "@/types/escala";
 
@@ -66,5 +67,25 @@ describe("escala excel", () => {
       totalArrobas: 2_000,
       totalValue: 14_000,
     });
+  });
+
+  it("conta somente as datas distintas que possuem animais", () => {
+    const lines = buildScaleExcelReportLines([
+      createRow({ NROPEDIDO: 100, DATA_ABATE: "2026-08-31", QTD_BOI: 20 }),
+      createRow({
+        ID_PLANEJAMENTO: "ERP-101",
+        NROPEDIDO: 101,
+        DATA_ABATE: "2026-08-31",
+        QTD_VACA: 10,
+      }),
+      createRow({
+        ID_PLANEJAMENTO: "ERP-102",
+        NROPEDIDO: 102,
+        DATA_ABATE: "2026-09-02",
+        QTD_BOI: 30,
+      }),
+    ]);
+
+    expect(countScaleExcelDaysWithAnimals(lines)).toBe(2);
   });
 });

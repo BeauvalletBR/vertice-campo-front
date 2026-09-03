@@ -31,6 +31,7 @@ import {
   toNumber,
 } from "@/lib/escala-planning";
 import {
+  calculateScaleMacroAverages,
   getAnimalBasePrice,
   getEffectivePremium,
 } from "@/lib/escala-pricing";
@@ -76,16 +77,12 @@ interface TvPlanningRow {
 }
 
 const calculateTvPlanningSubtotal = (rows: TvPlanningRow[]) => {
+  const records = getUniquePlanningRecords(rows.map((item) => item.row));
   const subtotal = rows.reduce(
     (accumulator, item) => {
       accumulator.quantity += item.quantity;
       accumulator.china += item.chinaQuantity;
       accumulator.agrotools += item.agrotoolsQuantity;
-
-      if (item.unitValue !== null && item.unitValue > 0) {
-        accumulator.weightedValue += item.unitValue * item.quantity;
-        accumulator.weightedQuantity += item.quantity;
-      }
 
       return accumulator;
     },
@@ -93,18 +90,13 @@ const calculateTvPlanningSubtotal = (rows: TvPlanningRow[]) => {
       quantity: 0,
       china: 0,
       agrotools: 0,
-      weightedValue: 0,
-      weightedQuantity: 0,
     },
   );
 
   return {
     quantity: subtotal.quantity,
-    averagePrice:
-      subtotal.weightedQuantity > 0
-        ? subtotal.weightedValue / subtotal.weightedQuantity
-        : null,
-    curral: getPlanningCurralTotal(rows.map((item) => item.row)),
+    averagePrice: calculateScaleMacroAverages(records).averageValue,
+    curral: getPlanningCurralTotal(records),
     china: subtotal.china,
     agrotools: subtotal.agrotools,
   };
