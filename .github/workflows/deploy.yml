@@ -1,0 +1,56 @@
+name: Deploy Vertice Campo Front
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+concurrency:
+  group: vertice-campo-front-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build e Deploy Frontend
+
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - vertice-front
+
+    timeout-minutes: 20
+
+    steps:
+      - name: Baixar codigo
+        uses: actions/checkout@v4
+
+      - name: Usar ENV de producao
+        run: |
+          cp /srv/apps/vertice-campo-front/.env .env
+
+      - name: Mostrar versoes
+        run: |
+          node --version
+          npm --version
+
+      - name: Instalar dependencias
+        run: |
+          npm ci
+
+      - name: Gerar build
+        run: |
+          npm run build
+
+      - name: Publicar frontend
+        run: |
+          find /srv/apps/vertice-campo-front/dist -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          cp -a dist/. /srv/apps/vertice-campo-front/dist/
+
+      - name: Testar frontend
+        run: |
+          sleep 2
+          curl -fsS http://127.0.0.1:4176/ > /dev/null
+          echo "Vertice Campo Front publicado com sucesso"
