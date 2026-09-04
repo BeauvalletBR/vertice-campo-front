@@ -46,8 +46,16 @@ jobs:
 
       - name: Publicar frontend
         run: |
-          find /srv/apps/vertice-campo-front/dist -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-          cp -a dist/. /srv/apps/vertice-campo-front/dist/
+          target=/srv/apps/vertice-campo-front/dist
+          mkdir -p "$target/assets"
+
+          # Assets primeiro e index por ultimo evitam uma versao apontar para arquivos ainda nao copiados.
+          cp -a dist/assets/. "$target/assets/"
+          find dist -mindepth 1 -maxdepth 1 ! -name assets ! -name index.html -exec cp -a {} "$target/" \;
+          cp dist/index.html "$target/index.html"
+
+          # Mantem chunks antigos para abas abertas durante novos deploys.
+          find "$target/assets" -type f -mtime +30 -delete
 
       - name: Testar frontend
         run: |

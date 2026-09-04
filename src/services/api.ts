@@ -177,9 +177,15 @@ let cachedHistorico: ApiHistoricoCompra[] | null = null;
 let fetchHistoricoPromise: Promise<ApiHistoricoCompra[]> | null = null;
 
 const getAuthHeaders = (isJson = false) => {
+  const apiToken = import.meta.env.VITE_N8N_SECRET_TOKEN;
+  const apiHeaderName = import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key";
   const jwtToken = localStorage.getItem("jwt_token");
 
   const headers: Record<string, string> = {};
+
+  if (apiToken) {
+    headers[apiHeaderName] = apiToken;
+  }
 
   if (isJson) {
     headers["Content-Type"] = "application/json";
@@ -738,7 +744,7 @@ export const realizarLogin = async (login: string, senha: string, empresa: strin
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getAuthHeaders(true),
       body: JSON.stringify({ login, senha, empresa: Number(empresa) }) 
     });
     
