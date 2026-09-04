@@ -7,7 +7,7 @@ import {
 } from "@/lib/escala-planning";
 import {
   getAnimalBasePrice,
-  getEffectivePremium,
+  getScaleCalculationPrice,
 } from "@/lib/escala-pricing";
 
 interface ScaleExcelReportOptions {
@@ -117,7 +117,7 @@ export const buildScaleExcelReportLines = (
         sex: "BOI",
         animals: bulls,
         arrobasPerAnimal: bullArrobas,
-        unitPrice: getEffectivePremium(row),
+        unitPrice: getScaleCalculationPrice(row, "BOI"),
       });
     }
 

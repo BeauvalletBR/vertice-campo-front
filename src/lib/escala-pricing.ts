@@ -25,6 +25,14 @@ export const getEffectivePremium = (row: EscalaLinha): number | null =>
   toFiniteNumberOrNull(row.VLRUNITARIO_PREMIO) ??
   toFiniteNumberOrNull(row.VALOR_PREMIO);
 
+export const getScaleCalculationPrice = (
+  row: EscalaLinha,
+  sex: EscalaAnimalSex,
+): number | null =>
+  sex === "BOI"
+    ? getEffectivePremium(row) ?? getAnimalBasePrice(row, "BOI")
+    : getAnimalBasePrice(row, "VACA");
+
 export interface ScaleMacroAverages {
   totalAnimals: number;
   totalArrobas: number;
@@ -54,8 +62,7 @@ export const calculateScaleMacroAverages = (
           sex === "BOI" ? row.ARROBAS_BOI : row.ARROBAS_VACA,
         ) ?? 0,
       );
-      const unitValue =
-        sex === "BOI" ? getEffectivePremium(row) : getAnimalBasePrice(row, sex);
+      const unitValue = getScaleCalculationPrice(row, sex);
       const rowArrobas = quantity * arrobas;
 
       totalAnimals += quantity;

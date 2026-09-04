@@ -6,6 +6,7 @@ import {
   calculateScaleMacroAverages,
   getAnimalBasePrice,
   getEffectivePremium,
+  getScaleCalculationPrice,
 } from "@/lib/escala-pricing";
 import type { EscalaLinha } from "@/types/escala";
 
@@ -62,6 +63,14 @@ describe("escala pricing", () => {
     expect(getEffectivePremium(overridden)).toBe(7);
   });
 
+  it("uses the bull price when premium is not available", () => {
+    const withoutPremium = row({ PRECO_BOI: 320 });
+    const withPremium = row({ PRECO_BOI: 320, VLRUNITARIO_PREMIO: 7 });
+
+    expect(getScaleCalculationPrice(withoutPremium, "BOI")).toBe(320);
+    expect(getScaleCalculationPrice(withPremium, "BOI")).toBe(7);
+  });
+
   it("ignores invalid prices without turning them into zero-priced animals", () => {
     const item = row({
       QTD_BOI: 100,
@@ -100,6 +109,24 @@ describe("escala pricing", () => {
       totalValue: 42000,
       averageArrobas: 18,
       averageValue: 42000 / 540,
+    });
+  });
+
+  it("includes the bull base price in macros when premium is null", () => {
+    const item = row({
+      QTD_BOI: 20,
+      ARROBAS_BOI: 20,
+      PRECO_BOI: 320,
+      VLRUNITARIO_PREMIO: null,
+      VALOR_PREMIO: null,
+    });
+
+    expect(calculateScaleMacroAverages([item])).toEqual({
+      totalAnimals: 20,
+      totalArrobas: 400,
+      totalValue: 128000,
+      averageArrobas: 20,
+      averageValue: 320,
     });
   });
 });

@@ -47,6 +47,26 @@ describe("escala excel", () => {
     ]);
   });
 
+  it("usa o valor do boi no Excel quando o prêmio não foi informado", () => {
+    const lines = buildScaleExcelReportLines([
+      createRow({
+        QTD_BOI: 100,
+        ARROBAS_BOI: 20,
+        PRECO_BOI: 320,
+        VLRUNITARIO_PREMIO: null,
+        VALOR_PREMIO: null,
+      }),
+    ]);
+
+    expect(lines).toEqual([
+      expect.objectContaining({
+        sex: "BOI",
+        animals: 100,
+        unitPrice: 320,
+      }),
+    ]);
+  });
+
   it("calcula quantidade de arrobas e R$ usando os dados de cada sexo", () => {
     const lines = buildScaleExcelReportLines([
       createRow({
