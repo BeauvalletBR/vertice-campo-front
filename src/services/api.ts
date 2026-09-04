@@ -180,10 +180,16 @@ const getAuthHeaders = (isJson = false) => {
   const apiToken = import.meta.env.VITE_N8N_SECRET_TOKEN;
   const apiHeaderName = import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key";
   const jwtToken = localStorage.getItem("jwt_token");
+  const configuredApiUrl =
+    import.meta.env.VITE_N8N_WEBHOOK_URL_LOGIN ||
+    import.meta.env.VITE_N8N_WEBHOOK_URL_USUARIOS ||
+    "";
+  const endpointOrigin = new URL(configuredApiUrl, window.location.origin).origin;
+  const usesSameOriginProxy = endpointOrigin === window.location.origin;
 
   const headers: Record<string, string> = {};
 
-  if (apiToken) {
+  if (apiToken && !usesSameOriginProxy) {
     headers[apiHeaderName] = apiToken;
   }
 
