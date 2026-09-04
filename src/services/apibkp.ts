@@ -44,8 +44,6 @@ export interface ApiRancher {
   DATA_ULTIMA_VISITA?: string | null; 
   VENDAREPRESENTANTE: "S" | "N";
   NOME_REPRESENTANTE?: string | null; 
-  LATITUDE?: number | string | null;
-  LONGITUDE?: number | string | null;
 }
 
 export interface ApiAgendamento {
@@ -142,12 +140,6 @@ export interface ApiAuditoria {
 export interface ApiUsuario {
   SEQUSUARIO: number;
   CODUSUARIO: string;
-  NOME?: string;
-  NOMEUSUARIO?: string;
-  NOME_USUARIO?: string;
-  USUARIO_NOME?: string;
-  DESCRICAO?: string;
-  DESCUSUARIO?: string;
 }
 
 export interface ApiHistoricoCompra {
@@ -176,16 +168,20 @@ let cachedHistorico: ApiHistoricoCompra[] | null = null;
 let fetchHistoricoPromise: Promise<ApiHistoricoCompra[]> | null = null;
 
 const getAuthHeaders = (isJson = false) => {
-  const jwtToken = localStorage.getItem("jwt_token");
+  const tokenAPI = import.meta.env.VITE_N8N_SECRET_TOKEN;
+  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key";
+  const jwtToken = localStorage.getItem("jwt_token"); 
 
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    [headerKey]: tokenAPI,
+  };
 
   if (isJson) {
     headers["Content-Type"] = "application/json";
   }
 
   if (jwtToken) {
-    headers["Authorization"] = `Bearer ${jwtToken}`;
+    headers["Authorization"] = `Bearer ${jwtToken}`; 
   }
 
   return headers;
@@ -724,24 +720,26 @@ export interface LoginResponse {
     name: string;
     role: "ADMIN" | "COMPRADOR";
     modulos?: string[];
-    nivel?: number;
-    nroempresa?: number;
+    nivel?: number; 
   };
   access_token?: string; 
 }
 
 export const realizarLogin = async (login: string, senha: string, empresa: string): Promise<LoginResponse> => {
   const url = import.meta.env.VITE_N8N_WEBHOOK_URL_LOGIN; 
+  const tokenAPI = import.meta.env.VITE_N8N_SECRET_TOKEN;
+  const headerKey = import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key";
+
   if (!url) return { success: false, message: "URL de login não configurada no .env" };
 
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", [headerKey]: tokenAPI },
       body: JSON.stringify({ login, senha, empresa: Number(empresa) }) 
     });
     
-    if (response.status === 403) return { success: false, message: "Acesso negado pelo servidor." };
+    if (response.status === 403) return { success: false, message: "Acesso Negado. Token de API inválido." };
 
     if (!response.ok) {
       return { success: false, message: "Erro de comunicação com o servidor de autenticação." };
