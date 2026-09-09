@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { hasStoredPlanningChinaQuantity } from "@/lib/escala-planning";
+import {
+  getPlanningChinaDivergence,
+  hasStoredPlanningChinaQuantity,
+} from "@/lib/escala-planning";
 import type { EscalaLinha } from "@/types/escala";
 
 const row = (overrides: Partial<EscalaLinha>): EscalaLinha =>
@@ -35,5 +38,45 @@ describe("planning China stored values", () => {
     expect(
       hasStoredPlanningChinaQuantity(row({ QTD_CHINA_BOI: 0 }), "BOI"),
     ).toBe(false);
+  });
+});
+
+describe("planning China divergence", () => {
+  it("detects a stored quantity that no longer matches the current order", () => {
+    expect(
+      getPlanningChinaDivergence({
+        animalQuantity: 120,
+        storedChinaQuantity: 20,
+        suggestedChinaQuantity: 24,
+        hasStoredQuantity: true,
+      }),
+    ).toEqual({
+      storedQuantity: 20,
+      suggestedQuantity: 24,
+      difference: 4,
+      storedPercent: 20 / 120,
+    });
+  });
+
+  it("does not warn when the confirmed quantity still matches", () => {
+    expect(
+      getPlanningChinaDivergence({
+        animalQuantity: 120,
+        storedChinaQuantity: 24,
+        suggestedChinaQuantity: 24,
+        hasStoredQuantity: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not compare values that have not been confirmed", () => {
+    expect(
+      getPlanningChinaDivergence({
+        animalQuantity: 120,
+        storedChinaQuantity: 0,
+        suggestedChinaQuantity: 24,
+        hasStoredQuantity: false,
+      }),
+    ).toBeNull();
   });
 });

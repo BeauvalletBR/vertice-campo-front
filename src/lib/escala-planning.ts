@@ -235,6 +235,45 @@ export const hasStoredPlanningChinaQuantity = (
   );
 };
 
+export interface PlanningChinaDivergence {
+  storedQuantity: number;
+  suggestedQuantity: number;
+  difference: number;
+  storedPercent: number;
+}
+
+export const getPlanningChinaDivergence = ({
+  animalQuantity,
+  storedChinaQuantity,
+  suggestedChinaQuantity,
+  hasStoredQuantity,
+}: {
+  animalQuantity: number;
+  storedChinaQuantity: number;
+  suggestedChinaQuantity: number | null;
+  hasStoredQuantity: boolean;
+}): PlanningChinaDivergence | null => {
+  if (
+    !hasStoredQuantity ||
+    suggestedChinaQuantity === null ||
+    animalQuantity <= 0
+  ) {
+    return null;
+  }
+
+  const storedQuantity = Math.max(0, toNumber(storedChinaQuantity));
+  const suggestedQuantity = Math.max(0, toNumber(suggestedChinaQuantity));
+
+  if (storedQuantity === suggestedQuantity) return null;
+
+  return {
+    storedQuantity,
+    suggestedQuantity,
+    difference: suggestedQuantity - storedQuantity,
+    storedPercent: storedQuantity / animalQuantity,
+  };
+};
+
 export const getAgrotoolsPlannedQuantity = (
   row: EscalaLinha,
   sex: "VACA" | "BOI",

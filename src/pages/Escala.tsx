@@ -91,6 +91,7 @@ import {
   formatDateInput,
   getAgrotoolsPlannedQuantity,
   getAgrotoolsPlannedTotal,
+  getPlanningChinaDivergence,
   hasStoredPlanningChinaQuantity,
   getInitialPlanningWeek,
   getISOWeekValue,
@@ -166,6 +167,7 @@ interface PlanningSexRow {
   chinaStored: boolean;
   chinaSuggestedQuantity: number | null;
   chinaSuggestionMeta: ChinaSuggestionMeta | null;
+  chinaDivergence: ReturnType<typeof getPlanningChinaDivergence>;
   agrotoolsQuantity: number;
 }
 
@@ -810,6 +812,7 @@ const splitRecordsBySex = (records: EscalaLinha[]): PlanningSexRow[] =>
         chinaStored: hasStoredPlanningChinaQuantity(row, sex),
         chinaSuggestedQuantity: null,
         chinaSuggestionMeta: null,
+        chinaDivergence: null,
         agrotoolsQuantity:
           getAgrotoolsPlannedQuantity(row, sex),
       });
@@ -2591,6 +2594,13 @@ export default function Escala() {
                     ...item,
                     chinaSuggestedQuantity: suggestion?.suggestedQuantity ?? null,
                     chinaSuggestionMeta: suggestion,
+                    chinaDivergence: getPlanningChinaDivergence({
+                      animalQuantity: item.quantity,
+                      storedChinaQuantity: item.chinaQuantity,
+                      suggestedChinaQuantity:
+                        suggestion?.suggestedQuantity ?? null,
+                      hasStoredQuantity: item.chinaStored,
+                    }),
                   };
                 })
                 .sort((a, b) => {
@@ -2599,6 +2609,9 @@ export default function Escala() {
                   if (orderA !== orderB) return orderA - orderB;
                   return a.sex.localeCompare(b.sex);
                 });
+              const chinaDivergenceCount = sexRows.filter(
+                (item) => item.chinaDivergence !== null,
+              ).length;
               const totals = calculateTotals(dayRows);
               const daySubtotal = calculatePlanningDaySubtotal(sexRows, dayRows);
               const curralCapacityExceeded =
@@ -2679,6 +2692,23 @@ export default function Escala() {
                           </span>
                           <span className="hidden whitespace-nowrap text-[10px] font-bold xl:inline">
                             capacidade excedida
+                          </span>
+                        </span>
+                      )}
+
+                      {chinaDivergenceCount > 0 && (
+                        <span
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#F2B176] bg-[#FFF4E8] px-2.5 text-[11px] font-extrabold text-[#A84A15]"
+                          title={`${chinaDivergenceCount} ${
+                            chinaDivergenceCount === 1 ? "linha possui" : "linhas possuem"
+                          } quantidade China divergente do percentual histórico atual.`}
+                        >
+                          <AlertTriangle className="h-4 w-4 shrink-0" />
+                          <span>{chinaDivergenceCount}</span>
+                          <span className="hidden xl:inline">
+                            {chinaDivergenceCount === 1
+                              ? "China divergente"
+                              : "China divergentes"}
                           </span>
                         </span>
                       )}
@@ -2911,8 +2941,24 @@ export default function Escala() {
                                   Curral
                                 </span>
                               </TableHead>
-                              <TableHead className="w-[4%] h-11 border-r border-[#D7E2EC] px-1 text-[9px] font-extrabold uppercase leading-tight tracking-[0.03em] text-[#173D6E] text-right">
-                                China
+                              <TableHead
+                                className={`w-[4%] h-11 border-r px-1 text-[9px] font-extrabold uppercase leading-tight tracking-[0.03em] text-right ${
+                                  chinaDivergenceCount > 0
+                                    ? "border-[#F2B176] bg-[#FFE8C7] text-[#A84A15]"
+                                    : "border-[#D7E2EC] text-[#173D6E]"
+                                }`}
+                                title={
+                                  chinaDivergenceCount > 0
+                                    ? `${chinaDivergenceCount} quantidade(s) China precisam ser revisadas.`
+                                    : "Quantidade de animais China"
+                                }
+                              >
+                                <span className="inline-flex items-center justify-end gap-1">
+                                  {chinaDivergenceCount > 0 && (
+                                    <AlertTriangle className="h-3.5 w-3.5" />
+                                  )}
+                                  China
+                                </span>
                               </TableHead>
                               <TableHead className="w-[5%] h-11 border-r border-[#D7E2EC] px-1 text-[9px] font-extrabold uppercase leading-tight tracking-[0.03em] text-[#173D6E] text-right">
                                 Agrotools
@@ -2997,6 +3043,21 @@ export default function Escala() {
                                 item.chinaSuggestionMeta &&
                                   !item.chinaStored,
                               );
+                              const chinaQuantityDivergent = Boolean(
+                                item.chinaDivergence,
+                              );
+                              const chinaDivergenceTitle = item.chinaDivergence
+                                ? `China confirmado: ${numberFormat.format(
+                                    item.chinaDivergence.storedQuantity,
+                                  )} (${percentFormat.format(
+                                    item.chinaDivergence.storedPercent * 100,
+                                  )}%). Recalculado: ${numberFormat.format(
+                                    item.chinaDivergence.suggestedQuantity,
+                                  )} (${percentFormat.format(
+                                    (item.chinaSuggestionMeta?.chinaPercent ?? 0) *
+                                      100,
+                                  )}%). Clique para revisar.`
+                                : "";
                               const displayedChinaQuantity =
                                 getDisplayedChinaQuantity(item);
                               const effectivePremium = getEffectivePremium(row);
@@ -3592,15 +3653,33 @@ export default function Escala() {
                                     <div className="flex items-center justify-end gap-1.5">
                                       <span
                                         className={`inline-flex min-w-[38px] items-center justify-center rounded-md px-2 py-1 text-right text-[12px] font-extrabold tabular-nums ${
-                                          chinaSuggestionPending
+                                          chinaQuantityDivergent
+                                            ? "border border-[#E28A2E] bg-[#FFE8C7] text-[#A84A15] shadow-[inset_0_0_0_1px_rgba(226,138,46,0.12)]"
+                                            : chinaSuggestionPending
                                             ? "border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.08)]"
                                             : "text-[#334E68]"
                                         }`}
+                                        title={chinaDivergenceTitle || undefined}
                                       >
                                         {numberFormat.format(displayedChinaQuantity)}
                                       </span>
 
-                                      {chinaSuggestionPending ? (
+                                      {chinaQuantityDivergent ? (
+                                        <button
+                                          type="button"
+                                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#E28A2E] bg-[#FFE8C7] text-[#A84A15] transition hover:border-[#C96A1B] hover:bg-[#FFD9A3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F59E0B]/30"
+                                          title={chinaDivergenceTitle}
+                                          onClick={() =>
+                                            setChinaSuggestionState({
+                                              item,
+                                              day,
+                                              scaleId: rowScaleId > 0 ? rowScaleId : null,
+                                            })
+                                          }
+                                        >
+                                          <AlertTriangle className="h-3.5 w-3.5" />
+                                        </button>
+                                      ) : chinaSuggestionPending ? (
                                         <button
                                           type="button"
                                           className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] transition hover:border-[#E28A2E] hover:bg-[#FFEBD6] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F59E0B]/30"
@@ -4013,7 +4092,11 @@ export default function Escala() {
           }}
         >
           <DialogHeader>
-            <DialogTitle>Sugestão histórica de China</DialogTitle>
+            <DialogTitle>
+              {chinaSuggestionState?.item.chinaDivergence
+                ? "Revisar quantidade China"
+                : "Sugestão histórica de China"}
+            </DialogTitle>
             <DialogDescription>
               {chinaSuggestionState?.item.chinaSuggestionMeta
                 ? `Nos últimos ${chinaSuggestionState.item.chinaSuggestionMeta.periodLabel} esse produtor matou ${numberFormat.format(
@@ -4062,6 +4145,38 @@ export default function Escala() {
                 </div>
               </div>
 
+              {chinaSuggestionState.item.chinaDivergence && (
+                <div className="flex gap-3 rounded-xl border border-[#F2B176] bg-[#FFF4E8] p-3 text-[#8F4713]">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-extrabold">
+                      Quantidade confirmada fora do cálculo atual
+                    </p>
+                    <p className="mt-1 text-xs font-semibold leading-relaxed">
+                      Foram confirmados {numberFormat.format(
+                        chinaSuggestionState.item.chinaDivergence.storedQuantity,
+                      )} China, equivalentes a {percentFormat.format(
+                        chinaSuggestionState.item.chinaDivergence.storedPercent *
+                          100,
+                      )}% dos {numberFormat.format(
+                        chinaSuggestionState.item.quantity,
+                      )} animais atuais. Pelo histórico, o correto é {numberFormat.format(
+                        chinaSuggestionState.item.chinaDivergence
+                          .suggestedQuantity,
+                      )}. É necessário {chinaSuggestionState.item.chinaDivergence
+                        .difference > 0
+                        ? "aumentar"
+                        : "reduzir"}{" "}
+                      {numberFormat.format(
+                        Math.abs(
+                          chinaSuggestionState.item.chinaDivergence.difference,
+                        ),
+                      )} animais.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-xl border border-[#CFE0EF] bg-[#EEF6FD] p-3 text-sm text-[#1B4D80]">
                 Aplicando {percentFormat.format(
                   chinaSuggestionState.item.chinaSuggestionMeta.chinaPercent * 100,
@@ -4105,7 +4220,12 @@ export default function Escala() {
                   Salvando...
                 </>
               ) : (
-                "Confirmar sugestão"
+                chinaSuggestionState?.item.chinaDivergence
+                  ? `Atualizar para ${numberFormat.format(
+                      chinaSuggestionState.item.chinaDivergence
+                        .suggestedQuantity,
+                    )} China`
+                  : "Confirmar sugestão"
               )}
             </Button>
           </DialogFooter>
