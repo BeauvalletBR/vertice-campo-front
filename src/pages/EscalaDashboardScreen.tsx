@@ -15,11 +15,8 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   LabelList,
   Legend,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -28,6 +25,7 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -80,17 +78,6 @@ const MONTH_OPTIONS = [
   { value: "10", label: "Outubro" },
   { value: "11", label: "Novembro" },
   { value: "12", label: "Dezembro" },
-] as const;
-
-const BUYER_COLORS = [
-  "#F97316",
-  "#173D6E",
-  "#0F766E",
-  "#2563EB",
-  "#CA8A04",
-  "#7C3AED",
-  "#0EA5E9",
-  "#D9485F",
 ] as const;
 
 type DashboardDateBasis = "scale" | "order";
@@ -366,69 +353,40 @@ function MetricCard({
   return (
     <Card className="w-[240px] min-w-0 shrink-0 snap-start overflow-hidden rounded-2xl border border-[#D6E1EB] bg-white shadow-[0_6px_20px_rgba(23,61,110,0.06)] sm:w-full">
       <div className={`h-1.5 ${accentClass}`} />
-      <CardContent className="p-3.5">
-        <div className="flex items-start gap-3">
+      <CardContent className="p-3 sm:p-3.5 xl:p-2.5 2xl:p-3.5">
+        <div className="flex min-w-0 items-center gap-2">
           <div
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${accentClass} text-white shadow-sm`}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${accentClass} text-white shadow-sm 2xl:h-10 2xl:w-10`}
           >
             {icon}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate whitespace-nowrap text-[10px] font-extrabold uppercase tracking-[0.06em] text-[#60758A]">
-              {title}
-            </p>
-            <div className="mt-2 flex items-baseline gap-1.5 overflow-hidden">
-              <p className="shrink-0 whitespace-nowrap text-[28px] font-black leading-none text-[#173D6E]">
-                {value}
-              </p>
-              {secondary && (
-                <span className="inline-flex shrink-0 whitespace-nowrap rounded-full border border-[#D6E3EF] bg-[#F3F8FC] px-2 py-0.5 text-[10px] font-extrabold text-[#5A728A]">
-                  {secondary}
-                </span>
-              )}
-            </div>
-          </div>
+          <p
+            className="min-w-0 flex-1 truncate whitespace-nowrap text-[9px] font-extrabold uppercase tracking-[0.04em] text-[#60758A] 2xl:text-[10px]"
+            title={title}
+          >
+            {title}
+          </p>
+        </div>
+        <div className="mt-2 flex min-w-0 items-baseline gap-1 overflow-hidden">
+          <p
+            className="shrink-0 whitespace-nowrap text-[26px] font-black leading-none text-[#173D6E] xl:text-[clamp(14px,1.35vw,23px)] 2xl:text-[24px]"
+            title={value}
+          >
+            {value}
+          </p>
+          {secondary && (
+            <span
+              className="inline-flex min-w-0 max-w-[48%] shrink truncate whitespace-nowrap rounded-full border border-[#D6E3EF] bg-[#F3F8FC] px-1.5 py-0.5 text-[9px] font-extrabold text-[#5A728A] 2xl:px-2 2xl:text-[10px]"
+              title={secondary}
+            >
+              {secondary}
+            </span>
+          )}
         </div>
       </CardContent>
     </Card>
   );
 }
-
-const renderBarLabel = ({ value }: { value?: number | string }) => (
-  <text
-    x={0}
-    y={0}
-    dy={-8}
-    fill="#173D6E"
-    fontSize={11}
-    fontWeight={800}
-    textAnchor="middle"
-  >
-    {numberFormat.format(Number(value ?? 0))}
-  </text>
-);
-
-const renderPieLabel = ({
-  value,
-  x,
-  y,
-}: {
-  value?: number | string;
-  x?: number;
-  y?: number;
-}) => (
-  <text
-    x={x}
-    y={y}
-    fill="#173D6E"
-    fontSize={11}
-    fontWeight={800}
-    textAnchor="middle"
-    dominantBaseline="central"
-  >
-    {numberFormat.format(Number(value ?? 0))}
-  </text>
-);
 
 export default function EscalaDashboardScreen() {
   const { user } = useAuth();
@@ -441,14 +399,6 @@ export default function EscalaDashboardScreen() {
   const [yearLines, setYearLines] = useState<EscalaLinha[]>([]);
 
   const nroempresa = getEmpresaLogada(user);
-
-  const yearOptions = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    return Array.from({ length: 5 }, (_, index) => {
-      const year = String(currentYear - 2 + index);
-      return { value: year, label: year };
-    });
-  }, []);
 
   useEffect(() => {
     const loadYearLines = async () => {
@@ -488,26 +438,6 @@ export default function EscalaDashboardScreen() {
     [dateBasis, insertedRecords, selectedYear],
   );
 
-  const monthOptions = useMemo(() => {
-    const availableMonths = new Set(
-      referenceYearRecords
-        .map((row) => getReferenceDate(row, dateBasis))
-        .filter(Boolean)
-        .map(getMonthKey),
-    );
-
-    if (availableMonths.size === 0) return [...MONTH_OPTIONS];
-    return MONTH_OPTIONS.filter((month) =>
-      availableMonths.has(`${selectedYear}-${month.value}`),
-    );
-  }, [dateBasis, referenceYearRecords, selectedYear]);
-
-  useEffect(() => {
-    if (!monthOptions.some((option) => option.value === selectedMonth)) {
-      setSelectedMonth(monthOptions[0]?.value || "01");
-    }
-  }, [monthOptions, selectedMonth]);
-
   const filteredRecords = useMemo(
     () =>
       referenceYearRecords.filter(
@@ -538,7 +468,7 @@ export default function EscalaDashboardScreen() {
     [buyerAggregates],
   );
 
-  const pieBuyerData = useMemo(
+  const buyerChartData = useMemo(
     () => displayBuyerAggregates.slice(0, 8),
     [displayBuyerAggregates],
   );
@@ -593,53 +523,17 @@ export default function EscalaDashboardScreen() {
 
   const cards = [
     {
-      title: dateBasis === "order" ? "Animais comprados" : "Animais escalados",
-      value: numberFormat.format(totalAnimals),
-      icon: <ClipboardList className="h-6 w-6" />,
-      accentClass: "bg-[#173D6E]",
-    },
-    {
-      title: "China",
-      value: numberFormat.format(totalChina),
-      secondary:
-        totalAnimals > 0
-          ? `${percentFormat.format((totalChina / totalAnimals) * 100)}%`
-          : "0,0%",
-      icon: <BadgeCheck className="h-6 w-6" />,
-      accentClass: "bg-[#F59E0B]",
-    },
-    {
-      title: "Não China",
-      value: numberFormat.format(totalNonChina),
-      secondary:
-        totalAnimals > 0
-          ? `${percentFormat.format((totalNonChina / totalAnimals) * 100)}%`
-          : "0,0%",
-      icon: <ShieldCheck className="h-6 w-6" />,
-      accentClass: "bg-[#173D6E]",
-    },
-    {
-      title: "Agrotools",
-      value: numberFormat.format(totalAgrotools),
-      secondary:
-        totalAnimals > 0
-          ? `${percentFormat.format((totalAgrotools / totalAnimals) * 100)}%`
-          : "0,0%",
-      icon: <ShieldCheck className="h-6 w-6" />,
-      accentClass: "bg-[#0F9F6E]",
-    },
-    {
-      title: "Valor Médio do Gado",
-      value: currencyFormat.format(dashboardTotals.averagePaid),
-      icon: <CircleDollarSign className="h-6 w-6" />,
-      accentClass: "bg-[#7C3AED]",
-    },
-    {
       title: "Média por Dia",
       value: decimalFormat.format(totalAnimals / Math.max(1, dailyAggregates.length)),
       icon: <CalendarDays className="h-6 w-6" />,
       accentClass: "bg-[#2563EB]",
       secondary: `${dailyAggregates.length} dias`,
+    },
+    {
+      title: "Valor Médio",
+      value: currencyFormat.format(dashboardTotals.averagePaid),
+      icon: <CircleDollarSign className="h-6 w-6" />,
+      accentClass: "bg-[#7C3AED]",
     },
     {
       title: "@ Médio",
@@ -657,6 +551,42 @@ export default function EscalaDashboardScreen() {
       icon: <TrendingUp className="h-6 w-6" />,
       accentClass: "bg-[#0F766E]",
       secondary: `${numberFormat.format(dashboardTotals.bulls)} bois`,
+    },
+    {
+      title: dateBasis === "order" ? "Animais comprados" : "Animais escalados",
+      value: numberFormat.format(totalAnimals),
+      icon: <ClipboardList className="h-6 w-6" />,
+      accentClass: "bg-[#173D6E]",
+    },
+    {
+      title: "% China",
+      value:
+        totalAnimals > 0
+          ? `${percentFormat.format((totalChina / totalAnimals) * 100)}%`
+          : "0,0%",
+      secondary: `${numberFormat.format(totalChina)} animais`,
+      icon: <BadgeCheck className="h-6 w-6" />,
+      accentClass: "bg-[#F59E0B]",
+    },
+    {
+      title: "Não China",
+      value: numberFormat.format(totalNonChina),
+      secondary:
+        totalAnimals > 0
+          ? `${percentFormat.format((totalNonChina / totalAnimals) * 100)}%`
+          : "0,0%",
+      icon: <ShieldCheck className="h-6 w-6" />,
+      accentClass: "bg-[#173D6E]",
+    },
+    {
+      title: "% Agrotools",
+      value:
+        totalAnimals > 0
+          ? `${percentFormat.format((totalAgrotools / totalAnimals) * 100)}%`
+          : "0,0%",
+      secondary: `${numberFormat.format(totalAgrotools)} animais`,
+      icon: <ShieldCheck className="h-6 w-6" />,
+      accentClass: "bg-[#0F9F6E]",
     },
   ];
 
@@ -685,7 +615,7 @@ export default function EscalaDashboardScreen() {
         <Card className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_4px_18px_rgba(23,61,110,0.05)]">
           <div className="h-1 bg-[#173D6E]" />
           <CardContent className="space-y-4 p-3 sm:p-5">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <FilterSelect
                 label="Data-base"
                 value={dateBasis}
@@ -698,22 +628,22 @@ export default function EscalaDashboardScreen() {
                 ]}
               />
 
-              <FilterSelect
-                label="Ano"
-                value={selectedYear}
-                onChange={setSelectedYear}
-                options={yearOptions}
-              />
-
-              <FilterSelect
-                label="Mês"
-                value={selectedMonth}
-                onChange={setSelectedMonth}
-                options={monthOptions.map((option) => ({
-                  value: option.value,
-                  label: option.label,
-                }))}
-              />
+              <label className="flex min-w-0 flex-col gap-1.5">
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#60758A]">
+                  Mês analisado
+                </span>
+                <Input
+                  type="month"
+                  value={`${selectedYear}-${selectedMonth}`}
+                  onChange={(event) => {
+                    if (!event.target.value) return;
+                    const [year, month] = event.target.value.split("-");
+                    setSelectedYear(year);
+                    setSelectedMonth(month);
+                  }}
+                  className="h-10 min-w-0 rounded-xl border-[#C9D6E2] font-bold text-[#173D6E]"
+                />
+              </label>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#60758A]">
@@ -750,7 +680,7 @@ export default function EscalaDashboardScreen() {
           </Card>
         ) : (
           <>
-            <div className="-mx-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-3 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:px-0 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="-mx-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-3 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:px-0 lg:grid-cols-4 xl:grid-cols-8">
               {cards.map((card) => (
                 <MetricCard key={card.title} {...card} />
               ))}
@@ -792,10 +722,24 @@ export default function EscalaDashboardScreen() {
                           }
                         />
                         <Bar dataKey="china" name="china" radius={[6, 6, 0, 0]} fill="#F59E0B">
-                          <LabelList dataKey="china" content={renderBarLabel} />
+                          <LabelList
+                            dataKey="china"
+                            position="top"
+                            fill="#B85B00"
+                            fontSize={11}
+                            fontWeight={800}
+                            formatter={(value: number) => numberFormat.format(value)}
+                          />
                         </Bar>
                         <Bar dataKey="nonChina" name="nonChina" radius={[6, 6, 0, 0]} fill="#173D6E">
-                          <LabelList dataKey="nonChina" content={renderBarLabel} />
+                          <LabelList
+                            dataKey="nonChina"
+                            position="top"
+                            fill="#173D6E"
+                            fontSize={11}
+                            fontWeight={800}
+                            formatter={(value: number) => numberFormat.format(value)}
+                          />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -803,161 +747,82 @@ export default function EscalaDashboardScreen() {
                 </CardContent>
               </Card>
 
-              <Card className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_4px_18px_rgba(23,61,110,0.05)]">
-                <CardHeader className="border-b border-[#E3EAF1] bg-[#FFF9F1]">
-                  <CardTitle className="text-base font-black text-[#9A580B]">
-                    Compradores com mais animais
-                  </CardTitle>
-                  <CardDescription className="font-medium text-[#8A6C3A]">
-                    Considera apenas compradores com código diferente de 1.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-3 sm:p-4">
-                  <div className="h-[280px] w-full sm:h-[320px]">
-                    {pieBuyerData.length === 0 ? (
-                      <div className="flex h-full items-center justify-center text-sm font-semibold text-[#8A6C3A]">
-                        Nenhum comprador elegível no recorte atual.
-                      </div>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Tooltip
-                            formatter={(value: number) => [
-                              numberFormat.format(value),
-                              "Animais",
-                            ]}
-                          />
-                          <Legend />
-                          <Pie
-                            data={pieBuyerData}
-                            dataKey="animals"
-                            nameKey="buyer"
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={62}
-                            outerRadius={108}
-                            paddingAngle={2}
-                            labelLine={false}
-                            label={renderPieLabel}
+                <Card className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_4px_18px_rgba(23,61,110,0.05)]">
+                  <CardHeader className="border-b border-[#E3EAF1] bg-[#F8FBFD]">
+                    <CardTitle className="text-base font-black text-[#173D6E]">
+                      Compradores com mais animais
+                    </CardTitle>
+                    <CardDescription className="font-medium text-[#60758A]">
+                      Considera apenas compradores com código diferente de 1.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-3 sm:p-4">
+                    <div className="h-[280px] w-full sm:h-[320px]">
+                      {buyerChartData.length === 0 ? (
+                        <div className="flex h-full items-center justify-center text-sm font-semibold text-[#60758A]">
+                          Nenhum comprador elegível no recorte atual.
+                        </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={buyerChartData}
+                            layout="vertical"
+                            margin={{ top: 8, right: 44, bottom: 8, left: 0 }}
+                            barCategoryGap="24%"
                           >
-                            {pieBuyerData.map((entry, index) => (
-                              <Cell
-                                key={`${entry.buyer}-animals`}
-                                fill={BUYER_COLORS[index % BUYER_COLORS.length]}
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              stroke="#D9E2EC"
+                              horizontal={false}
+                            />
+                            <XAxis
+                              type="number"
+                              stroke="#60758A"
+                              tickLine={false}
+                              axisLine={false}
+                              allowDecimals={false}
+                            />
+                            <YAxis
+                              type="category"
+                              dataKey="buyer"
+                              width={112}
+                              tickLine={false}
+                              axisLine={false}
+                              tick={{ fill: "#173D6E", fontSize: 11, fontWeight: 700 }}
+                              tickFormatter={(value: string) =>
+                                value.length > 17 ? `${value.slice(0, 15)}...` : value
+                              }
+                            />
+                            <Tooltip
+                              formatter={(value: number) => [
+                                numberFormat.format(value),
+                                "Animais",
+                              ]}
+                              cursor={{ fill: "#EEF4FA" }}
+                            />
+                            <Bar
+                              dataKey="animals"
+                              name="Animais"
+                              fill="#173D6E"
+                              radius={[0, 6, 6, 0]}
+                              maxBarSize={24}
+                            >
+                              <LabelList
+                                dataKey="animals"
+                                position="right"
+                                fill="#173D6E"
+                                fontSize={11}
+                                fontWeight={800}
+                                formatter={(value: number) => numberFormat.format(value)}
                               />
-                            ))}
-                          </Pie>
-                        </PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
                 </CardContent>
               </Card>
             </div>
-
-            <section className="-mt-2 space-y-3">
-              <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-                <div>
-                  <h2 className="text-xl font-black text-[#173D6E]">
-                    Semanas do mês
-                  </h2>
-                  <p className="mt-1 text-sm font-medium text-[#60758A]">
-                    Resumo operacional agrupado por {dateBasisLabel}.
-                  </p>
-                </div>
-                <Badge
-                  variant="outline"
-                  className="border-[#C9D6E2] bg-white px-3 py-1 text-xs font-extrabold text-[#173D6E]"
-                >
-                  {periodBuckets.length} agrupamentos
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                {periodBuckets.map((bucket) => (
-                  <Card
-                    key={bucket.key}
-                    className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_5px_18px_rgba(23,61,110,0.05)]"
-                  >
-                    <div className="grid grid-cols-1 sm:grid-cols-[116px_minmax(0,1fr)]">
-                      <div className="flex flex-row items-center justify-between gap-4 bg-[#446DB5] px-4 py-3 text-white sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:py-5">
-                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/75">
-                          {dateBasis === "order" ? "Compra" : "Escala"}
-                        </p>
-                        <p className="mt-2 text-2xl font-black leading-none">
-                          {bucket.shortLabel}
-                        </p>
-                        <p className="mt-1 text-xs font-bold uppercase tracking-[0.1em]">
-                          {bucket.label}
-                        </p>
-                        <p className="mt-4 text-[11px] font-semibold text-white/80">
-                          {bucket.rangeLabel}
-                        </p>
-                      </div>
-
-                      <div className="min-w-0">
-                        <table className="w-full table-fixed border-collapse text-xs xl:text-sm">
-                          <colgroup>
-                            <col className="w-[31%]" />
-                            <col className="w-[23%]" />
-                            <col className="w-[23%]" />
-                            <col className="w-[23%]" />
-                          </colgroup>
-                          <thead>
-                            <tr className="bg-[#F7FAFC] text-[#173D6E]">
-                              <th className="border-b border-r border-[#D7E2EC] px-2 py-2 text-left text-[9px] font-extrabold uppercase tracking-[0.04em]">
-                                Data
-                              </th>
-                              <th className="border-b border-r border-[#D7E2EC] px-2 py-2 text-right text-[9px] font-extrabold uppercase tracking-[0.04em]">
-                                {dateBasis === "order" ? "Comprados" : "Animais"}
-                              </th>
-                              <th className="border-b border-r border-[#D7E2EC] bg-[#FFF3D7] px-2 py-2 text-right text-[9px] font-extrabold uppercase tracking-[0.04em]">
-                                China
-                              </th>
-                              <th className="border-b border-[#D7E2EC] bg-[#E3F8E9] px-2 py-2 text-right text-[9px] font-extrabold uppercase tracking-[0.04em]">
-                                Agrotools
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {bucket.days.map((day) => (
-                              <tr key={day.day} className="border-b border-[#EDF2F7]">
-                                <td className="truncate border-r border-[#EDF2F7] px-2 py-2 font-bold text-[#425B73]" title={day.label}>
-                                  {day.label}
-                                </td>
-                                <td className="border-r border-[#EDF2F7] px-2 py-2 text-right font-extrabold text-[#173D6E]">
-                                  {numberFormat.format(day.totalAnimals)}
-                                </td>
-                                <td className="border-r border-[#EDF2F7] bg-[#FFF8EA] px-2 py-2 text-right font-extrabold text-[#B85B00]">
-                                  {numberFormat.format(day.china)}
-                                </td>
-                                <td className="bg-[#F0FFF4] px-2 py-2 text-right font-extrabold text-[#13795B]">
-                                  {numberFormat.format(day.agrotools)}
-                                </td>
-                              </tr>
-                            ))}
-                            <tr className="bg-[#F8FAFC]">
-                              <td className="border-r border-[#D7E2EC] px-3 py-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#52677E]">
-                                Média
-                              </td>
-                              <td className="border-r border-[#D7E2EC] px-3 py-2 text-right font-extrabold text-[#173D6E]">
-                                {decimalFormat.format(bucket.averageAnimalsPerDay)}
-                              </td>
-                              <td className="border-r border-[#D7E2EC] bg-[#FFF3D7] px-3 py-2 text-right font-extrabold text-[#B85B00]">
-                                {decimalFormat.format(bucket.averageChinaPerDay)}
-                              </td>
-                              <td className="bg-[#E3F8E9] px-3 py-2 text-right font-extrabold text-[#13795B]">
-                                {decimalFormat.format(bucket.averageAgrotoolsPerDay)}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </section>
 
             <Card className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_4px_18px_rgba(23,61,110,0.05)]">
               <CardHeader className="border-b border-[#E3EAF1] bg-[#F8FBFD]">

@@ -2502,7 +2502,7 @@ export default function Escala() {
           <WeekMetric
             icon={<CalendarRange />}
             label="Média de animais/dia"
-            value={numberFormat.format(Math.trunc(weekTotals.averageHeadsPerDay))}
+            value={numberFormat.format(Math.ceil(weekTotals.averageHeadsPerDay))}
             helper={
               weekTotals.daysWithAnimals === 1
                 ? "Total semanal dividido por 1 dia com escala"
