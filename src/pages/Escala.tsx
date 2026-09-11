@@ -126,7 +126,7 @@ const currencyFormat = new Intl.NumberFormat("pt-BR", {
 });
 
 const decimalFormat = new Intl.NumberFormat("pt-BR", {
-  minimumFractionDigits: 1,
+  minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
