@@ -1,5 +1,5 @@
 ﻿import { useEffect } from "react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getDefaultAuthorizedRoute,
@@ -21,9 +21,18 @@ export function ProtectedRoute({
   redirectTo,
 }: ProtectedRouteProps) {
   const { user, isAuthenticated } = useAuth();
+  const location = useLocation();
 
   if (!isAuthenticated || !user) {
-    return <Navigate to="/login" replace />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{
+          from: `${location.pathname}${location.search}${location.hash}`,
+        }}
+      />
+    );
   }
 
   const hasAccess = hasAccessToRule(user, {

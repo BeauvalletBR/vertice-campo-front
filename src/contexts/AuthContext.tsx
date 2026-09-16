@@ -4,6 +4,10 @@ import { toast } from 'sonner';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
+import {
+  getCurrentBrowserRoute,
+  rememberPendingAuthenticatedRoute,
+} from "@/lib/auth-navigation";
 
 export interface User {
   id: string | number;
@@ -110,9 +114,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleForcarLogin = () => {
+    rememberPendingAuthenticatedRoute(getCurrentBrowserRoute());
     setIsSessionExpired(false);
     logout();
-    window.location.href = "/";
+    window.location.href = "/login";
   };
 
   return (

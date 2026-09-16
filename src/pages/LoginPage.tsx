@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   ArrowRight,
@@ -15,7 +15,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
-import { getDefaultAuthorizedRoute } from "@/lib/access";
+import {
+  choosePostLoginRoute,
+  clearPendingAuthenticatedRoute,
+  getLastAuthenticatedRoute,
+  getPendingAuthenticatedRoute,
+} from "@/lib/auth-navigation";
 
 export default function LoginPage() {
   const [loginInput, setLoginInput] = useState("");
@@ -27,6 +32,7 @@ export default function LoginPage() {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const clearError = () => {
     if (errorMsg) setErrorMsg("");
@@ -67,12 +73,16 @@ export default function LoginPage() {
         return;
       }
 
-      const isMobile = window.innerWidth < 1024;
-      const nextRoute = getDefaultAuthorizedRoute(loggedUser, {
-        preferOperational: isMobile,
+      const requestedRoute = (location.state as { from?: unknown } | null)?.from;
+      const nextRoute = choosePostLoginRoute(loggedUser, {
+        requestedRoute,
+        pendingRoute: getPendingAuthenticatedRoute(),
+        lastRoute: getLastAuthenticatedRoute(),
+        isDesktop: window.innerWidth >= 1024,
       });
 
-      navigate(nextRoute || (isMobile ? "/campo" : "/dashboard"));
+      clearPendingAuthenticatedRoute();
+      navigate(nextRoute, { replace: true });
     } catch {
       setErrorMsg(
         "Não foi possível acessar o sistema. Tente novamente em instantes.",

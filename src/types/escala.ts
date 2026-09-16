@@ -121,6 +121,7 @@ export interface EscalaLinha {
 
   ID_ESCALA?: number | null;
   ID_ESCALA_SUGERIDA?: number | null;
+  ID_ESCALA_DIA?: number | null;
   QTD_ESCALAS_DIA?: number | null;
 
   TURNO?: EscalaTurno | null;
@@ -195,6 +196,7 @@ export interface EscalaLinha {
   VERSAO_VINCULO?: number | null;
 
   STATUS_CONFIGURACAO: EscalaStatusConfiguracao;
+  STATUS_CONFIGURACAO_VIEW?: EscalaStatusConfiguracao;
   CAMPOS_PENDENTES?: string | null;
 
   PODE_CRIAR_ESCALA?: "S" | "N" | null;
@@ -240,6 +242,12 @@ export interface CriarVinculoPedidoPayload {
   prazo_dias?: number | null;
   qtd_china_vaca?: number | null;
   qtd_china_boi?: number | null;
+  origem_china_vaca?: "HISTORICO" | "MANUAL" | "LEGADO";
+  percentual_china_vaca?: number | null;
+  qtd_base_vaca?: number | null;
+  origem_china_boi?: "HISTORICO" | "MANUAL" | "LEGADO";
+  percentual_china_boi?: number | null;
+  qtd_base_boi?: number | null;
 }
 
 export interface PrazoPagamento {
@@ -270,6 +278,12 @@ export interface EditarVinculoPedidoPayload {
   arrobas_boi?: number | null;
   qtd_china_vaca?: number | null;
   qtd_china_boi?: number | null;
+  origem_china_vaca?: "HISTORICO" | "MANUAL" | "LEGADO";
+  percentual_china_vaca?: number | null;
+  qtd_base_vaca?: number | null;
+  origem_china_boi?: "HISTORICO" | "MANUAL" | "LEGADO";
+  percentual_china_boi?: number | null;
+  qtd_base_boi?: number | null;
   qtd_agrotools_vaca?: number | null;
   qtd_agrotools_boi?: number | null;
 
@@ -341,4 +355,24 @@ export interface EscalaOcorrencia {
   ALTERACAO?: string;
   DATA_CRIACAO?: string;
   CRIADO_EM?: string;
+}
+
+export interface EscalaChinaAjuste {
+  ID_AJUSTE: number;
+  ID_ESCALA_PEDIDO_VINCULO: number;
+  SEXO: "VACA" | "BOI";
+  QTD_ANIMAIS_ANTERIOR: number;
+  QTD_ANIMAIS_NOVA: number;
+  QTD_CHINA_ANTERIOR: number;
+  QTD_CHINA_NOVA: number;
+  PERCENTUAL_APLICADO: number;
+  AJUSTADO_EM: string;
+  NROPEDIDO?: number | null;
+  DATA_ABATE?: string | null;
+}
+
+export interface EscalaChinaSincronizacao {
+  success: boolean;
+  ajustes_realizados: number;
+  alertas: EscalaChinaAjuste[];
 }

@@ -58,12 +58,14 @@ import {
   consultarEscala,
   consultarPrazosPagamento,
   consultarResumoEscala,
+  confirmarAlertasChinaEscala,
   criarVinculoPedidoEscala,
   criarVinculosPedidosDiaEscala,
   editarRegistroManualEscala,
   editarVinculoPedidoEscala,
   inativarEscala,
   inativarRegistroManualEscala,
+  sincronizarChinaEscala,
 } from "@/services/escala";
 import {
   api,
@@ -74,6 +76,7 @@ import {
   type ApiUsuario,
 } from "@/services/api";
 import type {
+  EscalaChinaAjuste,
   EscalaLinha,
   EscalaResumo,
   EscalaStatus,
@@ -689,7 +692,10 @@ const getScaleId = (
 ): number | null => {
   const candidates = [
     summary?.ID_ESCALA,
-    ...rows.flatMap((row) => [row.ID_ESCALA, row.ID_ESCALA_SUGERIDA]),
+    ...rows.flatMap((row) => {
+      if (row.STATUS_CONFIGURACAO === "PENDENTE_CRIAR_ESCALA") return [];
+      return [row.ID_ESCALA_DIA, row.ID_ESCALA_SUGERIDA];
+    }),
   ];
 
   for (const candidate of candidates) {
@@ -933,6 +939,7 @@ export default function Escala() {
     () => restoredPlanningView?.openDays || {},
   );
   const [weekPage, setWeekPage] = useState(0);
+  const weekSelectorScrollRef = useRef<HTMLDivElement | null>(null);
   const [deletingScaleId, setDeletingScaleId] = useState<number | null>(null);
   const [deletingManualId, setDeletingManualId] = useState<number | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] =
@@ -949,6 +956,17 @@ export default function Escala() {
     useState<ChinaSuggestionState | null>(null);
   const [savingChinaSuggestionKey, setSavingChinaSuggestionKey] = useState<
     string | null
+  >(null);
+  const [chinaAutoAdjustments, setChinaAutoAdjustments] = useState<
+    EscalaChinaAjuste[]
+  >([]);
+  const [chinaSynchronizationError, setChinaSynchronizationError] = useState<
+    string | null
+  >(null);
+  const [acknowledgingChinaAdjustments, setAcknowledgingChinaAdjustments] =
+    useState(false);
+  const [chinaAdjustmentDialog, setChinaAdjustmentDialog] = useState<
+    EscalaChinaAjuste[] | null
   >(null);
   const [playbackDialogOpen, setPlaybackDialogOpen] = useState(false);
   const [inlineEditState, setInlineEditState] =
@@ -1140,6 +1158,29 @@ export default function Escala() {
     if (showLoading) setLoading(true);
 
     try {
+      try {
+        const synchronization = await sincronizarChinaEscala({
+          nroempresa,
+          data_inicio: dateStart,
+          data_fim: dateEnd,
+        });
+        if (synchronization) {
+          setChinaSynchronizationError(null);
+          setChinaAutoAdjustments(
+            Array.isArray(synchronization.alertas)
+              ? synchronization.alertas
+              : [],
+          );
+        }
+      } catch (error) {
+        console.error("Falha ao sincronizar a quantidade China:", error);
+        setChinaSynchronizationError(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível verificar as atualizações automáticas de China.",
+        );
+      }
+
       const data = await consultarEscala({
         nroempresa,
         data_inicio: dateStart,
@@ -1274,6 +1315,35 @@ export default function Escala() {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateStart, dateEnd, initialWeekResolved, nroempresa]);
+
+  useEffect(() => {
+    if (!initialWeekResolved) return;
+
+    const synchronizeVisibleWeek = () => void loadData(false);
+    const interval = window.setInterval(synchronizeVisibleWeek, 60_000);
+    window.addEventListener("focus", synchronizeVisibleWeek);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", synchronizeVisibleWeek);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateStart, dateEnd, initialWeekResolved, nroempresa]);
+
+  useEffect(() => {
+    if (!chinaSuggestionState || chinaAutoAdjustments.length === 0) return;
+
+    const idVinculo = toNumber(
+      chinaSuggestionState.item.row.ID_ESCALA_PEDIDO_VINCULO,
+    );
+    const foiAtualizado = chinaAutoAdjustments.some(
+      (ajuste) =>
+        toNumber(ajuste.ID_ESCALA_PEDIDO_VINCULO) === idVinculo &&
+        ajuste.SEXO === chinaSuggestionState.item.sex,
+    );
+
+    if (foiAtualizado) setChinaSuggestionState(null);
+  }, [chinaAutoAdjustments, chinaSuggestionState]);
 
   const summaries = useMemo(
     () =>
@@ -1543,6 +1613,48 @@ export default function Escala() {
     );
   }, [totalWeekPages]);
 
+  useEffect(() => {
+    const selectedIndex = weekOptions.findIndex(
+      (option) => option.key === selectedWeek,
+    );
+    if (selectedIndex < 0) return;
+
+    const selectedPage = Math.floor(
+      (weekOptions.length - 1 - selectedIndex) / WEEKS_PER_PAGE,
+    );
+    setWeekPage((current) =>
+      current === selectedPage ? current : selectedPage,
+    );
+  }, [selectedWeek, weekOptions]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const container = weekSelectorScrollRef.current;
+      const selectedOption = container?.querySelector<HTMLElement>(
+        `[data-week-option="${selectedWeek}"]`,
+      );
+      if (!container || !selectedOption) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const selectedRect = selectedOption.getBoundingClientRect();
+      const safeGap = 10;
+
+      if (selectedRect.left < containerRect.left + safeGap) {
+        container.scrollBy({
+          left: selectedRect.left - containerRect.left - safeGap,
+          behavior: "smooth",
+        });
+      } else if (selectedRect.right > containerRect.right - safeGap) {
+        container.scrollBy({
+          left: selectedRect.right - containerRect.right + safeGap,
+          behavior: "smooth",
+        });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedWeek, visibleWeekOptions]);
+
   const refreshAll = async (
     options: { preserveScroll?: boolean; background?: boolean } = {},
   ) => {
@@ -1594,6 +1706,35 @@ export default function Escala() {
     }
   };
 
+  const acknowledgeChinaAdjustments = async (
+    adjustments: EscalaChinaAjuste[] = chinaAutoAdjustments,
+  ) => {
+    const idsAjuste = adjustments.map((item) =>
+      toNumber(item.ID_AJUSTE),
+    );
+    if (idsAjuste.length === 0) return;
+
+    setAcknowledgingChinaAdjustments(true);
+    try {
+      await confirmarAlertasChinaEscala(nroempresa, idsAjuste);
+      const confirmedIds = new Set(idsAjuste);
+      setChinaAutoAdjustments((current) =>
+        current.filter(
+          (item) => !confirmedIds.has(toNumber(item.ID_AJUSTE)),
+        ),
+      );
+      setChinaAdjustmentDialog(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível confirmar o aviso de atualização China.",
+      );
+    } finally {
+      setAcknowledgingChinaAdjustments(false);
+    }
+  };
+
   const applyChinaSuggestion = async () => {
     if (!chinaSuggestionState) return;
 
@@ -1622,6 +1763,18 @@ export default function Escala() {
         item.sex === "BOI"
           ? suggestion.suggestedQuantity
           : toNumber(row.QTD_CHINA_BOI);
+      const chinaHistoryMetadata =
+        item.sex === "VACA"
+          ? {
+              origem_china_vaca: "HISTORICO" as const,
+              percentual_china_vaca: suggestion.chinaPercent,
+              qtd_base_vaca: item.quantity,
+            }
+          : {
+              origem_china_boi: "HISTORICO" as const,
+              percentual_china_boi: suggestion.chinaPercent,
+              qtd_base_boi: item.quantity,
+            };
 
       if (row.ORIGEM_REGISTRO === "MANUAL" && recordManualId > 0) {
         const result = await editarRegistroManualEscala(
@@ -1641,6 +1794,7 @@ export default function Escala() {
               versao: recordPedidoVersion,
               qtd_china_vaca: nextChinaVaca,
               qtd_china_boi: nextChinaBoi,
+              ...chinaHistoryMetadata,
             },
             paymentTermsByCode,
           ),
@@ -1675,6 +1829,7 @@ export default function Escala() {
           prazo_dias: getEffectivePaymentTermDays(row, paymentTermsByCode),
           qtd_china_vaca: nextChinaVaca,
           qtd_china_boi: nextChinaBoi,
+          ...chinaHistoryMetadata,
         });
 
         toast.success(result.message || "Pedido incluído com a sugestão de China.");
@@ -2347,7 +2502,10 @@ export default function Escala() {
                 </p>
               </div>
 
-              <div className="flex w-full max-w-full items-center gap-2.5 overflow-x-auto pb-1 xl:w-auto xl:justify-center">
+              <div
+                ref={weekSelectorScrollRef}
+                className="flex w-full max-w-full items-center gap-2.5 overflow-x-auto pb-1 xl:w-auto xl:justify-center"
+              >
                 {loadingWeeks ? (
                   <div className="flex h-20 w-[520px] max-w-full items-center justify-center">
                     <Loader2 className="h-5 w-5 animate-spin text-[#1B58A0]" />
@@ -2388,6 +2546,7 @@ export default function Escala() {
                         return (
                           <button
                             key={option.key}
+                            data-week-option={option.key}
                             type="button"
                             onClick={() => setSelectedWeek(option.key)}
                             className={`h-20 w-24 shrink-0 rounded-xl border px-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/40 ${
@@ -2560,6 +2719,31 @@ export default function Escala() {
             accent="#173D6E"
           />
         </div>
+
+        {chinaSynchronizationError && (
+          <div className="flex flex-col gap-3 rounded-xl border border-[#EAB66C] bg-[#FFF8E8] p-3 text-[#8A4B08] sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-extrabold">
+                  Não foi possível verificar as atualizações de China
+                </p>
+                <p className="mt-0.5 break-words text-[11px] font-semibold text-[#9A5B17]">
+                  {chinaSynchronizationError}
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0 border-[#D89A44] bg-white/70 font-extrabold text-[#8A4B08] hover:bg-[#FFEBC7]"
+              onClick={() => void loadData(false)}
+            >
+              Tentar novamente
+            </Button>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_4px_18px_rgba(23,61,110,0.04)]">
@@ -2980,9 +3164,18 @@ export default function Escala() {
                                 .filter(Boolean)
                                 .join(" • ");
                               const rowScaleId =
-                                toNumber(row.ID_ESCALA) ||
-                                toNumber(row.ID_ESCALA_SUGERIDA) ||
-                                toNumber(idEscala);
+                                row.STATUS_CONFIGURACAO ===
+                                "PENDENTE_CRIAR_ESCALA"
+                                  ? 0
+                                  : toNumber(row.ID_ESCALA_DIA) ||
+                                    toNumber(idEscala);
+                              const linkedToCurrentDayScale =
+                                toNumber(row.ID_ESCALA_PEDIDO_VINCULO) > 0 &&
+                                toNumber(row.ID_ESCALA_DIA) > 0 &&
+                                toNumber(row.ID_ESCALA) ===
+                                  toNumber(row.ID_ESCALA_DIA) &&
+                                row.STATUS_CONFIGURACAO !==
+                                  "PENDENTE_INCLUSAO";
                               const purchaseDate =
                                 row.DTAPEDIDO || row.DATA_ABATE;
                               const observation =
@@ -3060,6 +3253,18 @@ export default function Escala() {
                                 : "";
                               const displayedChinaQuantity =
                                 getDisplayedChinaQuantity(item);
+                              const rowChinaAdjustments =
+                                chinaAutoAdjustments.filter(
+                                  (adjustment) =>
+                                    toNumber(
+                                      adjustment.ID_ESCALA_PEDIDO_VINCULO,
+                                    ) ===
+                                      toNumber(
+                                        row.ID_ESCALA_PEDIDO_VINCULO,
+                                      ) && adjustment.SEXO === item.sex,
+                                );
+                              const latestChinaAdjustment =
+                                rowChinaAdjustments[0] || null;
                               const effectivePremium = getEffectivePremium(row);
                               const planningLocation = resolvePlanningLocation(
                                 row,
@@ -3115,9 +3320,7 @@ export default function Escala() {
                                           )}
 
                                         {row.ORIGEM_REGISTRO === "ERP" &&
-                                          toNumber(
-                                            row.ID_ESCALA_PEDIDO_VINCULO,
-                                          ) > 0 &&
+                                          linkedToCurrentDayScale &&
                                           rowScaleId > 0 && (
                                             <Button
                                               size="icon"
@@ -3650,7 +3853,7 @@ export default function Escala() {
                                   </TableCell>
 
                                   <TableCell className="px-1 py-2.5 text-right align-top font-bold text-[#334E68]">
-                                    <div className="flex items-center justify-end gap-1.5">
+                                    <div className="flex flex-wrap items-center justify-end gap-1.5">
                                       <span
                                         className={`inline-flex min-w-[38px] items-center justify-center rounded-md px-2 py-1 text-right text-[12px] font-extrabold tabular-nums ${
                                           chinaQuantityDivergent
@@ -3663,6 +3866,22 @@ export default function Escala() {
                                       >
                                         {numberFormat.format(displayedChinaQuantity)}
                                       </span>
+
+                                      {latestChinaAdjustment && (
+                                        <button
+                                          type="button"
+                                          className="inline-flex h-7 items-center gap-1 rounded-md border border-[#EAB66C] bg-[#FFF0CF] px-1.5 text-[9px] font-black text-[#8A4B08] transition hover:border-[#D98218] hover:bg-[#FFE3AD] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F59E0B]/30"
+                                          title="Ver alteração automática da quantidade China"
+                                          onClick={() =>
+                                            setChinaAdjustmentDialog(
+                                              rowChinaAdjustments,
+                                            )
+                                          }
+                                        >
+                                          <AlertTriangle className="h-3 w-3" />
+                                          OK
+                                        </button>
+                                      )}
 
                                       {chinaQuantityDivergent ? (
                                         <button
@@ -4233,6 +4452,82 @@ export default function Escala() {
       </Dialog>
 
       <Dialog
+        open={Boolean(chinaAdjustmentDialog)}
+        onOpenChange={(open) => {
+          if (!open && !acknowledgingChinaAdjustments) {
+            setChinaAdjustmentDialog(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-md"
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              !event.repeat &&
+              !acknowledgingChinaAdjustments &&
+              chinaAdjustmentDialog?.length
+            ) {
+              event.preventDefault();
+              void acknowledgeChinaAdjustments(chinaAdjustmentDialog);
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Quantidade China atualizada</DialogTitle>
+            <DialogDescription>
+              O sistema ajustou automaticamente esta linha após a mudança na
+              quantidade de animais.
+            </DialogDescription>
+          </DialogHeader>
+
+          {chinaAdjustmentDialog?.[0] && (
+            <div className="rounded-xl border border-[#EAB66C] bg-[#FFF7E8] p-4 text-[#744108]">
+              <div className="flex items-center gap-2 text-sm font-extrabold">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-[#D98218]" />
+                {chinaAdjustmentDialog[0].SEXO}
+              </div>
+              <p className="mt-2 text-sm font-semibold leading-relaxed">
+                A quantidade de animais mudou de {numberFormat.format(
+                  toNumber(chinaAdjustmentDialog[0].QTD_ANIMAIS_ANTERIOR),
+                )} para {numberFormat.format(
+                  toNumber(chinaAdjustmentDialog[0].QTD_ANIMAIS_NOVA),
+                )}. O China foi atualizado de {numberFormat.format(
+                  toNumber(chinaAdjustmentDialog[0].QTD_CHINA_ANTERIOR),
+                )} para {numberFormat.format(
+                  toNumber(chinaAdjustmentDialog[0].QTD_CHINA_NOVA),
+                )}.
+              </p>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              autoFocus
+              disabled={
+                acknowledgingChinaAdjustments || !chinaAdjustmentDialog?.length
+              }
+              onClick={() => {
+                if (chinaAdjustmentDialog) {
+                  void acknowledgeChinaAdjustments(chinaAdjustmentDialog);
+                }
+              }}
+            >
+              {acknowledgingChinaAdjustments ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Confirmando...
+                </>
+              ) : (
+                "OK, entendi"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={Boolean(locationDialog)}
         onOpenChange={(open) => {
           if (!open) setLocationDialog(null);
@@ -4549,4 +4844,3 @@ function DayInlineMetric({
     </span>
   );
 }
-

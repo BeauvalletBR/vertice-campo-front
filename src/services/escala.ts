@@ -9,6 +9,7 @@ import type {
   EditarRegistroManualPayload,
   EditarVinculoPedidoPayload,
   EscalaFiltro,
+  EscalaChinaSincronizacao,
   EscalaLinha,
   EscalaOcorrencia,
   EscalaPedidoErp,
@@ -43,6 +44,10 @@ const urls = {
     env.VITE_N8N_WEBHOOK_URL_ESCALA_PEDIDO_VINCULO_INATIVAR,
   prazoPagamentoSelect:
     env.VITE_N8N_WEBHOOK_URL_ESCALA_PRAZO_PAGTO_SELECT,
+  chinaSincronizar:
+    env.VITE_N8N_WEBHOOK_URL_ESCALA_CHINA_SINCRONIZAR,
+  chinaAlertasCiente:
+    env.VITE_N8N_WEBHOOK_URL_ESCALA_CHINA_ALERTAS_CIENTE,
 
   manualInsert: env.VITE_N8N_WEBHOOK_URL_ESCALA_MANUAL_INSERT,
   manualEditar: env.VITE_N8N_WEBHOOK_URL_ESCALA_MANUAL_EDITAR,
@@ -57,6 +62,28 @@ export const consultarEscala = (filtro: EscalaFiltro) =>
 
 export const consultarResumoEscala = (filtro: EscalaFiltro) =>
   n8nPost<EscalaResumo[]>(urls.resumo, filtro);
+
+export const sincronizarChinaEscala = (filtro: EscalaFiltro) => {
+  if (!urls.chinaSincronizar) {
+    return Promise.reject(
+      new Error("URL de sincronização dos alertas China não configurada."),
+    );
+  }
+  return n8nPost<EscalaChinaSincronizacao>(urls.chinaSincronizar, filtro);
+};
+
+export const confirmarAlertasChinaEscala = (
+  nroempresa: number,
+  idsAjuste: number[],
+) => {
+  if (!urls.chinaAlertasCiente) {
+    return Promise.reject(new Error("URL de confirmação dos alertas China não configurada."));
+  }
+  return n8nPost<ApiMessage>(urls.chinaAlertasCiente, {
+    nroempresa,
+    ids_ajuste: idsAjuste,
+  });
+};
 
 export const consultarPrazosPagamento = async () => {
   if (cachedPaymentTerms) return cachedPaymentTerms;

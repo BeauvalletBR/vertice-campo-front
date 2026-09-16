@@ -4,7 +4,9 @@ import {
   Navigate,
   Route,
   Routes,
+  useLocation,
 } from "react-router-dom";
+import { useEffect } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -21,6 +23,14 @@ import {
   APP_ROUTE_ACCESS,
   getDefaultAuthorizedRoute,
 } from "@/lib/access";
+import {
+  canAccessAuthenticatedRoute,
+  choosePostLoginRoute,
+  clearPendingAuthenticatedRoute,
+  getLastAuthenticatedRoute,
+  getPendingAuthenticatedRoute,
+  rememberLastAuthenticatedRoute,
+} from "@/lib/auth-navigation";
 
 import Index from "./pages/Index";
 import FieldPage from "./pages/FieldPage";
@@ -34,19 +44,83 @@ import EscalaDashboardScreen from "./pages/EscalaDashboardScreen";
 import EscalaAnaliseMensal from "./pages/EscalaAnaliseMensal";
 import EscalaGerenciador from "./pages/EscalaGerenciador";
 import EscalaTVScreen from "./pages/EscalaTVScreen";
+import StartPage from "./pages/StartPage";
 
 const queryClient = new QueryClient();
 
+const getRouteFromLocation = (location: {
+  pathname: string;
+  search: string;
+  hash: string;
+}) => `${location.pathname}${location.search}${location.hash}`;
+
+function RouteVisitTracker() {
+  const { user } = useAuth();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!user || window.innerWidth < 1024) return;
+
+    const route = getRouteFromLocation(location);
+    if (canAccessAuthenticatedRoute(user, route)) {
+      rememberLastAuthenticatedRoute(route);
+    }
+  }, [location, user]);
+
+  return null;
+}
+
+function AuthenticatedEntryRoute() {
+  const { user } = useAuth();
+
+  if (!user) return <Navigate to="/login" replace />;
+
+  const destination = choosePostLoginRoute(user, {
+    pendingRoute: getPendingAuthenticatedRoute(),
+    lastRoute: getLastAuthenticatedRoute(),
+    isDesktop: window.innerWidth >= 1024,
+  });
+
+  clearPendingAuthenticatedRoute();
+  return <Navigate to={destination} replace />;
+}
+
+function AuthenticatedLoginRedirect() {
+  const { user } = useAuth();
+  const location = useLocation();
+
+  if (!user) return <LoginPage />;
+
+  const requestedRoute = (location.state as { from?: unknown } | null)?.from;
+  const destination = choosePostLoginRoute(user, {
+    requestedRoute,
+    pendingRoute: getPendingAuthenticatedRoute(),
+    lastRoute: getLastAuthenticatedRoute(),
+    isDesktop: window.innerWidth >= 1024,
+  });
+
+  clearPendingAuthenticatedRoute();
+  return <Navigate to={destination} replace />;
+}
+
 function ProtectedLayout() {
   const { user } = useAuth();
+  const location = useLocation();
   const defaultRoute = getDefaultAuthorizedRoute(user);
 
   if (!user || !defaultRoute) {
-    return <Navigate to="/login" replace />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: getRouteFromLocation(location) }}
+      />
+    );
   }
 
   return (
     <SidebarProvider>
+      <RouteVisitTracker />
       <div className="min-h-screen flex w-full">
         <AppSidebar />
 
@@ -59,8 +133,10 @@ function ProtectedLayout() {
             <Routes>
               <Route
                 path="/"
-                element={<Navigate to={defaultRoute} replace />}
+                element={<AuthenticatedEntryRoute />}
               />
+
+              <Route path="/inicio" element={<StartPage />} />
 
               <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.dashboard} />}>
                 <Route
@@ -162,11 +238,7 @@ function AppContent() {
     <Routes>
       <Route
         path="/login"
-        element={
-          user && defaultRoute
-            ? <Navigate to={defaultRoute} replace />
-            : <LoginPage />
-        }
+        element={user && defaultRoute ? <AuthenticatedLoginRedirect /> : <LoginPage />}
       />
 
       <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.escala} />}>
