@@ -244,15 +244,26 @@ export async function n8nPost<T>(
   }
 
   if (!response.ok) {
-    const message =
-      typeof responseBody === "object" &&
-      responseBody !== null &&
-      "message" in responseBody
-        ? String(
-            (responseBody as { message?: unknown }).message ||
-              `Erro HTTP ${response.status}.`
+    const errorValue =
+      typeof responseBody === "object" && responseBody !== null
+        ? "detail" in responseBody
+          ? (responseBody as { detail?: unknown }).detail
+          : "message" in responseBody
+            ? (responseBody as { message?: unknown }).message
+            : responseBody
+        : responseBody;
+    const message = Array.isArray(errorValue)
+      ? errorValue
+          .map((item) =>
+            typeof item === "object" && item !== null && "msg" in item
+              ? String((item as { msg?: unknown }).msg || "")
+              : String(item),
           )
-        : String(responseBody || `Erro HTTP ${response.status}.`);
+          .filter(Boolean)
+          .join("; ")
+      : typeof errorValue === "object" && errorValue !== null
+        ? JSON.stringify(errorValue)
+        : String(errorValue || `Erro HTTP ${response.status}.`);
 
     throw new Error(message);
   }
