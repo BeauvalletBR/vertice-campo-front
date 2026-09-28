@@ -45,6 +45,10 @@ import { toast } from "sonner";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { api, fetchPecuaristasAgendamento, type ApiRancher, type ApiUsuario, type ApiAuditoria, type ApiLote } from "@/services/api";
+import {
+  buildRouteWithFinalAccess,
+  calculateStraightLineDistanceKm,
+} from "@/lib/geo-distance";
 
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -142,6 +146,43 @@ const formatarDataBruta = (dataString: string | null | undefined) => {
   return dataString; 
 };
 
+const EMPRESA_COORDS: [number, number] = [-16.3419669, -49.4708347];
+
+const hasValidVisitCoordinates = (visit: CheckinReport) => {
+  const latitude = Number(visit.latitude);
+  const longitude = Number(visit.longitude);
+
+  return (
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180 &&
+    !(latitude === 0 && longitude === 0)
+  );
+};
+
+function VisitRouteMapController({
+  routePath,
+}: {
+  routePath: [number, number][];
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (routePath.length > 1) {
+      map.fitBounds(L.latLngBounds(routePath), {
+        padding: [40, 40],
+        animate: true,
+      });
+    }
+  }, [map, routePath]);
+
+  return null;
+}
+
+
 function InfoLegendaLogistica() {
   return (
     <div className="relative group">
@@ -223,6 +264,14 @@ export default function Visitas() {
   const [isPendingOpen, setIsPendingOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<CheckinReport | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState<string | null>(null);
+  const [mapVisit, setMapVisit] = useState<CheckinReport | null>(null);
+  const [visitRoutePath, setVisitRoutePath] = useState<[number, number][]>([]);
+  const [visitAccessPath, setVisitAccessPath] = useState<[number, number][]>([]);
+  const [visitRouteDistanceKm, setVisitRouteDistanceKm] = useState<number | null>(null);
+  const [visitRoadDistanceKm, setVisitRoadDistanceKm] = useState<number | null>(null);
+  const [visitAccessDistanceKm, setVisitAccessDistanceKm] = useState<number | null>(null);
+  const [isLoadingVisitRoute, setIsLoadingVisitRoute] = useState(false);
+  const [visitRouteError, setVisitRouteError] = useState(false);
   
   const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
   const [selectedAuditVisit, setSelectedAuditVisit] = useState<CheckinReport | null>(null);
@@ -240,6 +289,7 @@ export default function Visitas() {
   const [allData, setAllData] = useState<CheckinReport[]>([]);
   const [pecuaristas, setPecuaristas] = useState<ApiRancher[]>([]);
   const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]);
+
 
   // Filtros Globais e de Visitas
   const [filterProdutor, setFilterProdutor] = useState("");
@@ -284,6 +334,81 @@ export default function Visitas() {
     type: "success" | "error";
     onCloseAction?: () => void;
   } | null>(null);
+
+  useEffect(() => {
+    if (!mapVisit || !hasValidVisitCoordinates(mapVisit)) {
+      setVisitRoutePath([]);
+      setVisitAccessPath([]);
+      setVisitRouteDistanceKm(null);
+      setVisitRoadDistanceKm(null);
+      setVisitAccessDistanceKm(null);
+      setVisitRouteError(false);
+      setIsLoadingVisitRoute(false);
+      return;
+    }
+
+    const latitude = Number(mapVisit.latitude);
+    const longitude = Number(mapVisit.longitude);
+    const fallbackPath: [number, number][] = [
+      EMPRESA_COORDS,
+      [latitude, longitude],
+    ];
+    const controller = new AbortController();
+
+    setVisitRoutePath(fallbackPath);
+    setVisitAccessPath([]);
+    setVisitRouteDistanceKm(null);
+    setVisitRoadDistanceKm(null);
+    setVisitAccessDistanceKm(null);
+    setVisitRouteError(false);
+    setIsLoadingVisitRoute(true);
+
+    fetch(
+      `https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${longitude},${latitude}?overview=full&geometries=geojson`,
+      { signal: controller.signal },
+    )
+      .then((response) => {
+        if (!response.ok) throw new Error("Rota não encontrada");
+        return response.json();
+      })
+      .then((data) => {
+        const route = data?.routes?.[0];
+        if (!route?.geometry?.coordinates?.length) {
+          throw new Error("Rota não encontrada");
+        }
+
+        const visitPoint: [number, number] = [latitude, longitude];
+        const routeWithAccess = buildRouteWithFinalAccess(
+          route.geometry.coordinates,
+          Number(route.distance),
+          visitPoint,
+        );
+
+        setVisitRoutePath(routeWithAccess.roadPath);
+        setVisitAccessPath(routeWithAccess.accessPath);
+        setVisitRoadDistanceKm(routeWithAccess.roadDistanceKm);
+        setVisitAccessDistanceKm(routeWithAccess.accessDistanceKm);
+        setVisitRouteDistanceKm(routeWithAccess.totalDistanceKm);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        const directDistanceKm = calculateStraightLineDistanceKm(
+          EMPRESA_COORDS,
+          [latitude, longitude],
+        );
+        setVisitRouteError(true);
+        setVisitRoutePath([]);
+        setVisitAccessPath(fallbackPath);
+        setVisitRoadDistanceKm(null);
+        setVisitAccessDistanceKm(directDistanceKm);
+        setVisitRouteDistanceKm(directDistanceKm);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingVisitRoute(false);
+      });
+
+    return () => controller.abort();
+  }, [mapVisit]);
 
   useEffect(() => {
     const carregarVisitas = async () => {
@@ -833,6 +958,19 @@ export default function Visitas() {
                  </Button>
               )}
 
+              {hasValidVisitCoordinates(v) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-10 p-0 border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300 transition-all rounded-lg shadow-sm shrink-0 flex items-center justify-center"
+                  onClick={() => setMapVisit(v)}
+                  title="Ver localização da visita"
+                  aria-label={`Ver localização da visita em ${v.propriedade}`}
+                >
+                  <MapPin className="w-4 h-4" />
+                </Button>
+              )}
+
               {/* 👇 AQUI A LÓGICA DO MENU DO RELATÓRIO CORRIGIDA 👇 */}
               <div className="relative">
                 {v.statusAuditoria ? (
@@ -1222,6 +1360,165 @@ export default function Visitas() {
             </Table>
           </CardContent>
         </Card>
+
+        {mapVisit && hasValidVisitCoordinates(mapVisit) && (
+          <div
+            className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/75 p-3 backdrop-blur-sm sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Localização da visita"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setMapVisit(null);
+            }}
+          >
+            <Card className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border-0 bg-white shadow-2xl">
+              <CardHeader className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-4 sm:px-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <CardTitle className="flex items-center gap-2 text-lg font-black text-slate-800">
+                      <MapPin className="h-5 w-5 shrink-0 text-blue-600" />
+                      Localização da visita
+                    </CardTitle>
+                    <CardDescription className="mt-1 truncate text-xs font-semibold text-slate-500">
+                      {mapVisit.nome} • {mapVisit.propriedade}
+                    </CardDescription>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 shrink-0 rounded-full p-0 text-slate-500 hover:bg-slate-200"
+                    onClick={() => setMapVisit(null)}
+                    aria-label="Fechar mapa"
+                  >
+                    <X className="h-5 w-5" />
+                  </Button>
+                </div>
+              </CardHeader>
+
+              <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-5">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Latitude</p>
+                    <p className="mt-1 font-mono text-sm font-bold text-slate-700">
+                      {Number(mapVisit.latitude).toFixed(6)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Longitude</p>
+                    <p className="mt-1 font-mono text-sm font-bold text-slate-700">
+                      {Number(mapVisit.longitude).toFixed(6)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-blue-500">Distância total</p>
+                    <p className="mt-1 text-sm font-black text-blue-800">
+                      {isLoadingVisitRoute
+                        ? "Calculando..."
+                        : visitRouteDistanceKm !== null
+                          ? `${visitRouteDistanceKm.toFixed(1)} km`
+                          : "Indisponível"}
+                    </p>
+                    {!isLoadingVisitRoute && visitRouteDistanceKm !== null && (
+                      <p className="mt-1 text-[9px] font-bold leading-tight text-blue-600">
+                        {visitRoadDistanceKm !== null
+                          ? `${visitRoadDistanceKm.toFixed(1)} km por estrada`
+                          : "Sem rota por estrada"}
+                        {visitAccessDistanceKm !== null &&
+                        visitAccessDistanceKm > 0.01
+                          ? ` + ${visitAccessDistanceKm.toFixed(1)} km de acesso final`
+                          : ""}
+                      </p>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">KM registrado</p>
+                    <p className="mt-1 text-sm font-black text-emerald-800">
+                      {mapVisit.distanciaRealRaw !== null
+                        ? `${mapVisit.distanciaRealRaw.toFixed(1)} km`
+                        : "Não informado"}
+                    </p>
+                  </div>
+                </div>
+
+                {visitRouteError && (
+                  <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    Não foi possível calcular a rota pelas estradas. A distância exibida é uma aproximação em linha reta até o GPS da visita.
+                  </div>
+                )}
+
+                <div className="relative h-[360px] w-full overflow-hidden rounded-xl border-2 border-white bg-slate-200 shadow-inner sm:h-[480px]">
+                  <MapContainer
+                    center={[Number(mapVisit.latitude), Number(mapVisit.longitude)]}
+                    zoom={8}
+                    style={{ height: "100%", width: "100%", zIndex: 1 }}
+                  >
+                    <VisitRouteMapController
+                      routePath={
+                        visitRoutePath.length > 0
+                          ? [
+                              ...visitRoutePath,
+                              ...visitAccessPath.slice(1),
+                            ]
+                          : visitAccessPath
+                      }
+                    />
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    />
+                    <CircleMarker
+                      center={EMPRESA_COORDS}
+                      radius={8}
+                      fillColor="#dc2626"
+                      color="#7f1d1d"
+                      weight={2}
+                      fillOpacity={1}
+                    >
+                      <Tooltip direction="top" permanent>
+                        Sede Beauvallet
+                      </Tooltip>
+                    </CircleMarker>
+                    <CircleMarker
+                      center={[Number(mapVisit.latitude), Number(mapVisit.longitude)]}
+                      radius={9}
+                      fillColor="#2563eb"
+                      color="#1e3a8a"
+                      weight={2}
+                      fillOpacity={1}
+                    >
+                      <Tooltip direction="top" permanent>
+                        Local da visita
+                      </Tooltip>
+                    </CircleMarker>
+                    {visitRoutePath.length > 1 && (
+                      <Polyline
+                        positions={visitRoutePath}
+                        color="#2563eb"
+                        weight={5}
+                        opacity={0.8}
+                      />
+                    )}
+                    {visitAccessPath.length > 1 && (
+                      <Polyline
+                        positions={visitAccessPath}
+                        color="#f59e0b"
+                        weight={5}
+                        dashArray="10, 10"
+                        opacity={0.95}
+                      />
+                    )}
+                  </MapContainer>
+                </div>
+
+                <p className="text-center text-[11px] font-medium text-slate-500">
+                  Linha azul: rota por estrada. Linha tracejada: acesso final até o GPS exato da visita.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {isPedidoModalOpen && visitToLinkPedido && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">

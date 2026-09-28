@@ -42,7 +42,14 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
 
-import { api, fetchPecuaristasAgendamento, type ApiVisita, type ApiUsuario, type ApiRancher, type ApiLote } from "@/services/api";
+import {
+  api,
+  fetchDashboardCampo,
+  type ApiLote,
+  type ApiUsuario,
+  type ApiVisita,
+  type ApiVisitaDashboard,
+} from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 type Rancher = { id: string; name: string; farm: string; headCount: number };
@@ -470,10 +477,9 @@ export function Dashboard() {
   const [isForecastTipOpen, setIsForecastTipOpen] = useState(false);
   
   // Agora armazenamos as visitas já com os Lotes preenchidos
-  const [visitasBrutas, setVisitasBrutas] = useState<(ApiVisita & { lotesDaApi: ApiLote[] })[]>([]);
+  const [visitasBrutas, setVisitasBrutas] = useState<ApiVisitaDashboard[]>([]);
   
   const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]);
-  const [pecuaristas, setPecuaristas] = useState<ApiRancher[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [selectedMetric, setSelectedMetric] = useState<MetricKey | null>(null);
@@ -491,38 +497,44 @@ export function Dashboard() {
   const [forecastSortOrder, setForecastSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const [selectedReport, setSelectedReport] = useState<CheckinReport | null>(null);
+  const [loadingReportId, setLoadingReportId] = useState<number | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const carregarUsuarios = async () => {
+      const dadosUsuarios = await api.getUsuarios();
+      if (!cancelled) setUsuariosData(dadosUsuarios);
+    };
+
+    void carregarUsuarios();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
     const carregarDados = async () => {
       setIsLoading(true);
       try {
-        const [dadosVisitas, dadosUsuarios, dadosPecuaristas] = await Promise.all([
-          api.getVisitasConsulta(),
-          api.getUsuarios(),
-          temPermissaoAdmin ? fetchPecuaristasAgendamento() : Promise.resolve([])
-        ]);
-        
-        // ðŸ‘‡ BUSCANDO OS LOTES DE CADA VISITA PARA O FORECAST FUNCIONAR ðŸ‘‡
-        const visitasComLotes = await Promise.all(
-          dadosVisitas.map(async (v) => {
-            const lotes = await api.fetchLotesVisita(v.ID_VISITA);
-            return { ...v, lotesDaApi: lotes };
-          })
-        );
-        
-        setVisitasBrutas(visitasComLotes);
-        setUsuariosData(dadosUsuarios);
-        setPecuaristas(dadosPecuaristas);
+        const dadosVisitas = await fetchDashboardCampo(dateStart, dateEnd);
+        if (!cancelled) setVisitasBrutas(dadosVisitas);
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
-    carregarDados();
-  }, [temPermissaoAdmin]);
+
+    void carregarDados();
+    return () => {
+      cancelled = true;
+    };
+  }, [dateEnd, dateStart]);
 
   const compradoresDisponiveis = useMemo(() => {
     const compradoresMap = new Map<string, string>();
@@ -610,24 +622,7 @@ export function Dashboard() {
     visitas.forEach((visita) => {
       const inscricaoVisita = normalizarInscricao(visita.INSCRICAO);
 
-      const cadastroAtual = pecuaristas.find((pecuarista) => {
-        const mesmaInscricao =
-          inscricaoVisita !== "" &&
-          normalizarInscricao(pecuarista.INSCRICAO) === inscricaoVisita;
-
-        const mesmoProdutor =
-          visita.COD_PRODUTOR === null ||
-          visita.COD_PRODUTOR === undefined ||
-          String(pecuarista.COD_PRODUTOR) === String(visita.COD_PRODUTOR);
-
-        return mesmaInscricao && mesmoProdutor;
-      });
-
-      const distanciaAtualRaw =
-        visita.DISTANCIA_CADASTRADA !== null &&
-        visita.DISTANCIA_CADASTRADA !== undefined
-          ? visita.DISTANCIA_CADASTRADA
-          : cadastroAtual?.DISTANCIA_CADASTRADA;
+      const distanciaAtualRaw = visita.DISTANCIA_CADASTRADA;
 
       const distanciaAnteriorRaw = visita.DISTANCIAERP;
       const distanciaGpsRaw = visita.DISTANCIA_PERCORRIDA_REAL;
@@ -670,7 +665,7 @@ export function Dashboard() {
     return {
       totalPecuaristas: pecuaristasDistintos.size,
     };
-  }, [visitas, pecuaristas]);
+  }, [visitas]);
 
   const alertasForecastCincoDias = useMemo<ForecastReadyAlert[]>(() => {
     const agrupados = new Map<
@@ -691,21 +686,7 @@ export function Dashboard() {
 
       const inscricaoVisita = normalizarInscricao(visita.INSCRICAO);
 
-      const cadastroAtual = pecuaristas.find((pecuarista) => {
-        const mesmaInscricao =
-          inscricaoVisita !== "" &&
-          normalizarInscricao(pecuarista.INSCRICAO) === inscricaoVisita;
-
-        const mesmoProdutor =
-          visita.COD_PRODUTOR === null ||
-          visita.COD_PRODUTOR === undefined ||
-          String(pecuarista.COD_PRODUTOR) === String(visita.COD_PRODUTOR);
-
-        return mesmaInscricao && mesmoProdutor;
-      });
-
-      const telefoneBruto =
-        String(visita.TELEFONE || cadastroAtual?.NUMERO1 || "").trim() || null;
+      const telefoneBruto = String(visita.TELEFONE || "").trim() || null;
 
       visita.lotesDaApi.forEach((lote) => {
         if (
@@ -798,7 +779,7 @@ export function Dashboard() {
 
         return b.quantidade - a.quantidade;
       });
-  }, [visitas, pecuaristas]);
+  }, [visitas]);
 
 
   const resumoForecastCincoDias = useMemo(() => {
@@ -929,6 +910,21 @@ export function Dashboard() {
     distancia: v.DISTANCIA_PERCORRIDA_REAL !== null ? `${Number(v.DISTANCIA_PERCORRIDA_REAL).toFixed(1)} km (Ida e Volta)` : "DISTÂNCIA NÃO COLETADA",
     statusDatavale: v.COD_PRODUTOR ? "cadastrado" : "pendente"
   });
+
+  const openVisitReport = async (visit: ApiVisitaDashboard) => {
+    setLoadingReportId(visit.ID_VISITA);
+    try {
+      const detail = await api.fetchVisitaDetalhe(visit.ID_VISITA);
+      setSelectedReport(
+        mapVisitaToReport({
+          ...visit,
+          ASSINATURA_DIGITAL: detail?.ASSINATURA_DIGITAL || null,
+        }),
+      );
+    } finally {
+      setLoadingReportId(null);
+    }
+  };
 
   const handleDownloadPDF = async () => {
     if (!reportRef.current || !selectedReport) return;
@@ -1336,12 +1332,9 @@ export function Dashboard() {
         // 1º Tenta pegar a distância que o ERP tinha no momento da visita (se existir na View)
         let distErp = v.DISTANCIAERP !== null && v.DISTANCIAERP !== undefined ? Number(v.DISTANCIAERP) : null;
         
-        // 2º Se não tiver, busca do array de pecuaristas protegendo contra erro de tipo (String vs Number)
-        if (distErp === null && v.COD_PRODUTOR) {
-          const pecuaristaERP = pecuaristas.find(p => String(p.COD_PRODUTOR) === String(v.COD_PRODUTOR));
-          if (pecuaristaERP && pecuaristaERP.DISTANCIA_CADASTRADA !== undefined && pecuaristaERP.DISTANCIA_CADASTRADA !== null) {
-             distErp = Number(pecuaristaERP.DISTANCIA_CADASTRADA);
-          }
+        // A view do Dashboard já traz a distância atual sem carregar o cadastro inteiro.
+        if (distErp === null && v.DISTANCIA_CADASTRADA != null) {
+          distErp = Number(v.DISTANCIA_CADASTRADA);
         }
         if (distErp !== null) {
            // O valor do banco já é a distância total, então não multiplicamos por 2
@@ -1363,7 +1356,7 @@ export function Dashboard() {
     });
 
     return { forecast: { f30, f60, f90 }, auditoriaFrete: alertasFrete.sort((a,b) => b.diff - a.diff).slice(0, 15) };
-  }, [visitas, pecuaristas]);
+  }, [visitas]);
 
   const formatDiasFaltantes = (diffEmDias: number) => {
     if (diffEmDias < 0) return { text: `${diffEmDias} dias`, style: 'text-red-700 bg-red-100' };
@@ -2137,9 +2130,14 @@ export function Dashboard() {
                             <Button 
                               size="sm" 
                               className="text-[11px] font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-                              onClick={() => setSelectedReport(mapVisitaToReport(v))}
+                              disabled={loadingReportId === v.ID_VISITA}
+                              onClick={() => void openVisitReport(v)}
                             >
-                              <FileText className="w-3.5 h-3.5 mr-1.5" />
+                              {loadingReportId === v.ID_VISITA ? (
+                                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                              ) : (
+                                <FileText className="w-3.5 h-3.5 mr-1.5" />
+                              )}
                               Ver Relatório
                             </Button>
                           </TableCell>

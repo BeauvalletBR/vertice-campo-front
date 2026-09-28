@@ -42,6 +42,10 @@ import {
   ClipboardCheck 
 } from "lucide-react";
 import { api, fetchPecuaristasAgendamento, fetchAgendamentosPendentes, type ApiRancher, type ApiAgendamento, type ApiUsuario } from "@/services/api";
+import {
+  buildRouteWithFinalAccess,
+  calculateStraightLineDistanceKm,
+} from "@/lib/geo-distance";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -184,6 +188,7 @@ export function FieldVisit() {
   const [saving, setSaving] = useState(false);
   
   const [routePath, setRoutePath] = useState<[number, number][]>([]);
+  const [routeAccessPath, setRouteAccessPath] = useState<[number, number][]>([]);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   
   const [isRealLocation, setIsRealLocation] = useState<boolean>(false);
@@ -348,6 +353,32 @@ export function FieldVisit() {
     } catch (error) { }
   };
 
+  const applyCalculatedRoute = (
+    route: { geometry: { coordinates: [number, number][] }; distance: number },
+    destination: [number, number],
+  ) => {
+    const routeWithAccess = buildRouteWithFinalAccess(
+      route.geometry.coordinates,
+      Number(route.distance),
+      destination,
+    );
+
+    setRoutePath(routeWithAccess.roadPath);
+    setRouteAccessPath(routeWithAccess.accessPath);
+    setDistance(`${routeWithAccess.totalDistanceKm.toFixed(1)} km`);
+  };
+
+  const applyDirectRouteFallback = (destination: [number, number]) => {
+    const directDistanceKm = calculateStraightLineDistanceKm(
+      EMPRESA_COORDS,
+      destination,
+    );
+
+    setRoutePath([]);
+    setRouteAccessPath([EMPRESA_COORDS, destination]);
+    setDistance(`${directDistanceKm.toFixed(1)} km`);
+  };
+
   const executeFallbackLocation = (callback: () => void) => {
     setIsRealLocation(false); 
     const fallbackLat = -16.6868;
@@ -362,17 +393,13 @@ export function FieldVisit() {
       .then(res => res.json())
       .then(data => {
         if (data.routes && data.routes.length > 0) {
-          const routeCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
-          setRoutePath(routeCoords);
-          setDistance(`${(data.routes[0].distance / 1000).toFixed(1)} km`);
+          applyCalculatedRoute(data.routes[0], [fallbackLat, fallbackLng]);
         } else {
-          setRoutePath([EMPRESA_COORDS, [fallbackLat, fallbackLng]]);
-          setDistance("Aprox. 42 km");
+          applyDirectRouteFallback([fallbackLat, fallbackLng]);
         }
       })
       .catch(() => {
-        setRoutePath([EMPRESA_COORDS, [fallbackLat, fallbackLng]]);
-        setDistance("Aprox. 42 km");
+        applyDirectRouteFallback([fallbackLat, fallbackLng]);
       });
   };
 
@@ -391,16 +418,13 @@ export function FieldVisit() {
             .then(res => res.json())
             .then(data => {
               if (data.routes && data.routes.length > 0) {
-                setRoutePath(data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]));
-                setDistance(`${(data.routes[0].distance / 1000).toFixed(1)} km`);
+                applyCalculatedRoute(data.routes[0], [latitude, longitude]);
               } else {
-                setRoutePath([EMPRESA_COORDS, [latitude, longitude]]);
-                setDistance("Distância aproximada");
+                applyDirectRouteFallback([latitude, longitude]);
               }
             })
             .catch(() => {
-              setRoutePath([EMPRESA_COORDS, [latitude, longitude]]);
-              setDistance("Sem conexão p/ rotas");
+              applyDirectRouteFallback([latitude, longitude]);
             });
         },
         () => executeFallbackLocation(callback),
@@ -411,13 +435,21 @@ export function FieldVisit() {
     }
   };
 
+  const resetRouteCalculation = () => {
+    setDistance(null);
+    setRoutePath([]);
+    setRouteAccessPath([]);
+  };
+
   const retryLocation = () => {
+    resetRouteCalculation();
     setStep("routing");
     fetchRealRouteAndLocation(() => setStep("form"));
   };
 
   const startScheduledVisit = (ag: ApiAgendamento) => {
     setIsStandaloneAuditFlow(false);
+    resetRouteCalculation();
     setStep("routing");
     
     setSelectedRancher({
@@ -446,6 +478,7 @@ export function FieldVisit() {
 
   const startNewVisit = () => {
     setIsStandaloneAuditFlow(false);
+    resetRouteCalculation();
     setIsManual(false);
     setSelectedRancher(null);
     setForm(emptyForm(today, userName));
@@ -576,6 +609,11 @@ export function FieldVisit() {
 
   // 👇 NOVA LÓGICA DE VALIDAÇÃO COM CHECKLIST OPCIONAL 👇
   const validateAndProceed = () => {
+    if (!distance) {
+      toast.warning("Aguarde o cálculo da distância total até o GPS.");
+      return;
+    }
+
     const camposObrigatorios: { key: keyof FormData, label: string }[] = [
       { key: "nome", label: "Nome do Produtor" }, { key: "propriedade", label: "Propriedade" },
       { key: "telefone", label: "Telefone" }, { key: "melhorDiaContato", label: "Melhor dia de contato" },
@@ -677,6 +715,14 @@ export function FieldVisit() {
   };
 
   const executeSavePayload = async (assinaturaForcada?: string) => {
+    const calculatedDistance = distance
+      ? Number.parseFloat(distance.replace(" km", ""))
+      : Number.NaN;
+    if (!Number.isFinite(calculatedDistance)) {
+      toast.error("A distância total ainda não foi calculada. Tente novamente.");
+      return;
+    }
+
     setConfirmSaveModal(false);
     setConfirmSkipChecklistModal(false);
     setSaving(true);
@@ -723,8 +769,8 @@ export function FieldVisit() {
         
         gps_latitude: userLocation ? userLocation[0] : null, 
         gps_longitude: userLocation ? userLocation[1] : null,
-        distancia_percorrida_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 
-        distancia_real: distance ? parseFloat(distance.replace(" km", "")) : 0, 
+        distancia_percorrida_real: calculatedDistance,
+        distancia_real: calculatedDistance,
         
         distancia_sistema: selectedRancher ? Number(selectedRancher.DISTANCIA_CADASTRADA) || 0 : 0,
         
@@ -738,7 +784,7 @@ export function FieldVisit() {
       const result = await api.saveVisit(payload);
       if (result.success) {
         setAlertModal({ isOpen: true, type: "success", title: "Sucesso!", message: "A visita foi salva e sincronizada com o banco de dados." });
-        setStep("idle"); setDistance(null); setRoutePath([]); setUserLocation(null); setForm(emptyForm(today, userName)); setSelectedRancher(null); setIsManual(false);
+        setStep("idle"); setDistance(null); setRoutePath([]); setRouteAccessPath([]); setUserLocation(null); setForm(emptyForm(today, userName)); setSelectedRancher(null); setIsManual(false);
         setIsRealLocation(false);
         setAgendamentosPendentes(prev => prev.filter(ag => String(ag.ID_AGENDAMENTO) !== String(form.id_agendamento)));
       } else {
@@ -1010,7 +1056,7 @@ export function FieldVisit() {
                         VOLTAR
                       </Button>
                     )}
-                    <Button variant="ghost" size="sm" className="text-slate-500 hover:bg-slate-100 font-bold" onClick={() => { setStep("idle"); setRoutePath([]); setUserLocation(null); setIsRealLocation(false); setIsStandaloneAuditFlow(false); }}>
+                    <Button variant="ghost" size="sm" className="text-slate-500 hover:bg-slate-100 font-bold" onClick={() => { setStep("idle"); resetRouteCalculation(); setUserLocation(null); setIsRealLocation(false); setIsStandaloneAuditFlow(false); }}>
                       <X className="w-4 h-4 mr-1" /> FECHAR
                     </Button>
                   </div>
@@ -1124,6 +1170,11 @@ export function FieldVisit() {
                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Distância Oficial (Ida)</span>
                               <span className="text-2xl font-black text-slate-800 tabular-nums">{distance || "Calculando..."}</span>
                             </div>
+                            {routeAccessPath.length > 1 && (
+                              <p className="mb-3 text-[10px] font-bold text-amber-700">
+                                O total inclui o acesso tracejado até o GPS exato.
+                              </p>
+                            )}
                             <div className="h-16 bg-slate-50 rounded-lg flex items-center justify-center border border-slate-200 relative overflow-hidden px-10">
                               <div className="h-1 bg-slate-200 w-full rounded-full" />
                               <div className="absolute left-6 flex flex-col items-center">
@@ -1470,9 +1521,9 @@ export function FieldVisit() {
                     <Button 
                       className="w-full h-16 text-lg font-black bg-slate-800 hover:bg-slate-900 text-white shadow-xl shadow-slate-800/20 rounded-xl tracking-wide transition-all active:scale-[0.98]" 
                       onClick={validateAndProceed} 
-                      disabled={saving}
+                      disabled={saving || !distance}
                     >
-                      {saving ? <><Loader2 className="w-6 h-6 animate-spin mr-3" /> SINCRONIZANDO COM ERP...</> : "SALVAR VISITA E SINCRONIZAR"}
+                      {saving ? <><Loader2 className="w-6 h-6 animate-spin mr-3" /> SINCRONIZANDO COM ERP...</> : !distance ? <><Loader2 className="w-6 h-6 animate-spin mr-3" /> CALCULANDO DISTÂNCIA...</> : "SALVAR VISITA E SINCRONIZAR"}
                     </Button>
                   </>
                 )}
@@ -1485,7 +1536,13 @@ export function FieldVisit() {
             <div className="order-1 lg:order-2 h-[400px] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-8 w-full rounded-2xl overflow-hidden border-4 border-white shadow-xl z-0 bg-slate-200">
               {typeof window !== "undefined" && (
                 <MapContainer center={EMPRESA_COORDS} zoom={7} style={{ height: "100%", width: "100%", zIndex: 1 }}>
-                  <RouteMapController routePath={routePath} />
+                  <RouteMapController
+                    routePath={
+                      routePath.length > 0
+                        ? [...routePath, ...routeAccessPath.slice(1)]
+                        : routeAccessPath
+                    }
+                  />
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />                
                   <CircleMarker center={EMPRESA_COORDS} radius={8} fillColor="#dc2626" color="#7f1d1d" weight={2} fillOpacity={1}>
                     <Tooltip direction="top" className="font-bold text-red-700" permanent={!userLocation}>Sede Beauvallet (Inhumas)</Tooltip>
@@ -1497,7 +1554,10 @@ export function FieldVisit() {
                         <Tooltip direction="top" className={`font-bold ${isRealLocation ? 'text-blue-700' : 'text-slate-600'}`} permanent>{isRealLocation ? "Sua Posição GPS" : "Simulação (Goiânia)"}</Tooltip>
                       </CircleMarker>
                       {routePath.length > 0 && (
-                        <Polyline positions={routePath} color={isRealLocation ? "#3b82f6" : "#94a3b8"} weight={5} dashArray="15, 15" opacity={0.8} />
+                        <Polyline positions={routePath} color={isRealLocation ? "#3b82f6" : "#94a3b8"} weight={5} opacity={0.8} />
+                      )}
+                      {routeAccessPath.length > 1 && (
+                        <Polyline positions={routeAccessPath} color="#f59e0b" weight={5} dashArray="10, 10" opacity={0.95} />
                       )}
                     </>
                   )}

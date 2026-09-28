@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { fetchHistoricoCompras, fetchUsuarios } from "@/services/api";
+import { fetchHistoricoCompras } from "@/services/api";
 import type { ApiHistoricoCompra, ApiUsuario } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -396,15 +396,11 @@ export default function EscalaGerenciador() {
   const [focusHandled, setFocusHandled] = useState("");
 
   const [lines, setLines] = useState<EscalaLinha[]>([]);
-  const [buyers, setBuyers] = useState<ApiUsuario[]>([]);
   const [historicoCompras, setHistoricoCompras] = useState<ApiHistoricoCompra[]>(
     [],
   );
   const [paymentTerms, setPaymentTerms] = useState<PrazoPagamento[]>([]);
   const [loadingPaymentTerms, setLoadingPaymentTerms] = useState(true);
-  const [loadingBuyers, setLoadingBuyers] = useState(false);
-  const [buyerSearch, setBuyerSearch] = useState("");
-  const [buyerOpen, setBuyerOpen] = useState(false);
 
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [insertOrderForm, setInsertOrderForm] = useState<InsertOrderForm>(
@@ -464,21 +460,6 @@ export default function EscalaGerenciador() {
     () => records.filter((row) => row.ORIGEM_REGISTRO === "MANUAL"),
     [records],
   );
-
-  const buyerSuggestions = useMemo(() => {
-    if (!buyerOpen) return [];
-    const term = normalizeText(buyerSearch);
-
-    return buyers
-      .filter((buyer) => {
-        if (!term) return true;
-        return (
-          normalizeText(buyer.CODUSUARIO).includes(term) ||
-          String(buyer.SEQUSUARIO).includes(term)
-        );
-      })
-      .slice(0, 30);
-  }, [buyerOpen, buyerSearch, buyers]);
 
   const editingOrderRow = useMemo(
     () =>
@@ -551,38 +532,6 @@ export default function EscalaGerenciador() {
     void loadScale();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scaleId, nroempresa]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadBuyers = async () => {
-      setLoadingBuyers(true);
-      try {
-        const data = await fetchUsuarios();
-        const safe = (Array.isArray(data) ? data : [])
-          .filter(
-            (buyer) =>
-              Number(buyer.SEQUSUARIO) > 0 && normalizeText(buyer.CODUSUARIO),
-          )
-          .sort((a, b) =>
-            normalizeText(a.CODUSUARIO).localeCompare(
-              normalizeText(b.CODUSUARIO),
-              "pt-BR",
-            ),
-          );
-        if (!cancelled) setBuyers(safe);
-      } catch {
-        if (!cancelled) setBuyers([]);
-      } finally {
-        if (!cancelled) setLoadingBuyers(false);
-      }
-    };
-
-    void loadBuyers();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -727,8 +676,6 @@ export default function EscalaGerenciador() {
     setEditOrderForm(emptyEditOrderForm());
     setManualForm(emptyManualForm());
     setOrderResults([]);
-    setBuyerSearch("");
-    setBuyerOpen(false);
   };
 
   const finishRecordSave = async () => {
@@ -796,7 +743,6 @@ export default function EscalaGerenciador() {
       id_analise_agrotools: row.ID_ANALISE_AGROTOOLS || "",
       ordem_exibicao: String(toNumber(row.ORDEM_EXIBICAO)),
     });
-    setBuyerSearch(buyerName);
     setModalMode("edit-order");
   };
 
@@ -851,7 +797,6 @@ export default function EscalaGerenciador() {
       observacao: getPlanningObservation(row) || "",
       ordem_exibicao: String(toNumber(row.ORDEM_EXIBICAO)),
     });
-    setBuyerSearch(buyerName);
     setModalMode("edit-manual");
   };
 
@@ -913,47 +858,6 @@ export default function EscalaGerenciador() {
     scaleId,
     searchParams,
   ]);
-
-  const selectBuyer = (buyer: ApiUsuario) => {
-    const id = Number(buyer.SEQUSUARIO);
-    const name = normalizeText(buyer.CODUSUARIO);
-
-    if (modalMode === "edit-order") {
-      setEditOrderForm((current) => ({
-        ...current,
-        id_comprador: id,
-        comprador_nome_snapshot: name,
-      }));
-    } else if (modalMode === "insert-manual" || modalMode === "edit-manual") {
-      setManualForm((current) => ({
-        ...current,
-        id_comprador: id,
-        comprador_nome_snapshot: name,
-      }));
-    }
-
-    setBuyerSearch(name);
-    setBuyerOpen(false);
-  };
-
-  const clearBuyer = () => {
-    if (modalMode === "edit-order") {
-      setEditOrderForm((current) => ({
-        ...current,
-        id_comprador: null,
-        comprador_nome_snapshot: "",
-      }));
-    } else {
-      setManualForm((current) => ({
-        ...current,
-        id_comprador: null,
-        comprador_nome_snapshot: "",
-      }));
-    }
-
-    setBuyerSearch("");
-    setBuyerOpen(false);
-  };
 
   const searchOrder = async () => {
     const orderNumber = Number(insertOrderForm.nro_pedido);
@@ -1815,19 +1719,6 @@ export default function EscalaGerenciador() {
           wide
         >
           <div className="space-y-5">
-            {renderBuyerSelector({
-              buyerSearch,
-              setBuyerSearch,
-              buyerOpen,
-              setBuyerOpen,
-              loadingBuyers,
-              buyerSuggestions,
-              selectBuyer,
-              clearBuyer,
-              required: false,
-              focusField: "comprador",
-            })}
-
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
               <Field label="Prêmio unitário">
                 <Input
@@ -2117,19 +2008,6 @@ export default function EscalaGerenciador() {
                 </div>
               </Field>
             </div>
-
-            {renderBuyerSelector({
-              buyerSearch,
-              setBuyerSearch,
-              buyerOpen,
-              setBuyerOpen,
-              loadingBuyers,
-              buyerSuggestions,
-              selectBuyer,
-              clearBuyer,
-              required: false,
-              focusField: "comprador",
-            })}
 
             <div className="grid gap-4 xl:grid-cols-2">
               <AnimalBlock

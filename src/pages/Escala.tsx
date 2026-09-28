@@ -74,10 +74,8 @@ import {
 import {
   api,
   fetchPecuaristasAgendamento,
-  fetchUsuarios,
   type ApiHistoricoCompra,
   type ApiRancher,
-  type ApiUsuario,
 } from "@/services/api";
 import type {
   EscalaChinaAjuste,
@@ -233,7 +231,6 @@ interface PlanningLocationDirectory {
 }
 
 type InlineEditableField =
-  | "comprador"
   | "qtd_vaca"
   | "qtd_boi"
   | "vlrunitario_vaca"
@@ -424,8 +421,6 @@ const resolvePlanningLocation = (
 
 const getInlineFieldLabel = (field: InlineEditableField) => {
   switch (field) {
-    case "comprador":
-      return "comprador responsável";
     case "qtd_vaca":
       return "quantidade de vacas";
     case "qtd_boi":
@@ -783,6 +778,10 @@ const isPlanningComplementPending = (
   row: EscalaLinha,
   paymentTermsByCode: ReadonlyMap<number, PrazoPagamento>,
 ) => {
+  const buyerRequiresErpRegistration =
+    row.ORIGEM_REGISTRO === "ERP" && toNumber(row.SEQCOMPRADOR_ERP) === 1;
+
+  if (buyerRequiresErpRegistration) return true;
   if (row.STATUS_CONFIGURACAO !== "PENDENTE_COMPLEMENTO") return false;
 
   const pendingFields = String(row.CAMPOS_PENDENTES || "")
@@ -796,6 +795,7 @@ const isPlanningComplementPending = (
     (toNumber(row.QTD_BOI) <= 0 || getAnimalBasePrice(row, "BOI") !== null);
   const unresolvedFields = pendingFields.filter((field) => {
     if (field === "PRAZO" && paymentTermResolved) return false;
+    if (field.includes("COMPRADOR")) return buyerRequiresErpRegistration;
 
     // A view pode devolver "PRÊMIO" com codificação antiga (ex.: "PR�MIO").
     const premiumField = field.startsWith("PR") && field !== "PRAZO";
@@ -846,35 +846,8 @@ const getPlanningRowClass = (
 };
 
 const resolvePlanningBuyerName = (row: EscalaLinha) => {
-  const seqCompradorErp = toNumber(row.SEQCOMPRADOR_ERP);
-  const registroErp = row.ORIGEM_REGISTRO === "ERP";
-  const compradorAutomaticoErp =
-    registroErp &&
-    seqCompradorErp > 0 &&
-    seqCompradorErp !== 1;
-  const compradorErpDaView = String(row.COMPRADOR_ERP || "").trim();
-  const compradorEditado =
-    toNumber(row.ID_COMPRADOR_ESCALA) > 0
-      ? String(row.COMPRADOR_ESCALA || "").trim()
-      : "";
-
-  return registroErp
-    ? compradorAutomaticoErp
-      ? compradorErpDaView
-      : compradorEditado
-    : String(row.COMPRADOR_ESCALA || row.COMPRADOR_EXIBICAO || "").trim();
-};
-
-const shouldWarnMissingPlanningBuyer = (row: EscalaLinha) => {
-  const seqCompradorErp = toNumber(row.SEQCOMPRADOR_ERP);
-  const registroErp = row.ORIGEM_REGISTRO === "ERP";
-  const compradorAutomaticoErp =
-    registroErp &&
-    seqCompradorErp > 0 &&
-    seqCompradorErp !== 1;
-  const compradorErpDaView = String(row.COMPRADOR_ERP || "").trim();
-
-  return compradorAutomaticoErp && !compradorErpDaView;
+  if (row.ORIGEM_REGISTRO !== "ERP") return "";
+  return String(row.COMPRADOR_ERP || "").trim();
 };
 
 
@@ -1071,12 +1044,6 @@ export default function Escala() {
   const [inlineEditState, setInlineEditState] =
     useState<InlineEditState | null>(null);
   const [inlineEditValue, setInlineEditValue] = useState("");
-  const [inlineBuyerUsers, setInlineBuyerUsers] = useState<ApiUsuario[]>([]);
-  const [inlineBuyerSearch, setInlineBuyerSearch] = useState("");
-  const [inlineSelectedBuyerId, setInlineSelectedBuyerId] = useState<
-    number | null
-  >(null);
-  const [loadingInlineBuyers, setLoadingInlineBuyers] = useState(false);
   const [inlineConfirmOpen, setInlineConfirmOpen] = useState(false);
   const [savingInlineEdit, setSavingInlineEdit] = useState(false);
 
@@ -1123,91 +1090,13 @@ export default function Escala() {
     () => buildPlanningLocationDirectory(ranchers),
     [ranchers],
   );
-  const inlineSelectedBuyer = useMemo(
-    () =>
-      inlineBuyerUsers.find(
-        (buyer) => Number(buyer.SEQUSUARIO) === inlineSelectedBuyerId,
-      ) || null,
-    [inlineBuyerUsers, inlineSelectedBuyerId],
-  );
-  const inlineBuyerSuggestions = useMemo(() => {
-    if (inlineEditState?.focusField !== "comprador") return [];
-
-    const term = normalizeText(inlineBuyerSearch);
-
-    return inlineBuyerUsers
-      .filter((buyer) => {
-        if (!term) return true;
-        return (
-          normalizeText(buyer.CODUSUARIO).includes(term) ||
-          String(buyer.SEQUSUARIO).includes(term)
-        );
-      })
-      .slice(0, 30);
-  }, [inlineBuyerSearch, inlineBuyerUsers, inlineEditState]);
-
   useEffect(() => {
     if (!inlineEditState) return;
 
     setInlineEditValue(
       getInlineFieldValue(inlineEditState.row, inlineEditState.focusField),
     );
-
-    if (inlineEditState.focusField !== "comprador") return;
-
-    const currentBuyerId =
-      toNumber(inlineEditState.row.ID_COMPRADOR_ESCALA) > 0
-        ? toNumber(inlineEditState.row.ID_COMPRADOR_ESCALA)
-        : null;
-
-    setInlineSelectedBuyerId(currentBuyerId);
-    setInlineBuyerSearch(
-      currentBuyerId
-        ? String(inlineEditState.row.COMPRADOR_ESCALA || "").trim()
-        : "",
-    );
-
-    if (inlineBuyerUsers.length > 0) return;
-
-    let cancelled = false;
-
-    const loadBuyers = async () => {
-      setLoadingInlineBuyers(true);
-      try {
-        const data = await fetchUsuarios();
-        const safe = (Array.isArray(data) ? data : [])
-          .filter(
-            (buyer) =>
-              Number(buyer.SEQUSUARIO) > 0 &&
-              normalizeText(buyer.CODUSUARIO),
-          )
-          .sort((a, b) =>
-            normalizeText(a.CODUSUARIO).localeCompare(
-              normalizeText(b.CODUSUARIO),
-              "pt-BR",
-            ),
-          );
-
-        if (!cancelled) {
-          setInlineBuyerUsers(safe);
-        }
-      } catch {
-        if (!cancelled) {
-          setInlineBuyerUsers([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingInlineBuyers(false);
-        }
-      }
-    };
-
-    void loadBuyers();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [inlineBuyerUsers.length, inlineEditState]);
+  }, [inlineEditState]);
 
   const loadChinaHistory = async (forceRefresh = false) => {
     setLoadingChinaHistory(true);
@@ -1635,20 +1524,8 @@ export default function Escala() {
 
   const inlineEditPreview = useMemo(() => {
     if (!inlineEditState) return "";
-
-    if (inlineEditState.focusField === "comprador") {
-      return inlineSelectedBuyer
-        ? inlineSelectedBuyer.CODUSUARIO
-        : inlineBuyerSearch.trim();
-    }
-
     return inlineEditValue.trim();
-  }, [
-    inlineBuyerSearch,
-    inlineEditState,
-    inlineEditValue,
-    inlineSelectedBuyer,
-  ]);
+  }, [inlineEditState, inlineEditValue]);
   const inlineCurralCapacity = useMemo(() => {
     if (!inlineEditState || inlineEditState.focusField !== "curral") return null;
 
@@ -2226,8 +2103,6 @@ export default function Escala() {
     setInlineConfirmOpen(false);
     setInlineEditState(null);
     setInlineEditValue("");
-    setInlineBuyerSearch("");
-    setInlineSelectedBuyerId(null);
   };
 
   const closeInlineConfirm = () => {
@@ -2239,15 +2114,6 @@ export default function Escala() {
     if (!inlineEditState) return;
 
     if (
-      inlineEditState.focusField === "comprador" &&
-      !inlineSelectedBuyerId
-    ) {
-      toast.warning("Selecione o comprador responsável.");
-      return;
-    }
-
-    if (
-      inlineEditState.focusField !== "comprador" &&
       inlineEditState.focusField !== "observacao" &&
       !inlineEditValue.trim()
     ) {
@@ -2322,15 +2188,6 @@ export default function Escala() {
         const payload = buildManualUpdatePayload(row, nroempresa, rowScaleId);
 
         switch (focusField) {
-          case "comprador":
-            if (!inlineSelectedBuyer) {
-              throw new Error("Selecione o comprador responsável.");
-            }
-            payload.id_comprador = Number(inlineSelectedBuyer.SEQUSUARIO);
-            payload.comprador_nome_snapshot = normalizeText(
-              inlineSelectedBuyer.CODUSUARIO,
-            );
-            break;
           case "qtd_vaca":
             payload.qtd_vaca = parseNumberField("a quantidade de vacas", {
               allowZero: true,
@@ -2421,15 +2278,6 @@ export default function Escala() {
         );
 
         switch (focusField) {
-          case "comprador":
-            if (!inlineSelectedBuyer) {
-              throw new Error("Selecione o comprador responsável.");
-            }
-            payload.id_comprador = Number(inlineSelectedBuyer.SEQUSUARIO);
-            payload.comprador_nome_snapshot = normalizeText(
-              inlineSelectedBuyer.CODUSUARIO,
-            );
-            break;
           case "vlrunitario_premio":
             payload.vlrunitario_premio = parseNumberField(
               "o prêmio unitário",
@@ -2579,69 +2427,11 @@ export default function Escala() {
         : align === "center"
           ? "text-center"
           : "text-left";
-    const confirmDisabled =
-      savingInlineEdit ||
-      (field === "comprador" ? !inlineSelectedBuyerId : false);
+    const confirmDisabled = savingInlineEdit;
 
     return (
       <div className={`flex flex-col gap-2 ${justifyClass}`}>
-        {field === "comprador" ? (
-          <>
-            <Input
-              value={inlineBuyerSearch}
-              className={`h-8 text-[11px] font-semibold ${textAlignClass}`}
-              placeholder={
-                loadingInlineBuyers ? "Carregando compradores..." : "Nome ou código"
-              }
-             onChange={(event) => {
-               setInlineBuyerSearch(event.target.value);
-               setInlineSelectedBuyerId(null);
-             }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && inlineSelectedBuyerId) {
-                  event.preventDefault();
-                  requestInlineEditConfirmation();
-                }
-              }}
-            />
-
-            <div className="max-h-36 w-full overflow-y-auto rounded-lg border border-[#D7E2EC] bg-white">
-              {loadingInlineBuyers ? (
-                <div className="flex items-center justify-center py-4 text-[11px] font-semibold text-[#60758A]">
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                  Carregando...
-                </div>
-              ) : inlineBuyerSuggestions.length === 0 ? (
-                <div className="py-4 text-center text-[11px] font-semibold text-[#718297]">
-                  Nenhum comprador encontrado.
-                </div>
-              ) : (
-                inlineBuyerSuggestions.map((buyer) => {
-                  const selected =
-                    Number(buyer.SEQUSUARIO) === inlineSelectedBuyerId;
-
-                  return (
-                    <button
-                      key={buyer.SEQUSUARIO}
-                      type="button"
-                      className={`flex w-full items-center justify-between px-2 py-1.5 text-left text-[11px] transition ${
-                        selected
-                          ? "bg-[#EEF4FA] text-[#173D6E]"
-                          : "text-[#425B73] hover:bg-[#F7FAFD]"
-                      }`}
-                      onClick={() => {
-                        setInlineSelectedBuyerId(Number(buyer.SEQUSUARIO));
-                        setInlineBuyerSearch(String(buyer.CODUSUARIO || ""));
-                      }}
-                    >
-                      <span className="font-extrabold">{buyer.CODUSUARIO}</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </>
-        ) : options?.multiline ? (
+        {options?.multiline ? (
           <textarea
             className={`min-h-[84px] w-full rounded-lg border border-[#C5D4E2] bg-white px-2.5 py-2 text-[11px] font-medium text-[#173D6E] outline-none transition focus:border-[#1B58A0] focus:ring-2 focus:ring-[#1B58A0]/20 ${textAlignClass}`}
             value={inlineEditValue}
@@ -3490,36 +3280,11 @@ export default function Escala() {
                                       : ""
                                   }. Clique para substituir.`
                                   : "Prazo não encontrado para a condição de pagamento";
-                              const compradorPreenchido =
-                                toNumber(row.ID_COMPRADOR_ESCALA) > 0 ||
-                                String(row.COMPRADOR_ESCALA || "").trim().length > 0 ||
-                                String(row.COMPRADOR_ERP || "").trim().length > 0 ||
-                                String(row.COMPRADOR_EXIBICAO || "").trim().length >
-                                  0;
-                              const seqCompradorErp = toNumber(
-                                row.SEQCOMPRADOR_ERP,
-                              );
-                              const registroErp = row.ORIGEM_REGISTRO === "ERP";
-                              const compradorAutomaticoErp =
-                                registroErp &&
-                                seqCompradorErp > 0 &&
-                                seqCompradorErp !== 1;
-                              const compradorPrecisaSelecionar =
-                                (row.ORIGEM_REGISTRO === "MANUAL" &&
-                                  !compradorPreenchido) ||
-                                (registroErp &&
-                                  !compradorAutomaticoErp &&
-                                  toNumber(row.ID_COMPRADOR_ESCALA) <= 0 &&
-                                  !String(row.COMPRADOR_ESCALA || "").trim());
-                              const compradorExibido = compradorPreenchido
-                                ? resolvePlanningBuyerName(row)
-                                : !compradorPrecisaSelecionar &&
-                                    row.ORIGEM_REGISTRO !== "MANUAL"
-                                  ? "—"
-                                  : "";
-                              const compradorErpNaoRetornado =
-                                shouldWarnMissingPlanningBuyer(row) &&
-                                !compradorPrecisaSelecionar;
+                              const compradorExibido =
+                                resolvePlanningBuyerName(row) || "—";
+                              const compradorPendenteErp =
+                                row.ORIGEM_REGISTRO === "ERP" &&
+                                toNumber(row.SEQCOMPRADOR_ERP) === 1;
                               const chinaSuggestionPending = Boolean(
                                 item.chinaSuggestionMeta &&
                                   !item.chinaStored,
@@ -3763,76 +3528,26 @@ export default function Escala() {
                                   </TableCell>
 
                                   <TableCell className="px-1.5 py-2.5 align-top font-bold leading-tight text-[#425B73]">
-                                    {isInlineEditing(row, "comprador") ? (
-                                      renderInlineEditor("comprador")
-                                    ) : compradorPrecisaSelecionar ? (
+                                    {compradorPendenteErp ? (
                                       <MissingFieldButton
-                                        label="Selecione o comprador responsável"
+                                        label="Cadastrar comprador no ERP"
                                         onClick={() =>
-                                          openRequiredField(
-                                            row,
-                                            day,
-                                            rowScaleId,
-                                            pendingDayOrders,
-                                            "comprador",
-                                          )
-                                        }
-                                      />
-                                    ) : compradorExibido ? (
-                                      canManage && rowScaleId > 0 ? (
-                                        <button
-                                          type="button"
-                                          className="w-full rounded-md px-1 py-0.5 text-left transition hover:bg-[#EEF4FA] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30"
-                                          title={`Editar comprador: ${compradorExibido}`}
-                                          onClick={() =>
-                                            openRequiredField(
-                                              row,
-                                              day,
-                                              rowScaleId,
-                                              pendingDayOrders,
-                                              "comprador",
-                                            )
-                                          }
-                                        >
-                                          <span className="block truncate pr-1">
-                                            {compradorExibido}
-                                          </span>
-                                        </button>
-                                      ) : (
-                                        <p
-                                          className="truncate pr-1"
-                                          title={compradorExibido}
-                                        >
-                                          {compradorExibido}
-                                        </p>
-                                      )
-                                    ) : compradorErpNaoRetornado ? (
-                                      <MissingFieldButton
-                                        label="Comprador responsável não retornado pela view"
-                                        align="center"
-                                        onClick={() =>
-                                          openRequiredField(
-                                            row,
-                                            day,
-                                            rowScaleId,
-                                            pendingDayOrders,
-                                            "comprador",
+                                          toast.warning(
+                                            "O comprador deste pedido está com código 1. Cadastre o comprador corretamente no DataVale/ERP para atualizar a Escala.",
                                           )
                                         }
                                       />
                                     ) : (
-                                      <MissingFieldButton
-                                        label="Comprador responsável não informado"
-                                        onClick={() =>
-                                          openRequiredField(
-                                            row,
-                                            day,
-                                            rowScaleId,
-                                            pendingDayOrders,
-                                            "comprador",
-                                          )
+                                      <p
+                                        className="truncate pr-1"
+                                        title={
+                                          compradorExibido === "—"
+                                            ? "Comprador não informado pelo ERP"
+                                            : compradorExibido
                                         }
-                                      />
+                                      >
+                                        {compradorExibido}
+                                      </p>
                                     )}
                                   </TableCell>
 
@@ -4065,7 +3780,8 @@ export default function Escala() {
                                       renderInlineEditor("prazo_dias", {
                                         align: "right",
                                       })
-                                    ) : registroErp && loadingPaymentTerms ? (
+                                    ) : row.ORIGEM_REGISTRO === "ERP" &&
+                                      loadingPaymentTerms ? (
                                       <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-[#1B58A0]" />
                                     ) : effectivePrazo === null ? (
                                       <MissingFieldButton
@@ -5168,9 +4884,9 @@ export default function Escala() {
               </div>
 
               <div className="rounded-xl border border-[#F2C79F] bg-[#FFF7EE] p-3 text-xs text-[#8F4317]">
-                Os pedidos serão vinculados sem comprador e sem prêmio. Depois
-                continuarão destacados como <strong>Faltam informações</strong>
-                até o preenchimento desses campos.
+                O comprador será mantido conforme o ERP. Caso o prêmio ainda
+                não esteja disponível, o pedido continuará destacado como{" "}
+                <strong>Faltam informações</strong> até o preenchimento.
               </div>
 
               <div className="grid gap-2">

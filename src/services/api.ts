@@ -73,6 +73,7 @@ export interface ApiAgendamento {
 
 // 1. 👇 NOVA INTERFACE PARA OS LOTES DINÂMICOS 👇
 export interface ApiLote {
+  ID_LOTE?: number;
   prazo_dias: number;
   quantidade_cabecas: number;
   sexo_animal: string;
@@ -119,6 +120,16 @@ export interface ApiVisita {
   STATUS_AUDITORIA?: string | null;
   QUANTIDADECOMPRADA?: number | null;
 
+}
+
+export type ApiVisitaDashboard = ApiVisita & { lotesDaApi: ApiLote[] };
+
+interface ApiDashboardCampoRow extends ApiVisita {
+  ID_LOTE?: number | null;
+  PRAZO_DIAS?: number | null;
+  QUANTIDADE_CABECAS?: number | null;
+  SEXO_ANIMAL?: string | null;
+  STATUS_LOTE?: string | null;
 }
 
 export interface ApiVisitaDetalhe {
@@ -413,6 +424,39 @@ export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
     console.error("Falha API Consulta Relatório de Visitas:", error);
     return [];
   }
+};
+
+export const fetchDashboardCampo = async (
+  dataInicio: string,
+  dataFim: string,
+): Promise<ApiVisitaDashboard[]> => {
+  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_CAMPO_DASHBOARD;
+  const rows = await n8nPost<ApiDashboardCampoRow[]>(url, {
+    data_inicio: dataInicio || null,
+    data_fim: dataFim || null,
+  });
+  const visits = new Map<number, ApiVisitaDashboard>();
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const visitId = Number(row.ID_VISITA);
+    if (!Number.isFinite(visitId) || visitId <= 0) continue;
+
+    if (!visits.has(visitId)) {
+      visits.set(visitId, { ...row, lotesDaApi: [] });
+    }
+
+    if (row.ID_LOTE !== null && row.ID_LOTE !== undefined) {
+      visits.get(visitId)?.lotesDaApi.push({
+        ID_LOTE: Number(row.ID_LOTE),
+        prazo_dias: Number(row.PRAZO_DIAS) || 0,
+        quantidade_cabecas: Number(row.QUANTIDADE_CABECAS) || 0,
+        sexo_animal: String(row.SEXO_ANIMAL || ""),
+        status_lote: String(row.STATUS_LOTE || ""),
+      });
+    }
+  }
+
+  return Array.from(visits.values());
 };
 
 
