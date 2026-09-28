@@ -13,6 +13,7 @@ import {
   PanelLeftOpen,
   PlusCircle,
   ShieldCheck,
+  TrendingUp,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -202,6 +203,12 @@ export function AppSidebar() {
               icon: CalendarRange,
               access: APP_ROUTE_ACCESS.escala,
             },
+            {
+              title: "Realizado mensal",
+              url: "/escala/realizado",
+              icon: TrendingUp,
+              access: APP_ROUTE_ACCESS.escala,
+            },
           ],
         },
       ],
@@ -238,6 +245,13 @@ export function AppSidebar() {
             title: "Análise mensal",
             url: "/escala/analise-mensal",
             icon: CalendarRange,
+            access: APP_ROUTE_ACCESS.escala,
+          },
+          {
+            id: "escala-realizado-mensal",
+            title: "Realizado mensal",
+            url: "/escala/realizado",
+            icon: TrendingUp,
             access: APP_ROUTE_ACCESS.escala,
           },
         ],

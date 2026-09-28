@@ -218,15 +218,21 @@ export const getOrderTotal = (row: EscalaLinha) => {
 };
 
 export const getChinaPlannedTotal = (row: EscalaLinha) =>
-  toNumber(row.QTD_CHINA_VACA) + toNumber(row.QTD_CHINA_BOI);
+  toNumber(row.QTD_CHINA_VACA_SALVA ?? row.QTD_CHINA_VACA) +
+  toNumber(row.QTD_CHINA_BOI_SALVA ?? row.QTD_CHINA_BOI);
 
 export const hasStoredPlanningChinaQuantity = (
   row: EscalaLinha,
   sex: "VACA" | "BOI",
 ) => {
   const storedValue =
-    sex === "VACA" ? row.QTD_CHINA_VACA : row.QTD_CHINA_BOI;
+    sex === "VACA"
+      ? row.QTD_CHINA_VACA_SALVA ?? row.QTD_CHINA_VACA
+      : row.QTD_CHINA_BOI_SALVA ?? row.QTD_CHINA_BOI;
+  const storedOrigin =
+    sex === "VACA" ? row.ORIGEM_CHINA_VACA : row.ORIGEM_CHINA_BOI;
 
+  if (storedOrigin) return true;
   if (storedValue === null || storedValue === undefined) return false;
 
   return (

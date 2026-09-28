@@ -42,6 +42,7 @@ import AgendamentoGerenciador from "./pages/AgendamentoGerenciador";
 import Escala from "./pages/Escala";
 import EscalaDashboardScreen from "./pages/EscalaDashboardScreen";
 import EscalaAnaliseMensal from "./pages/EscalaAnaliseMensal";
+import EscalaRealizadoMensal from "./pages/EscalaRealizadoMensal";
 import EscalaGerenciador from "./pages/EscalaGerenciador";
 import EscalaTVScreen from "./pages/EscalaTVScreen";
 import StartPage from "./pages/StartPage";
@@ -186,6 +187,11 @@ function ProtectedLayout() {
                 <Route
                   path="/escala/analise-mensal"
                   element={<EscalaAnaliseMensal />}
+                />
+
+                <Route
+                  path="/escala/realizado"
+                  element={<EscalaRealizadoMensal />}
                 />
 
                 <Route

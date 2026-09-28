@@ -9,10 +9,13 @@ import type {
   EditarRegistroManualPayload,
   EditarVinculoPedidoPayload,
   EscalaFiltro,
+  EscalaPreparacaoAutomatica,
   EscalaChinaSincronizacao,
   EscalaLinha,
   EscalaOcorrencia,
   EscalaPedidoErp,
+  EscalaRealizadoMensal,
+  EscalaRealizadoMensalFiltro,
   EscalaResumo,
   InativarEscalaPayload,
   InativarRegistroManualPayload,
@@ -27,6 +30,9 @@ const urls = {
   // Os mesmos nomes do frontend passam a apontar para o planejamento.
   select: env.VITE_N8N_WEBHOOK_URL_ESCALA_SELECT,
   resumo: env.VITE_N8N_WEBHOOK_URL_ESCALA_RESUMO,
+  realizadoMensal: env.VITE_N8N_WEBHOOK_URL_ESCALA_REALIZADO_MENSAL,
+  planejamentoPreparar:
+    env.VITE_N8N_WEBHOOK_URL_ESCALA_PLANEJAMENTO_PREPARAR,
 
   insert: env.VITE_N8N_WEBHOOK_URL_ESCALA_INSERT,
   editar: env.VITE_N8N_WEBHOOK_URL_ESCALA_EDITAR,
@@ -62,6 +68,19 @@ export const consultarEscala = (filtro: EscalaFiltro) =>
 
 export const consultarResumoEscala = (filtro: EscalaFiltro) =>
   n8nPost<EscalaResumo[]>(urls.resumo, filtro);
+
+export const consultarRealizadoMensalEscala = (
+  filtro: EscalaRealizadoMensalFiltro,
+) => n8nPost<EscalaRealizadoMensal[]>(urls.realizadoMensal, filtro);
+
+export const prepararPlanejamentoEscala = (filtro: EscalaFiltro) => {
+  if (!urls.planejamentoPreparar) {
+    return Promise.reject(
+      new Error("URL do preparo automático da Escala não configurada."),
+    );
+  }
+  return n8nPost<EscalaPreparacaoAutomatica>(urls.planejamentoPreparar, filtro);
+};
 
 export const sincronizarChinaEscala = (filtro: EscalaFiltro) => {
   if (!urls.chinaSincronizar) {

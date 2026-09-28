@@ -51,14 +51,13 @@ export const getEffectivePaymentTermDays = (
   source: PaymentTermSource,
   paymentTermsByCode: ReadonlyMap<number, PrazoPagamento>,
 ): number | null => {
-  if (source.ORIGEM_REGISTRO === "MANUAL") {
-    return toFiniteNumberOrNull(source.PRAZO_DIAS);
-  }
+  const savedPrazo = toFiniteNumberOrNull(source.PRAZO_DIAS);
+  if (savedPrazo !== null) return savedPrazo;
 
   const mappedPrazo = getMappedPaymentTerm(source, paymentTermsByCode)?.PRAZO;
   if (mappedPrazo !== null && mappedPrazo !== undefined) {
     return Number(mappedPrazo);
   }
 
-  return toFiniteNumberOrNull(source.PRAZO_DIAS);
+  return null;
 };

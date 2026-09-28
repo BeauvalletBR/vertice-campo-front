@@ -29,6 +29,15 @@ export interface ApiMessage {
   id?: number;
 }
 
+export interface EscalaPreparacaoAutomatica extends ApiMessage {
+  escalas_criadas: number;
+  vinculos_inseridos: number;
+  vinculos_realocados: number;
+  china_inicializados: number;
+  china_recalculados: number;
+  currais_atualizados: number;
+}
+
 export interface EscalaFiltro {
   nroempresa: number;
   id_escala?: number;
@@ -176,11 +185,22 @@ export interface EscalaLinha {
 
   PRAZO_DIAS?: number | null;
   CURRAL?: number | null;
+  CURRAIS_ALOCADOS?: string | null;
+  CURRAL_OBSERVACAO?: string | null;
+  CURRAL_AUTOMATICO?: number | null;
 
   QTD_CHINA_TOTAL?: number | null;
   QTD_CHINA?: number | null;
   QTD_CHINA_VACA?: number | null;
   QTD_CHINA_BOI?: number | null;
+  QTD_CHINA_VACA_SALVA?: number | null;
+  QTD_CHINA_BOI_SALVA?: number | null;
+  ORIGEM_CHINA_VACA?: "HISTORICO" | "MANUAL" | "LEGADO" | null;
+  PERCENTUAL_CHINA_VACA?: number | null;
+  QTD_BASE_VACA?: number | null;
+  ORIGEM_CHINA_BOI?: "HISTORICO" | "MANUAL" | "LEGADO" | null;
+  PERCENTUAL_CHINA_BOI?: number | null;
+  QTD_BASE_BOI?: number | null;
 
   AGROTOOLS_ERP?: string | null;
   QTD_AGROTOOLS_VACA?: number | null;
@@ -273,6 +293,7 @@ export interface EditarVinculoPedidoPayload {
   vlrunitario_premio?: number | null;
   prazo_dias?: number | null;
   curral?: number | null;
+  curral_manual?: boolean;
 
   arrobas_vaca?: number | null;
   arrobas_boi?: number | null;
@@ -320,6 +341,7 @@ export interface RegistroManualPayload {
   vlrunitario_premio?: number | null;
   prazo_dias?: number | null;
   curral?: number | null;
+  curral_manual?: boolean;
 
   qtd_china_vaca: number;
   qtd_china_boi: number;
@@ -345,6 +367,7 @@ export interface InativarRegistroManualPayload {
 
 export interface EscalaOcorrencia {
   ID_OCORRENCIA?: number;
+  ID_LOG?: number;
   SISTEMA_ORIGEM?: string;
   TABELA_AFETADA?: string;
   ACAO?: string;
@@ -355,6 +378,7 @@ export interface EscalaOcorrencia {
   ALTERACAO?: string;
   DATA_CRIACAO?: string;
   CRIADO_EM?: string;
+  DATA_HORA?: string;
 }
 
 export interface EscalaChinaAjuste {
@@ -375,4 +399,21 @@ export interface EscalaChinaSincronizacao {
   success: boolean;
   ajustes_realizados: number;
   alertas: EscalaChinaAjuste[];
+}
+
+export interface EscalaRealizadoMensalFiltro {
+  nroempresa: number;
+  ano: number;
+}
+
+export interface EscalaRealizadoMensal {
+  ANO: number;
+  MES_NUM: number;
+  MES: string;
+  QTD: number;
+  QTDBOI: number;
+  QTDVACA: number;
+  PESO_LIQUIDO_TOTAL: number;
+  MEDIA_ARROBA: number | null;
+  COMISSAO: number;
 }

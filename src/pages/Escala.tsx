@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   BadgeCheck,
+  BookOpen,
   CalendarDays,
   CalendarPlus,
   CalendarRange,
@@ -16,6 +17,7 @@ import {
   ClipboardList,
   FilePlus2,
   FileSpreadsheet,
+  Info,
   ListPlus,
   Loader2,
   MapPin,
@@ -56,6 +58,7 @@ import {
 } from "@/components/ui/table";
 import {
   consultarEscala,
+  consultarOcorrenciasEscala,
   consultarPrazosPagamento,
   consultarResumoEscala,
   confirmarAlertasChinaEscala,
@@ -65,6 +68,7 @@ import {
   editarVinculoPedidoEscala,
   inativarEscala,
   inativarRegistroManualEscala,
+  prepararPlanejamentoEscala,
   sincronizarChinaEscala,
 } from "@/services/escala";
 import {
@@ -78,6 +82,7 @@ import {
 import type {
   EscalaChinaAjuste,
   EscalaLinha,
+  EscalaOcorrencia,
   EscalaResumo,
   EscalaStatus,
   PrazoPagamento,
@@ -180,6 +185,20 @@ interface ChinaSuggestionState {
   scaleId: number | null;
 }
 
+interface CurralDetailsState {
+  row: EscalaLinha;
+  day: string;
+  rowScaleId: number;
+  pendingOrders: EscalaLinha[];
+}
+
+interface OccurrencesDialogState {
+  title: string;
+  description: string;
+  occurrences: EscalaOcorrencia[];
+  loading: boolean;
+}
+
 interface InclusionChoiceState {
   day: string;
   scaleId: number;
@@ -214,8 +233,9 @@ interface PlanningLocationDirectory {
 }
 
 type InlineEditableField =
-  | "nome_produtor"
   | "comprador"
+  | "qtd_vaca"
+  | "qtd_boi"
   | "vlrunitario_vaca"
   | "vlrunitario_boi"
   | "vlrunitario_premio"
@@ -223,6 +243,10 @@ type InlineEditableField =
   | "arrobas_boi"
   | "prazo_dias"
   | "curral"
+  | "qtd_china_vaca"
+  | "qtd_china_boi"
+  | "qtd_agrotools_vaca"
+  | "qtd_agrotools_boi"
   | "observacao";
 
 interface InlineEditState {
@@ -400,10 +424,12 @@ const resolvePlanningLocation = (
 
 const getInlineFieldLabel = (field: InlineEditableField) => {
   switch (field) {
-    case "nome_produtor":
-      return "nome do produtor";
     case "comprador":
       return "comprador responsável";
+    case "qtd_vaca":
+      return "quantidade de vacas";
+    case "qtd_boi":
+      return "quantidade de bois";
     case "vlrunitario_vaca":
       return "valor unitário das vacas";
     case "vlrunitario_boi":
@@ -418,6 +444,14 @@ const getInlineFieldLabel = (field: InlineEditableField) => {
       return "prazo em dias";
     case "curral":
       return "curral";
+    case "qtd_china_vaca":
+      return "quantidade China das vacas";
+    case "qtd_china_boi":
+      return "quantidade China dos bois";
+    case "qtd_agrotools_vaca":
+      return "quantidade Agrotools das vacas";
+    case "qtd_agrotools_boi":
+      return "quantidade Agrotools dos bois";
     case "observacao":
       return "observação";
     default:
@@ -430,8 +464,10 @@ const getInlineFieldValue = (
   field: InlineEditableField,
 ): string => {
   switch (field) {
-    case "nome_produtor":
-      return String(row.PRODUTOR || "");
+    case "qtd_vaca":
+      return String(toNumber(row.QTD_VACA));
+    case "qtd_boi":
+      return String(toNumber(row.QTD_BOI));
     case "curral":
       return row.CURRAL == null ? "" : String(row.CURRAL);
     case "observacao":
@@ -462,6 +498,14 @@ const getInlineFieldValue = (
       return row.PRAZO_DIAS === null || row.PRAZO_DIAS === undefined
         ? ""
         : String(row.PRAZO_DIAS);
+    case "qtd_china_vaca":
+      return String(toNumber(row.QTD_CHINA_VACA_SALVA ?? row.QTD_CHINA_VACA));
+    case "qtd_china_boi":
+      return String(toNumber(row.QTD_CHINA_BOI_SALVA ?? row.QTD_CHINA_BOI));
+    case "qtd_agrotools_vaca":
+      return String(getAgrotoolsPlannedQuantity(row, "VACA"));
+    case "qtd_agrotools_boi":
+      return String(getAgrotoolsPlannedQuantity(row, "BOI"));
     default:
       return "";
   }
@@ -608,6 +652,21 @@ const buildChinaSuggestion = (
   };
 };
 
+const getStoredAutomaticChinaSuggestion = (item: PlanningSexRow) => {
+  const origin =
+    item.sex === "VACA"
+      ? item.row.ORIGEM_CHINA_VACA
+      : item.row.ORIGEM_CHINA_BOI;
+  const percent = toOptionalNumber(
+    item.sex === "VACA"
+      ? item.row.PERCENTUAL_CHINA_VACA
+      : item.row.PERCENTUAL_CHINA_BOI,
+  );
+
+  if (origin !== "HISTORICO" || percent === null) return null;
+  return Math.max(0, Math.min(item.quantity, Math.round(item.quantity * percent)));
+};
+
 const getEmpresaLogada = (user: unknown) => {
   const userCompany = Number(
     (user as { nroempresa?: number } | null)?.nroempresa,
@@ -720,7 +779,38 @@ const getStatusClass = (status?: EscalaStatus | null) => {
     : "border-[#F2C79F] bg-[#FFF7EE] text-[#A84A15]";
 };
 
-const getPlanningRowClass = (row: EscalaLinha) => {
+const isPlanningComplementPending = (
+  row: EscalaLinha,
+  paymentTermsByCode: ReadonlyMap<number, PrazoPagamento>,
+) => {
+  if (row.STATUS_CONFIGURACAO !== "PENDENTE_COMPLEMENTO") return false;
+
+  const pendingFields = String(row.CAMPOS_PENDENTES || "")
+    .split(/[,;|]/)
+    .map(normalizeText)
+    .filter(Boolean);
+  const paymentTermResolved =
+    getEffectivePaymentTermDays(row, paymentTermsByCode) !== null;
+  const animalPricesResolved =
+    (toNumber(row.QTD_VACA) <= 0 || getAnimalBasePrice(row, "VACA") !== null) &&
+    (toNumber(row.QTD_BOI) <= 0 || getAnimalBasePrice(row, "BOI") !== null);
+  const unresolvedFields = pendingFields.filter((field) => {
+    if (field === "PRAZO" && paymentTermResolved) return false;
+
+    // A view pode devolver "PRÊMIO" com codificação antiga (ex.: "PR�MIO").
+    const premiumField = field.startsWith("PR") && field !== "PRAZO";
+    if (premiumField && animalPricesResolved) return false;
+
+    return true;
+  });
+
+  return pendingFields.length === 0 || unresolvedFields.length > 0;
+};
+
+const getPlanningRowClass = (
+  row: EscalaLinha,
+  paymentTermsByCode: ReadonlyMap<number, PrazoPagamento>,
+) => {
   /*
    * Pedidos aguardando criação ou inclusão:
    * fundo branco e identificação somente pela lateral laranja.
@@ -736,7 +826,7 @@ const getPlanningRowClass = (row: EscalaLinha) => {
    * Registros com campos faltando:
    * fundo branco e identificação somente pela lateral vermelha.
    */
-  if (row.STATUS_CONFIGURACAO === "PENDENTE_COMPLEMENTO") {
+  if (isPlanningComplementPending(row, paymentTermsByCode)) {
     return "bg-white hover:bg-[#FAFBFC] [&>td:first-child]:border-l-4 [&>td:first-child]:border-l-[#E30613]";
   }
 
@@ -813,8 +903,8 @@ const splitRecordsBySex = (records: EscalaLinha[]): PlanningSexRow[] =>
           getAnimalBasePrice(row, sex),
         chinaQuantity:
           sex === "VACA"
-            ? toNumber(row.QTD_CHINA_VACA)
-            : toNumber(row.QTD_CHINA_BOI),
+            ? toNumber(row.QTD_CHINA_VACA_SALVA ?? row.QTD_CHINA_VACA)
+            : toNumber(row.QTD_CHINA_BOI_SALVA ?? row.QTD_CHINA_BOI),
         chinaStored: hasStoredPlanningChinaQuantity(row, sex),
         chinaSuggestedQuantity: null,
         chinaSuggestionMeta: null,
@@ -829,7 +919,10 @@ const splitRecordsBySex = (records: EscalaLinha[]): PlanningSexRow[] =>
     return rows;
   });
 
-const calculateTotals = (rows: EscalaLinha[]): PlanningTotals => {
+const calculateTotals = (
+  rows: EscalaLinha[],
+  paymentTermsByCode: ReadonlyMap<number, PrazoPagamento>,
+): PlanningTotals => {
   const records = getUniquePlanningRecords(rows);
   const daysWithAnimals = new Set<string>();
   const macroAverages = calculateScaleMacroAverages(records);
@@ -846,7 +939,7 @@ const calculateTotals = (rows: EscalaLinha[]): PlanningTotals => {
         totals.pendingInclusion += 1;
       }
 
-      if (row.STATUS_CONFIGURACAO === "PENDENTE_COMPLEMENTO") {
+      if (isPlanningComplementPending(row, paymentTermsByCode)) {
         totals.pendingComplement += 1;
       }
 
@@ -918,6 +1011,8 @@ export default function Escala() {
   const [selectedWeek, setSelectedWeek] = useState(
     () => restoredPlanningView?.selectedWeek || getISOWeekValue(),
   );
+  const userSelectedWeekRef = useRef(false);
+  const dataRequestIdRef = useRef(0);
   const [initialWeekResolved, setInitialWeekResolved] = useState(false);
   const [availableSummaries, setAvailableSummaries] = useState<EscalaResumo[]>(
     [],
@@ -931,6 +1026,10 @@ export default function Escala() {
   const [loadingPaymentTerms, setLoadingPaymentTerms] = useState(true);
   const [locationDialog, setLocationDialog] =
     useState<PlanningLocation | null>(null);
+  const [curralDetails, setCurralDetails] =
+    useState<CurralDetailsState | null>(null);
+  const [occurrencesDialog, setOccurrencesDialog] =
+    useState<OccurrencesDialogState | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingWeeks, setLoadingWeeks] = useState(true);
   const [loadingChinaHistory, setLoadingChinaHistory] = useState(false);
@@ -1154,38 +1253,54 @@ export default function Escala() {
     }
   };
 
-  const loadData = async (showLoading = true) => {
+  const loadData = async (
+    showLoading = true,
+    rangeStart = dateStart,
+    rangeEnd = dateEnd,
+  ) => {
+    const requestId = ++dataRequestIdRef.current;
+    const isCurrentRequest = () => requestId === dataRequestIdRef.current;
+
     if (showLoading) setLoading(true);
 
     try {
       try {
         const synchronization = await sincronizarChinaEscala({
           nroempresa,
-          data_inicio: dateStart,
-          data_fim: dateEnd,
+          data_inicio: rangeStart,
+          data_fim: rangeEnd,
         });
-        if (synchronization) {
+        if (synchronization && isCurrentRequest()) {
           setChinaSynchronizationError(null);
-          setChinaAutoAdjustments(
-            Array.isArray(synchronization.alertas)
-              ? synchronization.alertas
-              : [],
-          );
+          const alerts = Array.isArray(synchronization.alertas)
+            ? synchronization.alertas
+            : [];
+          if (alerts.length > 0) {
+            await confirmarAlertasChinaEscala(
+              nroempresa,
+              alerts.map((item) => toNumber(item.ID_AJUSTE)),
+            );
+          }
+          setChinaAutoAdjustments([]);
         }
       } catch (error) {
         console.error("Falha ao sincronizar a quantidade China:", error);
-        setChinaSynchronizationError(
-          error instanceof Error
-            ? error.message
-            : "Não foi possível verificar as atualizações automáticas de China.",
-        );
+        if (isCurrentRequest()) {
+          setChinaSynchronizationError(
+            error instanceof Error
+              ? error.message
+              : "Não foi possível verificar as atualizações automáticas de China.",
+          );
+        }
       }
 
       const data = await consultarEscala({
         nroempresa,
-        data_inicio: dateStart,
-        data_fim: dateEnd,
+        data_inicio: rangeStart,
+        data_fim: rangeEnd,
       });
+
+      if (!isCurrentRequest()) return;
 
       const safe = Array.isArray(data) ? data : [];
       setLines(safe);
@@ -1198,6 +1313,7 @@ export default function Escala() {
         return next;
       });
     } catch (error) {
+      if (!isCurrentRequest()) return;
       toast.error(
         error instanceof Error
           ? error.message
@@ -1205,8 +1321,22 @@ export default function Escala() {
       );
       setLines([]);
     } finally {
-      if (showLoading) setLoading(false);
+      if (showLoading && isCurrentRequest()) setLoading(false);
     }
+  };
+
+  const selectPlanningWeek = (week: string) => {
+    userSelectedWeekRef.current = true;
+
+    if (week === selectedWeek) {
+      void loadData(true, dateStart, dateEnd);
+      return;
+    }
+
+    // Invalida imediatamente qualquer resposta da semana anterior.
+    dataRequestIdRef.current += 1;
+    setLoading(true);
+    setSelectedWeek(week);
   };
 
   useEffect(() => {
@@ -1240,7 +1370,7 @@ export default function Escala() {
           data_fim: addDays(getStartDateFromWeek(nextWeek), 6),
         });
 
-        if (!cancelled) {
+        if (!cancelled && !userSelectedWeekRef.current) {
           setSelectedWeek(
             getInitialPlanningWeek(
               Array.isArray(data) ? data : [],
@@ -1249,7 +1379,9 @@ export default function Escala() {
           );
         }
       } catch {
-        if (!cancelled) setSelectedWeek(currentWeek);
+        if (!cancelled && !userSelectedWeekRef.current) {
+          setSelectedWeek(currentWeek);
+        }
       } finally {
         if (!cancelled) setInitialWeekResolved(true);
       }
@@ -1312,7 +1444,36 @@ export default function Escala() {
 
   useEffect(() => {
     if (!initialWeekResolved) return;
-    void loadData();
+    let cancelled = false;
+
+    const prepareSelectedWeek = async () => {
+      if (canManage) {
+        try {
+          await prepararPlanejamentoEscala({
+            nroempresa,
+            data_inicio: dateStart,
+            data_fim: dateEnd,
+          });
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Não foi possível preparar automaticamente a semana.",
+          );
+        }
+      }
+      if (cancelled) return;
+
+      await loadData(true, dateStart, dateEnd);
+      if (cancelled) return;
+
+      await loadWeekCatalog();
+    };
+
+    void prepareSelectedWeek();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateStart, dateEnd, initialWeekResolved, nroempresa]);
 
@@ -1525,13 +1686,22 @@ export default function Escala() {
       "vlrunitario_vaca",
       "vlrunitario_boi",
       "vlrunitario_premio",
+      "qtd_vaca",
+      "qtd_boi",
       "arrobas_vaca",
       "arrobas_boi",
       "prazo_dias",
       "curral",
+      "qtd_china_vaca",
+      "qtd_china_boi",
+      "qtd_agrotools_vaca",
+      "qtd_agrotools_boi",
     ].includes(inlineEditState.focusField);
 
-  const weekTotals = useMemo(() => calculateTotals(lines), [lines]);
+  const weekTotals = useMemo(
+    () => calculateTotals(lines, paymentTermsByCode),
+    [lines, paymentTermsByCode],
+  );
 
   // Semanas além da próxima continuam fora do planejamento operacional.
   const latestPlanningWeek = useMemo(() => getNextISOWeekValue(), []);
@@ -1676,6 +1846,59 @@ export default function Escala() {
           });
         });
       }
+    }
+  };
+
+  const openOccurrences = async (
+    scaleId: number,
+    row?: EscalaLinha,
+  ) => {
+    const recordId = row
+      ? toNumber(
+          row.ORIGEM_REGISTRO === "MANUAL"
+            ? row.ID_ESCALA_ITEM_MANUAL
+            : row.ID_ESCALA_PEDIDO_VINCULO,
+        )
+      : 0;
+    const affectedTable = row
+      ? row.ORIGEM_REGISTRO === "MANUAL"
+        ? "VCO_ESCALAITEMMANUAL"
+        : "VCO_ESCALAPEDIDOVINCULO"
+      : "VCO_ESCALAABATE";
+
+    setOccurrencesDialog({
+      title: row ? "Histórico do pedido" : "Histórico da escala",
+      description: row
+        ? `${row.PRODUTOR || "Produtor"} • ${
+            row.ORIGEM_REGISTRO === "MANUAL"
+              ? "registro manual"
+              : `pedido ${toNumber(row.NROPEDIDO)}`
+          }`
+        : `Alterações registradas na escala ${scaleId}.`,
+      occurrences: [],
+      loading: true,
+    });
+
+    try {
+      const data = await consultarOcorrenciasEscala(scaleId, nroempresa);
+      const occurrences = (Array.isArray(data) ? data : []).filter(
+        (occurrence) =>
+          String(occurrence.TABELA_AFETADA || "").toUpperCase() ===
+            affectedTable &&
+          (!row || toNumber(occurrence.COD_LINK) === recordId),
+      );
+      setOccurrencesDialog((current) =>
+        current ? { ...current, occurrences, loading: false } : current,
+      );
+    } catch (error) {
+      setOccurrencesDialog((current) =>
+        current ? { ...current, loading: false } : current,
+      );
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível consultar as ocorrências.",
+      );
     }
   };
 
@@ -2099,11 +2322,6 @@ export default function Escala() {
         const payload = buildManualUpdatePayload(row, nroempresa, rowScaleId);
 
         switch (focusField) {
-          case "nome_produtor":
-            payload.nome_produtor = normalizeText(
-              parseTextField("o nome do produtor"),
-            );
-            break;
           case "comprador":
             if (!inlineSelectedBuyer) {
               throw new Error("Selecione o comprador responsável.");
@@ -2112,6 +2330,20 @@ export default function Escala() {
             payload.comprador_nome_snapshot = normalizeText(
               inlineSelectedBuyer.CODUSUARIO,
             );
+            break;
+          case "qtd_vaca":
+            payload.qtd_vaca = parseNumberField("a quantidade de vacas", {
+              allowZero: true,
+              integer: true,
+            });
+            payload.qtd_agrotools_vaca = payload.qtd_vaca;
+            break;
+          case "qtd_boi":
+            payload.qtd_boi = parseNumberField("a quantidade de bois", {
+              allowZero: true,
+              integer: true,
+            });
+            payload.qtd_agrotools_boi = payload.qtd_boi;
             break;
           case "vlrunitario_vaca":
             payload.vlrunitario_vaca = parseNumberField(
@@ -2146,6 +2378,31 @@ export default function Escala() {
               allowZero: true,
               integer: true,
             });
+            payload.curral_manual = true;
+            break;
+          case "qtd_china_vaca":
+            payload.qtd_china_vaca = parseNumberField(
+              "a quantidade China das vacas",
+              { allowZero: true, integer: true },
+            );
+            break;
+          case "qtd_china_boi":
+            payload.qtd_china_boi = parseNumberField(
+              "a quantidade China dos bois",
+              { allowZero: true, integer: true },
+            );
+            break;
+          case "qtd_agrotools_vaca":
+            payload.qtd_agrotools_vaca = parseNumberField(
+              "a quantidade Agrotools das vacas",
+              { allowZero: true, integer: true },
+            );
+            break;
+          case "qtd_agrotools_boi":
+            payload.qtd_agrotools_boi = parseNumberField(
+              "a quantidade Agrotools dos bois",
+              { allowZero: true, integer: true },
+            );
             break;
           case "observacao":
             payload.observacao = parseTextField("a observação", true) || null;
@@ -2196,6 +2453,43 @@ export default function Escala() {
               allowZero: true,
               integer: true,
             });
+            payload.curral_manual = true;
+            break;
+          case "qtd_china_vaca": {
+            const quantity = toNumber(row.QTD_VACA);
+            const china = parseNumberField("a quantidade China das vacas", {
+              allowZero: true,
+              integer: true,
+            });
+            payload.qtd_china_vaca = china;
+            payload.origem_china_vaca = "MANUAL";
+            payload.percentual_china_vaca = quantity > 0 ? china / quantity : 0;
+            payload.qtd_base_vaca = quantity;
+            break;
+          }
+          case "qtd_china_boi": {
+            const quantity = toNumber(row.QTD_BOI);
+            const china = parseNumberField("a quantidade China dos bois", {
+              allowZero: true,
+              integer: true,
+            });
+            payload.qtd_china_boi = china;
+            payload.origem_china_boi = "MANUAL";
+            payload.percentual_china_boi = quantity > 0 ? china / quantity : 0;
+            payload.qtd_base_boi = quantity;
+            break;
+          }
+          case "qtd_agrotools_vaca":
+            payload.qtd_agrotools_vaca = parseNumberField(
+              "a quantidade Agrotools das vacas",
+              { allowZero: true, integer: true },
+            );
+            break;
+          case "qtd_agrotools_boi":
+            payload.qtd_agrotools_boi = parseNumberField(
+              "a quantidade Agrotools dos bois",
+              { allowZero: true, integer: true },
+            );
             break;
           case "observacao":
             payload.observacao = parseTextField("a observação", true) || null;
@@ -2232,32 +2526,6 @@ export default function Escala() {
     focusField: string,
   ) => {
     if (!canManage) return;
-
-    if (focusField === "prazo_dias" && row.ORIGEM_REGISTRO === "ERP") {
-      if (loadingPaymentTerms) {
-        toast.info("Aguarde o carregamento do prazo de pagamento.");
-        return;
-      }
-
-      const mappedPaymentTerm = getMappedPaymentTerm(row, paymentTermsByCode);
-      const effectivePrazo = getEffectivePaymentTermDays(
-        row,
-        paymentTermsByCode,
-      );
-
-      if (mappedPaymentTerm || effectivePrazo !== null) {
-        toast.info(
-          mappedPaymentTerm
-            ? `Prazo automático: ${effectivePrazo} dias${
-                mappedPaymentTerm.DESCRICAO
-                  ? ` (${mappedPaymentTerm.DESCRICAO})`
-                  : ""
-              }.`
-            : `Prazo legado mantido: ${effectivePrazo} dias.`,
-        );
-        return;
-      }
-    }
 
     if (row.STATUS_CONFIGURACAO === "PENDENTE_CRIAR_ESCALA") {
       navigateFromPlanning(`/escala/gerenciar?data=${day}&incluirPendentes=1`);
@@ -2548,7 +2816,7 @@ export default function Escala() {
                             key={option.key}
                             data-week-option={option.key}
                             type="button"
-                            onClick={() => setSelectedWeek(option.key)}
+                            onClick={() => selectPlanningWeek(option.key)}
                             className={`h-20 w-24 shrink-0 rounded-xl border px-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/40 ${
                               selected
                                 ? "border-[#173D6E] bg-[#173D6E] text-white shadow-[0_5px_14px_rgba(23,61,110,0.18)] ring-2 ring-[#1B58A0]/15"
@@ -2773,16 +3041,19 @@ export default function Escala() {
                     historicoCompras,
                     chinaPeriodConfig,
                   );
+                  const automaticSuggestion =
+                    getStoredAutomaticChinaSuggestion(item);
+                  const suggestedQuantity =
+                    automaticSuggestion ?? suggestion?.suggestedQuantity ?? null;
 
                   return {
                     ...item,
-                    chinaSuggestedQuantity: suggestion?.suggestedQuantity ?? null,
+                    chinaSuggestedQuantity: suggestedQuantity,
                     chinaSuggestionMeta: suggestion,
                     chinaDivergence: getPlanningChinaDivergence({
                       animalQuantity: item.quantity,
                       storedChinaQuantity: item.chinaQuantity,
-                      suggestedChinaQuantity:
-                        suggestion?.suggestedQuantity ?? null,
+                      suggestedChinaQuantity: suggestedQuantity,
                       hasStoredQuantity: item.chinaStored,
                     }),
                   };
@@ -2796,7 +3067,7 @@ export default function Escala() {
               const chinaDivergenceCount = sexRows.filter(
                 (item) => item.chinaDivergence !== null,
               ).length;
-              const totals = calculateTotals(dayRows);
+              const totals = calculateTotals(dayRows, paymentTermsByCode);
               const daySubtotal = calculatePlanningDaySubtotal(sexRows, dayRows);
               const curralCapacityExceeded =
                 daySubtotal.curral > ESCALA_DAILY_CURRAL_LIMIT;
@@ -2811,7 +3082,8 @@ export default function Escala() {
                 ),
               ).length;
               const pendingComplement = dayRows.filter(
-                (row) => row.STATUS_CONFIGURACAO === "PENDENTE_COMPLEMENTO",
+                (row) =>
+                  isPlanningComplementPending(row, paymentTermsByCode),
               ).length;
               const scaleStatus = summary?.STATUS_ESCALA || dayRows[0]?.STATUS_ESCALA;
               const scaleVersion =
@@ -2909,7 +3181,15 @@ export default function Escala() {
                       )}
 
                       {scaleExists ? (
-                        <Badge variant="outline" className={getStatusClass(scaleStatus)}>
+                        <Badge
+                          variant="outline"
+                          className={getStatusClass(scaleStatus)}
+                          title={
+                            scaleStatus === "RASCUNHO"
+                              ? "Rascunho: a escala foi criada, mas ainda não foi aberta, confirmada ou encerrada."
+                              : `Status atual da escala: ${scaleStatus || "ABERTA"}`
+                          }
+                        >
                           {scaleStatus || "ABERTA"}
                         </Badge>
                       ) : (
@@ -2988,6 +3268,17 @@ export default function Escala() {
                               Incluir pendentes ({pendingDayOrders.length})
                             </Button>
                           )}
+
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-8 w-8 rounded-lg border-[#BFCFDF] text-[#173D6E] hover:border-[#1B58A0] hover:bg-[#EEF4FA]"
+                            title="Ver ocorrências da escala"
+                            aria-label="Ver ocorrências da escala"
+                            onClick={() => void openOccurrences(idEscala)}
+                          >
+                            <BookOpen className="h-3.5 w-3.5" />
+                          </Button>
 
                           <Button
                             size="sm"
@@ -3190,17 +3481,14 @@ export default function Escala() {
                                 row,
                                 paymentTermsByCode,
                               );
-                              const prazoCanEdit =
-                                row.ORIGEM_REGISTRO === "MANUAL" ||
-                                (!mappedPaymentTerm && effectivePrazo === null);
-                              const prazoTitle = mappedPaymentTerm
-                                ? `Prazo automático${
+                              const prazoTitle = row.PRAZO_DIAS != null
+                                ? "Prazo definido na Escala. Clique para editar."
+                                : mappedPaymentTerm
+                                  ? `Prazo automático${
                                     mappedPaymentTerm.DESCRICAO
                                       ? `: ${mappedPaymentTerm.DESCRICAO}`
                                       : ""
-                                  }`
-                                : effectivePrazo !== null
-                                  ? "Prazo legado do vínculo"
+                                  }. Clique para substituir.`
                                   : "Prazo não encontrado para a condição de pagamento";
                               const compradorPreenchido =
                                 toNumber(row.ID_COMPRADOR_ESCALA) > 0 ||
@@ -3276,6 +3564,7 @@ export default function Escala() {
                                   key={item.key}
                                   className={`${getPlanningRowClass(
                                     row,
+                                    paymentTermsByCode,
                                   )} border-b border-[#DCE5ED] transition-colors`}
                                 >
                                   <TableCell className="px-1 py-2.5 text-center align-top">
@@ -3322,11 +3611,12 @@ export default function Escala() {
                                         {row.ORIGEM_REGISTRO === "ERP" &&
                                           linkedToCurrentDayScale &&
                                           rowScaleId > 0 && (
-                                            <Button
-                                              size="icon"
-                                              variant="ghost"
-                                              className="h-7 w-7 rounded-md text-[#60758A] hover:bg-[#EAF1F8] hover:text-[#173D6E]"
-                                              title="Editar informações do pedido"
+                                            <>
+                                              <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-7 w-7 rounded-md text-[#60758A] hover:bg-[#EAF1F8] hover:text-[#173D6E]"
+                                                title="Editar informações do pedido"
                                                 onClick={() =>
                                                   navigateFromPlanning(
                                                     `/escala/gerenciar/${rowScaleId}?editarPedido=${toNumber(
@@ -3335,8 +3625,21 @@ export default function Escala() {
                                                   )
                                                 }
                                               >
-                                              <Pencil className="h-3.5 w-3.5" />
-                                            </Button>
+                                                <Pencil className="h-3.5 w-3.5" />
+                                              </Button>
+                                              <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-7 w-7 rounded-md text-[#1B67AA] hover:bg-[#EAF4FD]"
+                                                title="Ver ocorrências deste pedido"
+                                                aria-label="Ver ocorrências deste pedido"
+                                                onClick={() =>
+                                                  void openOccurrences(rowScaleId, row)
+                                                }
+                                              >
+                                                <BookOpen className="h-3.5 w-3.5" />
+                                              </Button>
+                                            </>
                                           )}
 
                                         {row.ORIGEM_REGISTRO === "MANUAL" &&
@@ -3356,6 +3659,19 @@ export default function Escala() {
                                                 }
                                               >
                                                 <Pencil className="h-3.5 w-3.5" />
+                                              </Button>
+
+                                              <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-7 w-7 rounded-md text-[#1B67AA] hover:bg-[#EAF4FD]"
+                                                title="Ver ocorrências deste registro"
+                                                aria-label="Ver ocorrências deste registro"
+                                                onClick={() =>
+                                                  void openOccurrences(rowScaleId, row)
+                                                }
+                                              >
+                                                <BookOpen className="h-3.5 w-3.5" />
                                               </Button>
 
                                               <Button
@@ -3400,54 +3716,12 @@ export default function Escala() {
                                   </TableCell>
 
                                   <TableCell className="px-1.5 py-2.5 align-top">
-                                    {isInlineEditing(row, "nome_produtor") ? (
-                                      renderInlineEditor("nome_produtor")
-                                    ) : row.PRODUTOR ? (
-                                      row.ORIGEM_REGISTRO === "MANUAL" &&
-                                      canManage &&
-                                      rowScaleId > 0 ? (
-                                        <button
-                                          type="button"
-                                          className="w-full rounded-md px-1 py-0.5 text-left transition hover:bg-[#EEF4FA] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30"
-                                          title={`Editar nome do produtor: ${row.PRODUTOR}`}
-                                          onClick={() =>
-                                            openRequiredField(
-                                              row,
-                                              day,
-                                              rowScaleId,
-                                              pendingDayOrders,
-                                              "nome_produtor",
-                                            )
-                                          }
-                                        >
-                                          <span className="block truncate text-[12px] font-extrabold leading-tight text-[#173D6E]">
-                                            {row.PRODUTOR}
-                                          </span>
-                                        </button>
-                                      ) : (
-                                        <p
-                                          className="truncate text-[12px] font-extrabold leading-tight text-[#173D6E]"
-                                          title={row.PRODUTOR}
-                                        >
-                                          {row.PRODUTOR}
-                                        </p>
-                                      )
-                                    ) : row.ORIGEM_REGISTRO === "MANUAL" ? (
-                                      <MissingFieldButton
-                                        label="Nome do produtor não informado"
-                                        onClick={() =>
-                                          openRequiredField(
-                                            row,
-                                            day,
-                                            rowScaleId,
-                                            pendingDayOrders,
-                                            "nome_produtor",
-                                          )
-                                        }
-                                      />
-                                    ) : (
-                                      <span className="text-slate-400">—</span>
-                                    )}
+                                    <p
+                                      className="truncate text-[12px] font-extrabold leading-tight text-[#173D6E]"
+                                      title={row.PRODUTOR || "Produtor não informado"}
+                                    >
+                                      {row.PRODUTOR || "—"}
+                                    </p>
                                     <div className="mt-1 flex min-w-0 items-center gap-1.5">
                                       <p
                                         className="min-w-0 flex-1 truncate text-[11px] font-semibold leading-tight text-[#526B82]"
@@ -3575,7 +3849,41 @@ export default function Escala() {
                                   </TableCell>
 
                                   <TableCell className="px-1.5 py-2.5 text-right align-top font-extrabold text-[#173D6E]">
-                                    {numberFormat.format(item.quantity)}
+                                    {isInlineEditing(
+                                      row,
+                                      item.sex === "VACA" ? "qtd_vaca" : "qtd_boi",
+                                    ) ? (
+                                      renderInlineEditor(
+                                        item.sex === "VACA" ? "qtd_vaca" : "qtd_boi",
+                                        { align: "right" },
+                                      )
+                                    ) : row.ORIGEM_REGISTRO === "MANUAL" &&
+                                      canManage &&
+                                      rowScaleId > 0 ? (
+                                      <button
+                                        type="button"
+                                        className="w-full rounded-md px-1 py-0.5 text-right transition hover:bg-[#EEF4FA] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30"
+                                        title={`Editar quantidade de ${item.sex.toLowerCase()}`}
+                                        onClick={() =>
+                                          openRequiredField(
+                                            row,
+                                            day,
+                                            rowScaleId,
+                                            pendingDayOrders,
+                                            item.sex === "VACA" ? "qtd_vaca" : "qtd_boi",
+                                          )
+                                        }
+                                      >
+                                        {numberFormat.format(item.quantity)}
+                                      </button>
+                                    ) : (
+                                      <span
+                                        className="block rounded-md px-1 py-0.5 transition hover:bg-[#F4F7FA]"
+                                        title="Quantidade vinda do pedido ERP; altere-a no sistema de pedidos"
+                                      >
+                                        {numberFormat.format(item.quantity)}
+                                      </span>
+                                    )}
                                   </TableCell>
 
                                   <TableCell className="px-1.5 py-2.5 text-right align-top font-extrabold text-[#173D6E]">
@@ -3640,7 +3948,12 @@ export default function Escala() {
                                         {currencyFormat.format(item.unitValue)}
                                       </button>
                                     ) : (
-                                      currencyFormat.format(item.unitValue)
+                                      <span
+                                        className="block rounded-md px-1 py-0.5 transition hover:bg-[#F4F7FA]"
+                                        title="Preço vindo do pedido ERP; altere-o no sistema de pedidos"
+                                      >
+                                        {currencyFormat.format(item.unitValue)}
+                                      </span>
                                     )}
                                   </TableCell>
 
@@ -3772,11 +4085,11 @@ export default function Escala() {
                                           )
                                         }
                                       />
-                                    ) : canManage && rowScaleId > 0 && prazoCanEdit ? (
+                                    ) : canManage && rowScaleId > 0 ? (
                                       <button
                                         type="button"
                                         className="w-full rounded-md px-1 py-0.5 text-right transition hover:bg-[#EEF4FA] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30"
-                                        title="Editar prazo em dias"
+                                        title={prazoTitle}
                                         onClick={() =>
                                           openRequiredField(
                                             row,
@@ -3813,11 +4126,33 @@ export default function Escala() {
                                         align: "center",
                                       })
                                     ) : row.CURRAL !== null && row.CURRAL !== undefined ? (
-                                      canManage && rowScaleId > 0 ? (
+                                      toNumber(row.CURRAL_AUTOMATICO) === 1 ? (
+                                        <button
+                                          type="button"
+                                          className="inline-flex w-full items-center justify-center gap-1 rounded-md px-1 py-0.5 transition hover:bg-[#EAF4FD] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30"
+                                          title="Ver cálculo e substituir, se necessário"
+                                          onClick={() =>
+                                            setCurralDetails({
+                                              row,
+                                              day,
+                                              rowScaleId,
+                                              pendingOrders: pendingDayOrders,
+                                            })
+                                          }
+                                        >
+                                          <span className="font-extrabold text-[#173D6E]">
+                                            {row.CURRAL}
+                                          </span>
+                                          <Info className="h-3.5 w-3.5 text-[#1B67AA]" />
+                                        </button>
+                                      ) : canManage && rowScaleId > 0 ? (
                                         <button
                                           type="button"
                                           className="w-full rounded-md px-1 py-0.5 text-center transition hover:bg-[#EEF4FA] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30"
-                                          title={`Editar curral: ${row.CURRAL}`}
+                                          title={
+                                            row.CURRAL_OBSERVACAO ||
+                                            `Editar curral: ${row.CURRAL}`
+                                          }
                                           onClick={() =>
                                             openRequiredField(
                                               row,
@@ -3854,18 +4189,49 @@ export default function Escala() {
 
                                   <TableCell className="px-1 py-2.5 text-right align-top font-bold text-[#334E68]">
                                     <div className="flex flex-wrap items-center justify-end gap-1.5">
-                                      <span
-                                        className={`inline-flex min-w-[38px] items-center justify-center rounded-md px-2 py-1 text-right text-[12px] font-extrabold tabular-nums ${
-                                          chinaQuantityDivergent
-                                            ? "border border-[#E28A2E] bg-[#FFE8C7] text-[#A84A15] shadow-[inset_0_0_0_1px_rgba(226,138,46,0.12)]"
-                                            : chinaSuggestionPending
-                                            ? "border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.08)]"
-                                            : "text-[#334E68]"
-                                        }`}
-                                        title={chinaDivergenceTitle || undefined}
-                                      >
-                                        {numberFormat.format(displayedChinaQuantity)}
-                                      </span>
+                                      {isInlineEditing(
+                                        row,
+                                        item.sex === "VACA"
+                                          ? "qtd_china_vaca"
+                                          : "qtd_china_boi",
+                                      ) ? (
+                                        renderInlineEditor(
+                                          item.sex === "VACA"
+                                            ? "qtd_china_vaca"
+                                            : "qtd_china_boi",
+                                          { align: "right" },
+                                        )
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          disabled={!canManage || rowScaleId <= 0}
+                                          className={`inline-flex min-w-[38px] items-center justify-center rounded-md px-2 py-1 text-right text-[12px] font-extrabold tabular-nums transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30 ${
+                                            chinaQuantityDivergent
+                                              ? "border border-[#E28A2E] bg-[#FFE8C7] text-[#A84A15] shadow-[inset_0_0_0_1px_rgba(226,138,46,0.12)] hover:bg-[#FFD9A3]"
+                                              : chinaSuggestionPending
+                                                ? "border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.08)] hover:bg-[#FFEBD6]"
+                                                : "text-[#334E68] hover:bg-[#EEF4FA]"
+                                          }`}
+                                          title={
+                                            chinaDivergenceTitle
+                                              ? `${chinaDivergenceTitle} Clique no número para substituir manualmente.`
+                                              : "Editar quantidade China"
+                                          }
+                                          onClick={() =>
+                                            openRequiredField(
+                                              row,
+                                              day,
+                                              rowScaleId,
+                                              pendingDayOrders,
+                                              item.sex === "VACA"
+                                                ? "qtd_china_vaca"
+                                                : "qtd_china_boi",
+                                            )
+                                          }
+                                        >
+                                          {numberFormat.format(displayedChinaQuantity)}
+                                        </button>
+                                      )}
 
                                       {latestChinaAdjustment && (
                                         <button
@@ -3923,7 +4289,40 @@ export default function Escala() {
                                   </TableCell>
 
                                   <TableCell className="px-1.5 py-2.5 text-right align-top font-extrabold text-[#173D6E]">
-                                    {numberFormat.format(item.agrotoolsQuantity)}
+                                    {isInlineEditing(
+                                      row,
+                                      item.sex === "VACA"
+                                        ? "qtd_agrotools_vaca"
+                                        : "qtd_agrotools_boi",
+                                    ) ? (
+                                      renderInlineEditor(
+                                        item.sex === "VACA"
+                                          ? "qtd_agrotools_vaca"
+                                          : "qtd_agrotools_boi",
+                                        { align: "right" },
+                                      )
+                                    ) : canManage && rowScaleId > 0 ? (
+                                      <button
+                                        type="button"
+                                        className="w-full rounded-md px-1 py-0.5 text-right transition hover:bg-[#EEF4FA] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30"
+                                        title="Editar quantidade Agrotools"
+                                        onClick={() =>
+                                          openRequiredField(
+                                            row,
+                                            day,
+                                            rowScaleId,
+                                            pendingDayOrders,
+                                            item.sex === "VACA"
+                                              ? "qtd_agrotools_vaca"
+                                              : "qtd_agrotools_boi",
+                                          )
+                                        }
+                                      >
+                                        {numberFormat.format(item.agrotoolsQuantity)}
+                                      </button>
+                                    ) : (
+                                      numberFormat.format(item.agrotoolsQuantity)
+                                    )}
                                   </TableCell>
 
                                   <TableCell className="border-l border-[#D4E0EA] bg-white/35 px-2 py-2.5 align-top text-[#425B73]">
@@ -4524,6 +4923,154 @@ export default function Escala() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(curralDetails)}
+        onOpenChange={(open) => {
+          if (!open) setCurralDetails(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mb-1 flex h-11 w-11 items-center justify-center rounded-xl border border-[#B9D5EE] bg-[#EAF4FD] text-[#1B67AA]">
+              <Info className="h-5 w-5" />
+            </div>
+            <DialogTitle>Cálculo dos currais</DialogTitle>
+            <DialogDescription>
+              {curralDetails?.row.PRODUTOR || "Pedido da escala"}
+            </DialogDescription>
+          </DialogHeader>
+
+          {curralDetails && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-[#D7E2EC] bg-[#F7FAFC] p-3">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#60758A]">
+                    Quantidade
+                  </p>
+                  <p className="mt-1 text-xl font-black text-[#173D6E]">
+                    {numberFormat.format(toNumber(curralDetails.row.CURRAL))}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[#D7E2EC] bg-[#F7FAFC] p-3">
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#60758A]">
+                    Currais reservados
+                  </p>
+                  <p className="mt-1 text-sm font-black text-[#173D6E]">
+                    {curralDetails.row.CURRAIS_ALOCADOS || "Não detalhados"}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-xl border border-[#CFE0EF] bg-[#EEF6FD] p-3 text-sm font-semibold leading-relaxed text-[#1B4D80]">
+                {curralDetails.row.CURRAL_OBSERVACAO ||
+                  "A quantidade foi calculada automaticamente conforme a capacidade disponível de cada curral."}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCurralDetails(null)}>
+              Fechar
+            </Button>
+            {canManage && curralDetails && (
+              <Button
+                type="button"
+                onClick={() => {
+                  const details = curralDetails;
+                  setCurralDetails(null);
+                  openRequiredField(
+                    details.row,
+                    details.day,
+                    details.rowScaleId,
+                    details.pendingOrders,
+                    "curral",
+                  );
+                }}
+              >
+                Substituir manualmente
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(occurrencesDialog)}
+        onOpenChange={(open) => {
+          if (!open) setOccurrencesDialog(null);
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-hidden sm:max-w-2xl">
+          <DialogHeader>
+            <div className="mb-1 flex h-11 w-11 items-center justify-center rounded-xl border border-[#B9D5EE] bg-[#EAF4FD] text-[#1B67AA]">
+              <BookOpen className="h-5 w-5" />
+            </div>
+            <DialogTitle>{occurrencesDialog?.title}</DialogTitle>
+            <DialogDescription>{occurrencesDialog?.description}</DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+            {occurrencesDialog?.loading ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-sm font-bold text-[#60758A]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Consultando ocorrências...
+              </div>
+            ) : occurrencesDialog?.occurrences.length ? (
+              occurrencesDialog.occurrences.map((occurrence, index) => {
+                const rawDate =
+                  occurrence.DATA_HORA ||
+                  occurrence.DATA_CRIACAO ||
+                  occurrence.CRIADO_EM;
+                const parsedDate = rawDate ? new Date(rawDate) : null;
+                const dateLabel =
+                  parsedDate && !Number.isNaN(parsedDate.getTime())
+                    ? parsedDate.toLocaleString("pt-BR")
+                    : "Data não informada";
+
+                return (
+                  <div
+                    key={`${occurrence.ID_LOG || occurrence.ID_OCORRENCIA || occurrence.COD_LINK}-${index}`}
+                    className="rounded-xl border border-[#D7E2EC] bg-[#F9FBFD] p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="rounded-md bg-[#EAF1F8] px-2 py-1 text-[10px] font-black uppercase tracking-[0.06em] text-[#173D6E]">
+                        {occurrence.ACAO || "ALTERAÇÃO"}
+                      </span>
+                      <span className="text-[10px] font-bold text-[#71869A]">
+                        {dateLabel}
+                      </span>
+                    </div>
+                    <div className="mt-3 rounded-xl border border-[#E7B879] bg-[#FFF8EC] p-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.08em] text-[#A65312]">
+                        Alteração
+                      </p>
+                      <p className="mt-1.5 whitespace-pre-wrap text-sm font-extrabold leading-relaxed text-[#63320E]">
+                        {occurrence.ALTERACAO ||
+                          "Nenhuma descrição foi gravada na coluna ALTERACAO."}
+                      </p>
+                    </div>
+                    <div className="mt-2 flex items-start gap-2 text-xs text-[#52677E]">
+                      <span className="shrink-0 font-black uppercase tracking-[0.05em] text-[#71869A]">
+                        Tipo:
+                      </span>
+                      <span className="font-semibold">
+                        {occurrence.DETALHES || "Ocorrência registrada"}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.05em] text-[#8294A6]">
+                      {occurrence.USUARIO_NOME || "SISTEMA"}
+                    </p>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="rounded-xl border border-dashed border-[#C8D5E2] bg-[#F8FAFC] px-4 py-10 text-center text-sm font-semibold text-[#60758A]">
+                Nenhuma ocorrência encontrada para este registro.
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
