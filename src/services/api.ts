@@ -139,6 +139,24 @@ export interface ApiVisitaDetalhe {
   OBSERVACOES: string | null;
 }
 
+export interface ApiVisitaLocalizacaoPublica {
+  ID_VISITA: number;
+  NOME_PRODUTOR: string | null;
+  NOME_FAZENDA: string | null;
+  MUNICIPIO: string | null;
+  DATA_REGISTRO_VISITA: string | null;
+  GPS_LATITUDE: number;
+  GPS_LONGITUDE: number;
+  DISTANCIA_PERCORRIDA_REAL: number | null;
+}
+
+export interface ApiVisitaLocalizacaoLink {
+  success: boolean;
+  token: string;
+  expires_at: string;
+  expires_in_days: number;
+}
+
 export interface ApiAuditoria {
   ID_RESPOSTA: number;
   ID_VISITA: number;
@@ -214,6 +232,30 @@ const getAuthHeaders = (isJson = false) => {
 
   return headers;
 };
+
+const getBackendBaseUrl = () => {
+  const explicitBase = import.meta.env.VITE_API_BASE_URL;
+  if (explicitBase) return String(explicitBase).replace(/\/+$/, "");
+
+  const configuredUrl =
+    import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA ||
+    import.meta.env.VITE_N8N_WEBHOOK_URL_LOGIN ||
+    import.meta.env.VITE_N8N_WEBHOOK_URL_USUARIOS ||
+    window.location.origin;
+  const url = new URL(configuredUrl, window.location.origin);
+  const knownSuffixes = ["/visitas/select", "/login/acess", "/users"];
+  const suffix = knownSuffixes.find((item) => url.pathname.endsWith(item));
+
+  if (suffix) {
+    url.pathname = url.pathname.slice(0, -suffix.length);
+  }
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/+$/, "");
+};
+
+const getBackendUrl = (path: string) =>
+  `${getBackendBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 
 const checkSessionExpired = (response: Response) => {
   if (response.status === 401) {
@@ -514,6 +556,48 @@ export const fetchVisitaDetalhe = async (
     console.error("Falha API Consulta Detalhe da Visita:", error);
     return null;
   }
+};
+
+export const criarLinkLocalizacaoVisita = async (
+  idVisita: string | number,
+): Promise<ApiVisitaLocalizacaoLink> => {
+  const response = await fetch(
+    getBackendUrl("/visitas/localizacao/compartilhar"),
+    {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      cache: "no-store",
+      body: JSON.stringify({ id_visita: Number(idVisita) }),
+    },
+  );
+  checkSessionExpired(response);
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.token) {
+    throw new Error(
+      String(data?.detail || data?.message || "Não foi possível gerar o link."),
+    );
+  }
+
+  return data as ApiVisitaLocalizacaoLink;
+};
+
+export const fetchLocalizacaoPublicaVisita = async (
+  token: string,
+): Promise<ApiVisitaLocalizacaoPublica> => {
+  const response = await fetch(
+    getBackendUrl(`/public/visitas/localizacao/${encodeURIComponent(token)}`),
+    { cache: "no-store" },
+  );
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      String(data?.detail || "Não foi possível consultar esta localização."),
+    );
+  }
+
+  return data as ApiVisitaLocalizacaoPublica;
 };
 
 export const fetchAuditoriaVisita = async (id_visita: string | number): Promise<ApiAuditoria[]> => {
@@ -848,6 +932,8 @@ export const api = {
   getRanchers: async (): Promise<Rancher[]> => { await delay(400); return mockRanchers; },
   getVisitasConsulta: fetchRelatorioVisitas,
   fetchVisitaDetalhe,
+  criarLinkLocalizacaoVisita,
+  fetchLocalizacaoPublicaVisita,
   realizarLogin,
   realizarLogout, 
   getUsuarios: fetchUsuarios, 

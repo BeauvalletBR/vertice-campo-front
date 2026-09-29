@@ -46,6 +46,7 @@ import EscalaRealizadoMensal from "./pages/EscalaRealizadoMensal";
 import EscalaGerenciador from "./pages/EscalaGerenciador";
 import EscalaTVScreen from "./pages/EscalaTVScreen";
 import StartPage from "./pages/StartPage";
+import VisitaLocalizacaoPublica from "./pages/VisitaLocalizacaoPublica";
 
 const queryClient = new QueryClient();
 
@@ -222,7 +223,7 @@ function ProtectedLayout() {
   );
 }
 
-function AppContent() {
+function AuthenticatedAppContent() {
   const { user, isAuthLoading } = useAuth();
   const defaultRoute = getDefaultAuthorizedRoute(user);
 
@@ -258,6 +259,18 @@ function AppContent() {
         path="/*"
         element={<ProtectedLayout />}
       />
+    </Routes>
+  );
+}
+
+function AppContent() {
+  return (
+    <Routes>
+      <Route
+        path="/localizacao/visita/:token"
+        element={<VisitaLocalizacaoPublica />}
+      />
+      <Route path="/*" element={<AuthenticatedAppContent />} />
     </Routes>
   );
 }

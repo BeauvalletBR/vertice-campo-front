@@ -18,6 +18,8 @@ import {
   FileText, 
   ChevronDown, 
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   X,
   Calendar,
   Download,
@@ -39,12 +41,14 @@ import {
   TrendingDown,
   TrendingUp,
   ClipboardCheck,
-  Pencil 
+  Pencil,
+  RefreshCw,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import { api, fetchPecuaristasAgendamento, type ApiRancher, type ApiUsuario, type ApiAuditoria, type ApiLote } from "@/services/api";
+import { api, fetchPecuaristasAgendamento, type ApiRancher, type ApiAuditoria, type ApiLote } from "@/services/api";
 import {
   buildRouteWithFinalAccess,
   calculateStraightLineDistanceKm,
@@ -88,6 +92,8 @@ const CHECKLIST_TEMPLATE = [
   { id: 'c7_1', category: '7. ORIENTAÇÕES', text: 'Produtor orientado sobre Bem Estar Animal', severity: 'Maior' },
   { id: 'c7_2', category: '7. ORIENTAÇÕES', text: 'Produtor orientado sobre vacinação', severity: 'Maior' },
 ];
+
+const VISITS_PER_PAGE = 25;
 
 interface LoteForm {
   prazo_dias: string;
@@ -182,7 +188,6 @@ function VisitRouteMapController({
   return null;
 }
 
-
 function InfoLegendaLogistica() {
   return (
     <div className="relative group">
@@ -272,6 +277,8 @@ export default function Visitas() {
   const [visitAccessDistanceKm, setVisitAccessDistanceKm] = useState<number | null>(null);
   const [isLoadingVisitRoute, setIsLoadingVisitRoute] = useState(false);
   const [visitRouteError, setVisitRouteError] = useState(false);
+  const [visitRouteRetryKey, setVisitRouteRetryKey] = useState(0);
+  const [isCreatingPublicLink, setIsCreatingPublicLink] = useState(false);
   
   const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
   const [selectedAuditVisit, setSelectedAuditVisit] = useState<CheckinReport | null>(null);
@@ -288,7 +295,7 @@ export default function Visitas() {
   const [isLoading, setIsLoading] = useState(true);
   const [allData, setAllData] = useState<CheckinReport[]>([]);
   const [pecuaristas, setPecuaristas] = useState<ApiRancher[]>([]);
-  const [usuariosData, setUsuariosData] = useState<ApiUsuario[]>([]);
+  const [historicoPage, setHistoricoPage] = useState(1);
 
 
   // Filtros Globais e de Visitas
@@ -354,14 +361,34 @@ export default function Visitas() {
       [latitude, longitude],
     ];
     const controller = new AbortController();
+    let cancelled = false;
+    const applyRouteFallback = () => {
+      const directDistanceKm = calculateStraightLineDistanceKm(
+        EMPRESA_COORDS,
+        [latitude, longitude],
+      );
 
-    setVisitRoutePath(fallbackPath);
-    setVisitAccessPath([]);
+      setVisitRouteError(true);
+      setVisitRoutePath([]);
+      setVisitAccessPath(fallbackPath);
+      setVisitRoadDistanceKm(null);
+      setVisitAccessDistanceKm(directDistanceKm);
+      setVisitRouteDistanceKm(directDistanceKm);
+    };
+
+    setVisitRoutePath([]);
+    setVisitAccessPath(fallbackPath);
     setVisitRouteDistanceKm(null);
     setVisitRoadDistanceKm(null);
     setVisitAccessDistanceKm(null);
     setVisitRouteError(false);
     setIsLoadingVisitRoute(true);
+    const timeoutId = window.setTimeout(() => {
+      if (cancelled) return;
+      applyRouteFallback();
+      setIsLoadingVisitRoute(false);
+      controller.abort();
+    }, 15000);
 
     fetch(
       `https://router.project-osrm.org/route/v1/driving/${EMPRESA_COORDS[1]},${EMPRESA_COORDS[0]};${longitude},${latitude}?overview=full&geometries=geojson`,
@@ -392,36 +419,40 @@ export default function Visitas() {
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        const directDistanceKm = calculateStraightLineDistanceKm(
-          EMPRESA_COORDS,
-          [latitude, longitude],
-        );
-        setVisitRouteError(true);
-        setVisitRoutePath([]);
-        setVisitAccessPath(fallbackPath);
-        setVisitRoadDistanceKm(null);
-        setVisitAccessDistanceKm(directDistanceKm);
-        setVisitRouteDistanceKm(directDistanceKm);
+        applyRouteFallback();
       })
       .finally(() => {
-        if (!controller.signal.aborted) setIsLoadingVisitRoute(false);
+        window.clearTimeout(timeoutId);
+        if (!cancelled) setIsLoadingVisitRoute(false);
       });
 
-    return () => controller.abort();
-  }, [mapVisit]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [mapVisit, visitRouteRetryKey]);
 
   useEffect(() => {
+    let active = true;
+
     const carregarVisitas = async () => {
       setIsLoading(true);
       try {
-        const [data, dadosPecuaristas, dadosUsuarios] = await Promise.all([
+        void fetchPecuaristasAgendamento()
+          .then((dadosPecuaristas) => {
+            if (active) setPecuaristas(dadosPecuaristas);
+          })
+          .catch(() => {
+            if (active) setPecuaristas([]);
+          });
+
+        const [data, dadosUsuarios] = await Promise.all([
           api.getVisitasConsulta(),
-          fetchPecuaristasAgendamento(),
           api.getUsuarios()
         ]);
-        
-        setPecuaristas(dadosPecuaristas);
-        setUsuariosData(dadosUsuarios);
+
+        if (!active) return;
 
         const getNomeComprador = (id: number) => {
           if (!id) return "COMPRADOR";
@@ -461,13 +492,17 @@ export default function Visitas() {
 
         setAllData(mappedData);
       } catch (error) {
-        toast.error("Erro ao carregar o relatório de visitas.");
+        if (active) toast.error("Erro ao carregar o relatório de visitas.");
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
     
     carregarVisitas();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const uniqueCities = useMemo(() => Array.from(new Set(allData.map(v => v.municipio))).sort(), [allData]);
@@ -530,8 +565,35 @@ export default function Visitas() {
       });
     }
 
-    return result.sort((a, b) => Number(b.id) - Number(a.id));
+    return [...result].sort((a, b) => Number(b.id) - Number(a.id));
   }, [historicoBaseParaCalculo, filterStatusFrete]);
+
+  const totalHistoricoPages = Math.max(
+    1,
+    Math.ceil(filteredHistorico.length / VISITS_PER_PAGE),
+  );
+  const paginatedHistorico = useMemo(() => {
+    const start = (historicoPage - 1) * VISITS_PER_PAGE;
+    return filteredHistorico.slice(start, start + VISITS_PER_PAGE);
+  }, [filteredHistorico, historicoPage]);
+
+  useEffect(() => {
+    setHistoricoPage(1);
+  }, [
+    filterProdutor,
+    filterFazenda,
+    filterCidade,
+    filterData,
+    filterGerouCompra,
+    filterComprador,
+    filterStatusFrete,
+  ]);
+
+  useEffect(() => {
+    if (historicoPage > totalHistoricoPages) {
+      setHistoricoPage(totalHistoricoPages);
+    }
+  }, [historicoPage, totalHistoricoPages]);
 
   const auditParts = useMemo(() => {
     const part1: Record<string, ApiAuditoria[]> = {};
@@ -765,6 +827,35 @@ export default function Visitas() {
       toast.error("Não foi possível carregar os detalhes da visita.");
     } finally {
       setIsLoadingReport(null);
+    }
+  };
+
+  const handleOpenPublicLocationLink = async () => {
+    if (!mapVisit) return;
+    const publicWindow = window.open("about:blank", "_blank");
+    if (publicWindow) publicWindow.opener = null;
+    setIsCreatingPublicLink(true);
+
+    try {
+      const result = await api.criarLinkLocalizacaoVisita(mapVisit.id);
+      const publicAppUrl = String(
+        import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin,
+      ).replace(/\/+$/, "");
+      const publicUrl = `${publicAppUrl}/localizacao/visita/${result.token}`;
+      if (publicWindow) {
+        publicWindow.location.replace(publicUrl);
+      } else {
+        window.location.assign(publicUrl);
+      }
+    } catch (error) {
+      publicWindow?.close();
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível gerar o link público.",
+      );
+    } finally {
+      setIsCreatingPublicLink(false);
     }
   };
 
@@ -1354,10 +1445,50 @@ export default function Visitas() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredHistorico.map((c) => renderLogisticaRow(c))
+                  paginatedHistorico.map((c) => renderLogisticaRow(c))
                 )}
               </TableBody>
             </Table>
+            {filteredHistorico.length > 0 && (
+              <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs font-semibold text-slate-500">
+                  Exibindo {(historicoPage - 1) * VISITS_PER_PAGE + 1} a{" "}
+                  {Math.min(historicoPage * VISITS_PER_PAGE, filteredHistorico.length)} de{" "}
+                  {filteredHistorico.length} visitas
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 text-xs font-bold"
+                    disabled={historicoPage === 1}
+                    onClick={() => setHistoricoPage((page) => Math.max(1, page - 1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Anterior
+                  </Button>
+                  <span className="min-w-20 text-center text-xs font-bold text-slate-600">
+                    {historicoPage} / {totalHistoricoPages}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 text-xs font-bold"
+                    disabled={historicoPage === totalHistoricoPages}
+                    onClick={() =>
+                      setHistoricoPage((page) =>
+                        Math.min(totalHistoricoPages, page + 1),
+                      )
+                    }
+                  >
+                    Próxima
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1441,10 +1572,45 @@ export default function Visitas() {
                   </div>
                 </div>
 
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-[11px] font-semibold text-slate-500">
+                    Arraste o mapa e use os botões +/− ou a roda do mouse para consultar a rota em detalhes.
+                  </p>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-9 gap-2 border-slate-300 text-xs font-bold text-slate-700"
+                      disabled={isCreatingPublicLink}
+                      onClick={handleOpenPublicLocationLink}
+                    >
+                      {isCreatingPublicLink ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ExternalLink className="h-4 w-4" />
+                      )}
+                      {isCreatingPublicLink ? "Abrindo link..." : "Abrir link público"}
+                    </Button>
+                  </div>
+                </div>
+
                 {visitRouteError && (
-                  <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                    <AlertTriangle className="h-4 w-4 shrink-0" />
-                    Não foi possível calcular a rota pelas estradas. A distância exibida é uma aproximação em linha reta até o GPS da visita.
+                  <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      Não foi possível calcular a rota pelas estradas. A distância exibida é uma aproximação em linha reta até o GPS da visita.
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 shrink-0 border-amber-300 bg-white text-[11px] font-bold text-amber-800 hover:bg-amber-100"
+                      onClick={() => setVisitRouteRetryKey((current) => current + 1)}
+                    >
+                      <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                      Tentar novamente
+                    </Button>
                   </div>
                 )}
 
