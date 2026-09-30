@@ -841,7 +841,9 @@ export default function Visitas() {
       const publicAppUrl = String(
         import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin,
       ).replace(/\/+$/, "");
-      const publicUrl = `${publicAppUrl}/localizacao/visita/${result.token}`;
+      const publicUrl = `${publicAppUrl}/localizacao/visita?${new URLSearchParams({
+        token: result.token,
+      })}`;
       if (publicWindow) {
         publicWindow.location.replace(publicUrl);
       } else {

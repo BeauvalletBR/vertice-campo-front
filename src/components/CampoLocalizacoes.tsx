@@ -317,7 +317,9 @@ export function CampoLocalizacoes() {
       const publicAppUrl = String(
         import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin,
       ).replace(/\/+$/, "");
-      const url = `${publicAppUrl}/localizacao/visita/${result.token}`;
+      const url = `${publicAppUrl}/localizacao/visita?${new URLSearchParams({
+        token: result.token,
+      })}`;
       if (popup) popup.location.replace(url);
       else window.location.assign(url);
     } catch (linkError) {

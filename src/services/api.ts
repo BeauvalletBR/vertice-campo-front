@@ -616,8 +616,9 @@ export const criarLinkLocalizacaoVisita = async (
 export const fetchLocalizacaoPublicaVisita = async (
   token: string,
 ): Promise<ApiVisitaLocalizacaoPublica> => {
+  const query = new URLSearchParams({ token });
   const response = await fetch(
-    getBackendUrl(`/public/visitas/localizacao/${encodeURIComponent(token)}`),
+    getBackendUrl(`/public/visitas/localizacao?${query.toString()}`),
     { cache: "no-store" },
   );
   const data = await response.json().catch(() => null);

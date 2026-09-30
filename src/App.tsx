@@ -272,6 +272,10 @@ function AppContent() {
   return (
     <Routes>
       <Route
+        path="/localizacao/visita"
+        element={<VisitaLocalizacaoPublica />}
+      />
+      <Route
         path="/localizacao/visita/:token"
         element={<VisitaLocalizacaoPublica />}
       />

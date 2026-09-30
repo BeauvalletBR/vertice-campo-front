@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   CalendarCheck2,
@@ -58,7 +58,9 @@ function MapBounds({ points }: { points: [number, number][] }) {
 }
 
 export default function VisitaLocalizacaoPublica() {
-  const { token = "" } = useParams();
+  const { token: pathToken = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token") || pathToken;
   const [visit, setVisit] = useState<ApiVisitaLocalizacaoPublica | null>(null);
   const [pageError, setPageError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
