@@ -140,7 +140,7 @@ export interface ApiVisitaDetalhe {
 }
 
 export interface ApiVisitaLocalizacaoPublica {
-  ID_VISITA: number;
+  ID_VISITA: number | null;
   NOME_PRODUTOR: string | null;
   NOME_FAZENDA: string | null;
   MUNICIPIO: string | null;
@@ -148,6 +148,10 @@ export interface ApiVisitaLocalizacaoPublica {
   GPS_LATITUDE: number;
   GPS_LONGITUDE: number;
   DISTANCIA_PERCORRIDA_REAL: number | null;
+  ORIGEM_LOCALIZACAO?: "ERP" | "VISITA";
+  ID_VISITA_REFERENCIA?: number | null;
+  DATA_VISITA_REFERENCIA?: string | null;
+  DATA_ULTIMA_VISITA?: string | null;
 }
 
 export interface ApiVisitaLocalizacaoLink {
@@ -155,6 +159,27 @@ export interface ApiVisitaLocalizacaoLink {
   token: string;
   expires_at: string;
   expires_in_days: number;
+  origem_localizacao?: "ERP" | "VISITA";
+}
+
+export interface ApiCampoLocalizacao {
+  COD_PRODUTOR: number;
+  NOME_PRODUTOR: string;
+  NOME_FAZENDA: string;
+  INSCRICAO: string | null;
+  MUNICIPIO: string | null;
+  UF_FAZENDA: string | null;
+  DISTANCIA_CADASTRADA: number | null;
+  DATA_ULTIMA_VISITA: string | null;
+  LATITUDE_ERP: number | null;
+  LONGITUDE_ERP: number | null;
+  ID_VISITA_REFERENCIA: number | null;
+  DATA_VISITA_REFERENCIA: string | null;
+  LATITUDE_VISITA: number | null;
+  LONGITUDE_VISITA: number | null;
+  ORIGEM_LOCALIZACAO: "ERP" | "VISITA" | "SEM_LOCALIZACAO";
+  LATITUDE: number | null;
+  LONGITUDE: number | null;
 }
 
 export interface ApiAuditoria {
@@ -342,6 +367,7 @@ export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise
   if (cachedPecuaristas && cachedPecuaristas.length > 0 && !forceRefresh) {
     return cachedPecuaristas;
   }
+  if (fetchPromise && !forceRefresh) return fetchPromise;
 
   const loadFromApi = async () => {
     const url = import.meta.env.VITE_N8N_WEBHOOK_URL_PECUARISTAS;
@@ -371,8 +397,13 @@ export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise
     }
   };
 
-  fetchPromise = loadFromApi();
-  return fetchPromise;
+  const currentPromise = loadFromApi();
+  fetchPromise = currentPromise;
+  try {
+    return await currentPromise;
+  } finally {
+    if (fetchPromise === currentPromise) fetchPromise = null;
+  }
 };
 
 export const fetchHistoricoCompras = async (forceRefresh = false): Promise<ApiHistoricoCompra[]> => {
@@ -598,6 +629,54 @@ export const fetchLocalizacaoPublicaVisita = async (
   }
 
   return data as ApiVisitaLocalizacaoPublica;
+};
+
+export const fetchCampoLocalizacoes = async (): Promise<ApiCampoLocalizacao[]> => {
+  const response = await fetch(getBackendUrl("/campo/localizacoes"), {
+    headers: getAuthHeaders(),
+    cache: "no-store",
+  });
+  checkSessionExpired(response);
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      String(data?.detail || "Não foi possível carregar as localizações."),
+    );
+  }
+
+  return Array.isArray(data) ? data : [];
+};
+
+export const criarLinkLocalizacaoCampo = async (
+  localizacao: Pick<
+    ApiCampoLocalizacao,
+    "COD_PRODUTOR" | "INSCRICAO" | "NOME_FAZENDA"
+  >,
+): Promise<ApiVisitaLocalizacaoLink> => {
+  const response = await fetch(
+    getBackendUrl("/campo/localizacoes/compartilhar"),
+    {
+      method: "POST",
+      headers: getAuthHeaders(true),
+      cache: "no-store",
+      body: JSON.stringify({
+        cod_produtor: localizacao.COD_PRODUTOR,
+        inscricao: localizacao.INSCRICAO,
+        nome_fazenda: localizacao.NOME_FAZENDA,
+      }),
+    },
+  );
+  checkSessionExpired(response);
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || !data?.token) {
+    throw new Error(
+      String(data?.detail || data?.message || "Não foi possível gerar o link."),
+    );
+  }
+
+  return data as ApiVisitaLocalizacaoLink;
 };
 
 export const fetchAuditoriaVisita = async (id_visita: string | number): Promise<ApiAuditoria[]> => {
@@ -934,6 +1013,8 @@ export const api = {
   fetchVisitaDetalhe,
   criarLinkLocalizacaoVisita,
   fetchLocalizacaoPublicaVisita,
+  fetchCampoLocalizacoes,
+  criarLinkLocalizacaoCampo,
   realizarLogin,
   realizarLogout, 
   getUsuarios: fetchUsuarios, 

@@ -48,6 +48,7 @@ const MOBILE_DEFAULT_ROUTE_ORDER = [
 const ACCESS_BY_PATH: Record<string, AccessRule> = {
   "/dashboard": APP_ROUTE_ACCESS.dashboard,
   "/campo": APP_ROUTE_ACCESS.campo,
+  "/campo/localizacao": APP_ROUTE_ACCESS.campo,
   "/visitas": APP_ROUTE_ACCESS.visitas,
   "/agendamento": APP_ROUTE_ACCESS.agendamento,
   "/escala": APP_ROUTE_ACCESS.escala,

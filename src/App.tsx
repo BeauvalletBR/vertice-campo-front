@@ -34,6 +34,7 @@ import {
 
 import Index from "./pages/Index";
 import FieldPage from "./pages/FieldPage";
+import CampoLocalizacaoPage from "./pages/CampoLocalizacaoPage";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/LoginPage";
 import Pecuaristas from "./pages/Visitas";
@@ -151,6 +152,10 @@ function ProtectedLayout() {
                 <Route
                   path="/campo"
                   element={<FieldPage />}
+                />
+                <Route
+                  path="/campo/localizacao"
+                  element={<CampoLocalizacaoPage />}
                 />
               </Route>
 

@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   AlertTriangle,
+  CalendarCheck2,
+  CalendarX2,
   Loader2,
   MapPin,
   Navigation,
   Route,
+  X,
 } from "lucide-react";
 import {
   CircleMarker,
@@ -66,6 +69,7 @@ export default function VisitaLocalizacaoPublica() {
   const [totalDistanceKm, setTotalDistanceKm] = useState<number | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [routeFallback, setRouteFallback] = useState(false);
+  const [navigationOpen, setNavigationOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -219,6 +223,8 @@ export default function VisitaLocalizacaoPublica() {
   const latitude = Number(visit.GPS_LATITUDE);
   const longitude = Number(visit.GPS_LONGITUDE);
   const destination: [number, number] = [latitude, longitude];
+  const locationSource = visit.ORIGEM_LOCALIZACAO || "VISITA";
+  const lastVisitDate = visit.DATA_ULTIMA_VISITA || null;
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dbeafe_0,_#f8fafc_42%,_#eef2f7_100%)] px-3 py-4 sm:px-6 sm:py-7">
       <section className="mx-auto w-full max-w-6xl overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_24px_80px_rgba(15,50,90,0.18)]">
@@ -234,7 +240,7 @@ export default function VisitaLocalizacaoPublica() {
                   Rota compartilhada
                 </p>
                 <h1 className="mt-1 text-xl font-black leading-tight sm:text-3xl">
-                  Localização da visita
+                  Localização da propriedade
                 </h1>
                 <p className="mt-1 text-sm font-semibold text-blue-100">
                   Saída da sede Beauvallet até a propriedade
@@ -242,14 +248,21 @@ export default function VisitaLocalizacaoPublica() {
               </div>
             </div>
             <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
-              <p className="text-[10px] font-black uppercase tracking-widest text-blue-200">Visita</p>
-              <p className="mt-1 text-sm font-bold">{formatVisitDate(visit.DATA_REGISTRO_VISITA)}</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-blue-200">Origem da localização</p>
+              <p className="mt-1 text-sm font-bold">
+                {locationSource === "ERP" ? "Cadastro do ERP" : "GPS coletado em visita"}
+              </p>
+              {locationSource === "VISITA" && (
+                <p className="mt-0.5 text-[10px] font-semibold text-blue-100">
+                  {formatVisitDate(visit.DATA_VISITA_REFERENCIA || visit.DATA_REGISTRO_VISITA)}
+                </p>
+              )}
             </div>
           </div>
         </header>
 
         <div className="p-4 sm:p-7">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 xl:col-span-2">
               <div className="flex items-start gap-3">
                 <div className="rounded-xl bg-blue-100 p-2.5 text-blue-700">
@@ -264,8 +277,52 @@ export default function VisitaLocalizacaoPublica() {
                     {visit.NOME_PRODUTOR || "Produtor"}
                     {visit.MUNICIPIO ? ` • ${visit.MUNICIPIO}` : ""}
                   </p>
+                  <span
+                    className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-wide ${
+                      locationSource === "ERP"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {locationSource === "ERP"
+                      ? "Localização do ERP"
+                      : "Localização da visita"}
+                  </span>
                 </div>
               </div>
+            </div>
+
+            <div
+              className={`rounded-2xl border p-4 ${
+                lastVisitDate
+                  ? "border-emerald-200 bg-emerald-50"
+                  : "border-amber-200 bg-amber-50"
+              }`}
+            >
+              <div
+                className={`flex items-center gap-2 ${
+                  lastVisitDate ? "text-emerald-700" : "text-amber-700"
+                }`}
+              >
+                {lastVisitDate ? (
+                  <CalendarCheck2 className="h-4 w-4" />
+                ) : (
+                  <CalendarX2 className="h-4 w-4" />
+                )}
+                <p className="text-[10px] font-black uppercase tracking-wider">Situação da visita</p>
+              </div>
+              <p
+                className={`mt-2 text-sm font-black ${
+                  lastVisitDate ? "text-emerald-900" : "text-amber-900"
+                }`}
+              >
+                {lastVisitDate ? "Visita realizada" : "Nenhuma visita registrada"}
+              </p>
+              {lastVisitDate && (
+                <p className="mt-1 text-[10px] font-bold text-emerald-700">
+                  Última visita: {formatVisitDate(lastVisitDate)}
+                </p>
+              )}
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -305,7 +362,9 @@ export default function VisitaLocalizacaoPublica() {
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <div className="flex items-center gap-2 text-emerald-700">
                 <Navigation className="h-4 w-4" />
-                <p className="text-[10px] font-black uppercase tracking-wider">KM registrado</p>
+                <p className="text-[10px] font-black uppercase tracking-wider">
+                  {locationSource === "ERP" ? "KM cadastrado" : "KM registrado"}
+                </p>
               </div>
               <p className="mt-2 text-2xl font-black text-emerald-900">
                 {visit.DISTANCIA_PERCORRIDA_REAL === null
@@ -321,6 +380,17 @@ export default function VisitaLocalizacaoPublica() {
               A rota por estrada não ficou disponível. O mapa está mostrando uma estimativa em linha reta até o GPS.
             </div>
           )}
+
+          <div className="mt-4 flex justify-end">
+            <button
+              type="button"
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#123f73] px-6 text-sm font-black text-white shadow-lg transition hover:bg-[#0d315a] sm:w-auto"
+              onClick={() => setNavigationOpen(true)}
+            >
+              <Navigation className="h-5 w-5" />
+              Ir agora
+            </button>
+          </div>
 
           <div className="relative mt-4 h-[54vh] min-h-[390px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-inner">
             <MapContainer
@@ -374,6 +444,71 @@ export default function VisitaLocalizacaoPublica() {
           </div>
         </div>
       </section>
+
+      {navigationOpen && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Escolher aplicativo de navegação"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setNavigationOpen(false);
+          }}
+        >
+          <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-blue-600">Ir agora</p>
+                <h2 className="mt-1 text-xl font-black text-slate-800">Escolha o aplicativo</h2>
+                <p className="mt-1 text-xs font-semibold text-slate-500">
+                  A rota será aberta até o GPS da propriedade.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+                onClick={() => setNavigationOpen(false)}
+                aria-label="Fechar"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              <button
+                type="button"
+                className="flex h-14 items-center justify-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-800 transition hover:bg-blue-100"
+                onClick={() => {
+                  window.open(
+                    `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=driving`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  );
+                  setNavigationOpen(false);
+                }}
+              >
+                <MapPin className="h-5 w-5" />
+                Google Maps
+              </button>
+              <button
+                type="button"
+                className="flex h-14 items-center justify-start gap-3 rounded-xl bg-[#1b67aa] px-4 text-sm font-black text-white transition hover:bg-[#14558e]"
+                onClick={() => {
+                  window.open(
+                    `https://www.waze.com/ul?ll=${latitude},${longitude}&navigate=yes`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  );
+                  setNavigationOpen(false);
+                }}
+              >
+                <Navigation className="h-5 w-5" />
+                Waze
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

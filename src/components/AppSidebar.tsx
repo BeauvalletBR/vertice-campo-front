@@ -9,6 +9,7 @@ import {
   ListTodo,
   LogOut,
   MapPin,
+  MapPinned,
   PanelLeftClose,
   PanelLeftOpen,
   PlusCircle,
@@ -107,6 +108,7 @@ export function AppSidebar() {
         escala: true,
       }));
     }
+
   }, [collapsed, isAgendamentoActive, isEscalaActive]);
 
   const toggleGroup = (groupId: string) => {
@@ -171,6 +173,13 @@ export function AppSidebar() {
           url: "/visitas",
           icon: Users,
           access: APP_ROUTE_ACCESS.visitas,
+        },
+        {
+          id: "campo-localizacao",
+          title: "Localização",
+          url: "/campo/localizacao",
+          icon: MapPinned,
+          access: APP_ROUTE_ACCESS.campo,
         },
       ],
     },
@@ -452,7 +461,7 @@ export function AppSidebar() {
                                     }}
                                     className={`flex w-full select-none items-center justify-between rounded-lg px-3 py-2.5 text-sm font-bold transition-all ${
                                       isParentActive
-                                        ? "bg-white text-[#173D6E] shadow-[0_5px_14px_rgba(4,24,48,0.16)]"
+                                        ? "!bg-[#F8FBFF] !text-[#123F73] ring-2 ring-inset ring-[#6BB6E3] shadow-[0_5px_14px_rgba(4,24,48,0.22)]"
                                         : "text-[#CFDCE9] hover:bg-white/10 hover:text-white"
                                     }`}
                                   >
@@ -460,7 +469,7 @@ export function AppSidebar() {
                                       <item.icon
                                         className={`mr-3 h-[18px] w-[18px] shrink-0 ${
                                           isParentActive
-                                            ? "text-[#1B58A0]"
+                                            ? "!text-[#1B58A0]"
                                             : "text-[#AFC8DF]"
                                         }`}
                                       />
@@ -490,10 +499,10 @@ export function AppSidebar() {
                                       <NavLink
                                         key={subItem.title}
                                         to={subItem.url}
-                                        end={subItem.url === "/escala"}
+                                        end={subItem.url === "/escala" || subItem.url === "/campo"}
                                         className={`flex w-full items-center rounded-lg px-3 py-2 text-xs transition-all ${
                                           isSubActive
-                                            ? "bg-white font-extrabold text-[#173D6E] shadow-[0_4px_12px_rgba(4,24,48,0.14)]"
+                                            ? "!bg-[#F8FBFF] font-extrabold !text-[#123F73] ring-1 ring-inset ring-[#8FC9EA] shadow-[0_4px_12px_rgba(4,24,48,0.18)]"
                                             : "text-[#BBD0E2] hover:bg-white/10 hover:text-white"
                                         }`}
                                       >
@@ -529,9 +538,9 @@ export function AppSidebar() {
                                 to={item.url}
                                 end
                                 className="flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-bold text-[#CFDCE9] transition-all hover:bg-white/10 hover:text-white"
-                                activeClassName="bg-white !text-[#173D6E] font-extrabold shadow-[0_5px_14px_rgba(4,24,48,0.16)] hover:bg-white hover:!text-[#173D6E]"
+                                activeClassName="!bg-[#F8FBFF] !text-[#123F73] font-extrabold ring-2 ring-inset ring-[#6BB6E3] shadow-[0_5px_14px_rgba(4,24,48,0.22)] hover:!bg-white hover:!text-[#123F73] [&_.module-icon]:!text-[#1B58A0]"
                               >
-                                <item.icon className="mr-3 h-[18px] w-[18px] shrink-0 text-[#AFC8DF]" />
+                                <item.icon className="module-icon mr-3 h-[18px] w-[18px] shrink-0 text-[#AFC8DF]" />
                                 <span className="truncate">{item.title}</span>
                               </NavLink>
                             </SidebarMenuButton>
