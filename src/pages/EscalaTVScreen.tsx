@@ -51,6 +51,8 @@ const numberFormat = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 0,
 });
 
+const DATA_REFRESH_INTERVAL_MS = 15_000;
+
 const getChinaTotal = (row: EscalaLinha) =>
   Number(row.QTD_CHINA_VACA || 0) + Number(row.QTD_CHINA_BOI || 0);
 
@@ -191,6 +193,9 @@ export default function EscalaTVScreen() {
   const timeoutIdsRef = useRef<number[]>([]);
   const controlsHideTimeoutRef = useRef<number | null>(null);
   const pauseRef = useRef(isPaused);
+  const linesSignatureRef = useRef("");
+  const pendingLinesRef = useRef<EscalaLinha[] | null>(null);
+  const pendingLinesSignatureRef = useRef("");
 
   const nroempresa = getEmpresaLogada(user);
   const buyerDirectory = useMemo(
@@ -205,27 +210,68 @@ export default function EscalaTVScreen() {
   }, [isPaused]);
 
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
+    let cancelled = false;
+    let requestInFlight = false;
+
+    const loadData = async (initialLoad = false) => {
+      if (requestInFlight) return;
+      requestInFlight = true;
+      if (initialLoad) setLoading(true);
 
       try {
-        const [data, users] = await Promise.all([
-          consultarEscala({
-            nroempresa,
-            data_inicio: dateStart,
-            data_fim: dateEnd,
-          }),
-          api.getUsuarios(),
-        ]);
+        const dataPromise = consultarEscala({
+          nroempresa,
+          data_inicio: dateStart,
+          data_fim: dateEnd,
+        });
+        const [data, users] = initialLoad
+          ? await Promise.all([dataPromise, api.getUsuarios()])
+          : [await dataPromise, null];
 
-        setLines(Array.isArray(data) ? data : []);
-        setBuyerUsers(Array.isArray(users) ? users : []);
+        if (cancelled) return;
+
+        const safeLines = Array.isArray(data) ? data : [];
+        const nextSignature = JSON.stringify(safeLines);
+        if (initialLoad) {
+          linesSignatureRef.current = nextSignature;
+          pendingLinesRef.current = null;
+          pendingLinesSignatureRef.current = "";
+          setLines(safeLines);
+        } else if (nextSignature !== linesSignatureRef.current) {
+          pendingLinesRef.current = safeLines;
+          pendingLinesSignatureRef.current = nextSignature;
+        } else {
+          pendingLinesRef.current = null;
+          pendingLinesSignatureRef.current = "";
+        }
+
+        if (Array.isArray(users)) setBuyerUsers(users);
+      } catch (error) {
+        console.error("Falha ao atualizar o modo TV da escala:", error);
       } finally {
-        setLoading(false);
+        requestInFlight = false;
+        if (initialLoad && !cancelled) setLoading(false);
       }
     };
 
-    void loadData();
+    const synchronize = () => {
+      if (document.visibilityState !== "hidden") void loadData();
+    };
+
+    linesSignatureRef.current = "";
+    pendingLinesRef.current = null;
+    pendingLinesSignatureRef.current = "";
+    void loadData(true);
+    const interval = window.setInterval(synchronize, DATA_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", synchronize);
+    document.addEventListener("visibilitychange", synchronize);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", synchronize);
+      document.removeEventListener("visibilitychange", synchronize);
+    };
   }, [dateEnd, dateStart, nroempresa]);
 
   const orderedLines = useMemo(
@@ -360,6 +406,16 @@ export default function EscalaTVScreen() {
 
       const currentContainer = scrollContainerRef.current;
       currentContainer.scrollTop = 0;
+
+      const pendingLines = pendingLinesRef.current;
+      if (pendingLines) {
+        linesSignatureRef.current = pendingLinesSignatureRef.current;
+        pendingLinesRef.current = null;
+        pendingLinesSignatureRef.current = "";
+        setLines(pendingLines);
+        return;
+      }
+
       const maxScroll = Math.max(
         0,
         currentContainer.scrollHeight - currentContainer.clientHeight,

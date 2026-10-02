@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { User } from "@/contexts/AuthContext";
 import {
+  canAccessAuthenticatedRoute,
   choosePostLoginRoute,
   normalizeAuthenticatedRoute,
 } from "@/lib/auth-navigation";
@@ -21,6 +22,19 @@ const fieldUser: User = {
   login: "campo",
   role: "COMPRADOR",
   modulos: ["OPERACIONAL"],
+  nivel: 1,
+};
+
+const contractsUser: User = {
+  id: 3,
+  name: "Contratos",
+  login: "contratos",
+  role: "COMPRADOR",
+  modulos: [],
+  sistemas: ["VERTICEPCP"],
+  modulosPorSistema: {
+    VERTICEPCP: ["CONTRATOS"],
+  },
   nivel: 1,
 };
 
@@ -75,5 +89,20 @@ describe("navegação após o login", () => {
     expect(normalizeAuthenticatedRoute("https://example.com/escala")).toBeNull();
     expect(normalizeAuthenticatedRoute("//example.com/escala")).toBeNull();
     expect(normalizeAuthenticatedRoute("/pagina-inexistente")).toBeNull();
+  });
+
+  it("libera Contratos para quem possui algum módulo do VERTICEPCP", () => {
+    expect(canAccessAuthenticatedRoute(contractsUser, "/contratos")).toBe(true);
+    expect(
+      choosePostLoginRoute(contractsUser, {
+        requestedRoute: "/contratos",
+        isDesktop: true,
+      }),
+    ).toBe("/contratos");
+  });
+
+  it("não libera Campo ou Escala para usuário exclusivo do VERTICEPCP", () => {
+    expect(canAccessAuthenticatedRoute(contractsUser, "/campo")).toBe(false);
+    expect(canAccessAuthenticatedRoute(contractsUser, "/escala")).toBe(false);
   });
 });

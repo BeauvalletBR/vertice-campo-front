@@ -1,6 +1,7 @@
 import type { User } from "@/contexts/AuthContext";
 
 export interface AccessRule {
+  allowedSystems?: string[];
   allowedRoles?: string[];
   allowedModules?: string[];
   minNivel?: number;
@@ -10,22 +11,30 @@ const normalize = (value: unknown) => String(value || "").trim().toUpperCase();
 
 export const APP_ROUTE_ACCESS = {
   dashboard: {
+    allowedSystems: ["VERTICECAMPO"],
     allowedModules: ["GERENCIAL"],
   },
   campo: {
+    allowedSystems: ["VERTICECAMPO"],
     allowedModules: ["OPERACIONAL"],
   },
   visitas: {
+    allowedSystems: ["VERTICECAMPO"],
     allowedModules: ["RELATORIOS"],
   },
   agendamento: {
+    allowedSystems: ["VERTICECAMPO"],
     allowedRoles: ["ADMIN"],
     allowedModules: ["ADMIN"],
     minNivel: 3,
   },
   escala: {
+    allowedSystems: ["VERTICECAMPO"],
     allowedRoles: ["ADMIN"],
     allowedModules: ["ESCALA", "ADMIN"],
+  },
+  contratos: {
+    allowedSystems: ["VERTICEPCP"],
   },
 } satisfies Record<string, AccessRule>;
 
@@ -35,6 +44,7 @@ const DESKTOP_DEFAULT_ROUTE_ORDER = [
   "/visitas",
   "/agendamento",
   "/escala",
+  "/contratos",
 ] as const;
 
 const MOBILE_DEFAULT_ROUTE_ORDER = [
@@ -43,6 +53,7 @@ const MOBILE_DEFAULT_ROUTE_ORDER = [
   "/visitas",
   "/agendamento",
   "/escala",
+  "/contratos",
 ] as const;
 
 const ACCESS_BY_PATH: Record<string, AccessRule> = {
@@ -52,6 +63,35 @@ const ACCESS_BY_PATH: Record<string, AccessRule> = {
   "/visitas": APP_ROUTE_ACCESS.visitas,
   "/agendamento": APP_ROUTE_ACCESS.agendamento,
   "/escala": APP_ROUTE_ACCESS.escala,
+  "/contratos": APP_ROUTE_ACCESS.contratos,
+};
+
+const getUserSystems = (user: User): string[] => {
+  const explicitSystems = (user.sistemas || []).map(normalize).filter(Boolean);
+  const mappedSystems = Object.keys(user.modulosPorSistema || {})
+    .map(normalize)
+    .filter(Boolean);
+  const systems = Array.from(new Set([...explicitSystems, ...mappedSystems]));
+
+  // Sessões anteriores à separação por sistema só continham módulos do Campo.
+  if (systems.length === 0 && (user.modulos || []).length > 0) {
+    systems.push("VERTICECAMPO");
+  }
+
+  return systems;
+};
+
+const getUserModules = (user: User, systems: string[]): string[] => {
+  const mappedModules = systems.flatMap((system) => {
+    const entry = Object.entries(user.modulosPorSistema || {}).find(
+      ([key]) => normalize(key) === system,
+    );
+    return (entry?.[1] || []).map(normalize);
+  });
+
+  if (mappedModules.length > 0) return Array.from(new Set(mappedModules));
+  if (systems.includes("VERTICECAMPO")) return (user.modulos || []).map(normalize);
+  return [];
 };
 
 export function hasAccessToRule(
@@ -62,7 +102,18 @@ export function hasAccessToRule(
   if (!user) return false;
 
   const userRole = normalize(user.role);
-  const userModules = (user.modulos || []).map(normalize);
+  const userSystems = getUserSystems(user);
+  const allowedSystems = (rule.allowedSystems || []).map(normalize);
+
+  if (
+    allowedSystems.length > 0 &&
+    !allowedSystems.some((system) => userSystems.includes(system))
+  ) {
+    return false;
+  }
+
+  const relevantSystems = allowedSystems.length > 0 ? allowedSystems : userSystems;
+  const userModules = getUserModules(user, relevantSystems);
   const userNivel = Number(user.nivel || 0);
   const isAdmin = userRole === "ADMIN" || userModules.includes("ADMIN");
 

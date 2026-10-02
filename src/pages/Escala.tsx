@@ -2526,17 +2526,13 @@ export default function Escala() {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={!firstScaleShortcut}
-                title={
-                  firstScaleShortcut
-                    ? `Adicionar manual em ${formatDate(firstScaleShortcut.day)}`
-                    : "Crie uma escala nesta semana para adicionar manual"
-                }
+                title="Adicionar lançamento manual escolhendo a data"
                 className="h-11 w-full shrink-0 gap-2 rounded-xl border-[#8EC7D9] bg-[#EFF8FA] px-4 text-sm font-black text-[#09759D] shadow-sm hover:border-[#57AFCB] hover:bg-[#E2F6FB] disabled:border-[#D4DFE8] disabled:bg-[#F5F8FB] disabled:text-[#90A3B7] sm:w-auto"
                 onClick={() => {
-                  if (!firstScaleShortcut) return;
+                  const targetScaleId = firstScaleShortcut?.idEscala || 0;
+                  const suggestedDate = firstScaleShortcut?.day || dateStart;
                   navigateFromPlanning(
-                    `/escala/gerenciar/${firstScaleShortcut.idEscala}?novoManual=1`,
+                    `/escala/gerenciar/${targetScaleId}?novoManual=1&data=${encodeURIComponent(suggestedDate)}&voltarEscala=1`,
                   );
                 }}
               >
@@ -3087,7 +3083,7 @@ export default function Escala() {
                             className="order-first h-10 w-full gap-2 rounded-lg border-[#8EC7D9] bg-[#EFF8FA] px-4 text-sm font-black text-[#09759D] shadow-sm hover:border-[#57AFCB] hover:bg-[#E2F6FB] sm:h-9 sm:w-auto sm:min-w-[172px] sm:px-3 sm:text-xs"
                             onClick={() =>
                               navigateFromPlanning(
-                                `/escala/gerenciar/${idEscala}?novoManual=1`,
+                                `/escala/gerenciar/${idEscala}?novoManual=1&data=${encodeURIComponent(day)}&voltarEscala=1`,
                               )
                             }
                           >

@@ -24,6 +24,9 @@ export const normalizeAuthenticatedRoute = (value: unknown): string | null => {
   if (url.pathname === "/escala" || url.pathname.startsWith("/escala/")) {
     return route;
   }
+  if (url.pathname === "/contratos" || url.pathname.startsWith("/contratos/")) {
+    return route;
+  }
 
   return null;
 };
@@ -51,6 +54,9 @@ export const canAccessAuthenticatedRoute = (
   }
   if (pathname === "/escala" || pathname.startsWith("/escala/")) {
     return hasAccessToRule(user, APP_ROUTE_ACCESS.escala);
+  }
+  if (pathname === "/contratos" || pathname.startsWith("/contratos/")) {
+    return hasAccessToRule(user, APP_ROUTE_ACCESS.contratos);
   }
 
   return false;

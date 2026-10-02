@@ -4,6 +4,7 @@ import {
   CalendarPlus,
   CalendarRange,
   ChevronDown,
+  FileSignature,
   Folder,
   LayoutDashboard,
   ListTodo,
@@ -81,10 +82,12 @@ export function AppSidebar() {
 
   const isAgendamentoActive = location.pathname.startsWith("/agendamento");
   const isEscalaActive = location.pathname.startsWith("/escala");
+  const isContratosActive = location.pathname.startsWith("/contratos");
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     campo: true,
     escala: isEscalaActive,
+    contratos: isContratosActive,
   });
 
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
@@ -109,7 +112,14 @@ export function AppSidebar() {
       }));
     }
 
-  }, [collapsed, isAgendamentoActive, isEscalaActive]);
+    if (isContratosActive) {
+      setOpenGroups((previous) => ({
+        ...previous,
+        contratos: true,
+      }));
+    }
+
+  }, [collapsed, isAgendamentoActive, isContratosActive, isEscalaActive]);
 
   const toggleGroup = (groupId: string) => {
     if (collapsed) return;
@@ -222,6 +232,20 @@ export function AppSidebar() {
         },
       ],
     },
+    {
+      id: "contratos",
+      title: "Contratos",
+      icon: FileSignature,
+      items: [
+        {
+          id: "contratos-inicio",
+          title: "Contratos",
+          url: "/contratos",
+          icon: FileSignature,
+          access: APP_ROUTE_ACCESS.contratos,
+        },
+      ],
+    },
   ];
 
   const normalizedMenuGroups = menuGroups.flatMap((group) => {
@@ -307,9 +331,6 @@ export function AppSidebar() {
               <span className="block truncate text-base font-extrabold leading-tight text-[#173D6E]">
                 Vértice
               </span>
-              <span className="mt-1 block truncate text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#60758A]">
-                Compra de Gado
-              </span>
             </div>
           )}
         </div>
@@ -381,6 +402,8 @@ export function AppSidebar() {
 
               return hasItemAccess;
             });
+
+          if (filteredItems.length === 0) return null;
 
           return (
             <SidebarGroup key={group.id} className="px-2 pb-3">

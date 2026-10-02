@@ -956,6 +956,8 @@ export interface LoginResponse {
     name: string;
     role: "ADMIN" | "COMPRADOR";
     modulos?: string[];
+    sistemas?: string[];
+    modulos_por_sistema?: Record<string, string[]>;
     nivel?: number;
     nroempresa?: number;
   };

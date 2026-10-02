@@ -22,8 +22,15 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { fetchHistoricoCompras } from "@/services/api";
-import type { ApiHistoricoCompra, ApiUsuario } from "@/services/api";
+import {
+  fetchHistoricoCompras,
+  fetchPecuaristasAgendamento,
+} from "@/services/api";
+import type {
+  ApiHistoricoCompra,
+  ApiRancher,
+  ApiUsuario,
+} from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -212,6 +219,8 @@ interface EditOrderForm {
 interface ManualForm {
   id_escala_item_manual: number;
   versao: number;
+  data_abate: string;
+  sexo: "BOI" | "VACA" | "AMBOS";
   nome_produtor: string;
   nome_fazenda: string;
   municipio: string;
@@ -275,6 +284,8 @@ const emptyEditOrderForm = (): EditOrderForm => ({
 const emptyManualForm = (): ManualForm => ({
   id_escala_item_manual: 0,
   versao: 1,
+  data_abate: today,
+  sexo: "BOI",
   nome_produtor: "",
   nome_fazenda: "",
   municipio: "",
@@ -399,6 +410,7 @@ export default function EscalaGerenciador() {
   const [historicoCompras, setHistoricoCompras] = useState<ApiHistoricoCompra[]>(
     [],
   );
+  const [ranchers, setRanchers] = useState<ApiRancher[]>([]);
   const [paymentTerms, setPaymentTerms] = useState<PrazoPagamento[]>([]);
   const [loadingPaymentTerms, setLoadingPaymentTerms] = useState(true);
 
@@ -559,6 +571,62 @@ export default function EscalaGerenciador() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRanchers = async () => {
+      const data = await fetchPecuaristasAgendamento(false);
+      if (!cancelled) setRanchers(Array.isArray(data) ? data : []);
+    };
+
+    void loadRanchers();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const manualFarmOptions = useMemo(() => {
+    const producer = normalizeText(manualForm.nome_produtor);
+    if (!producer) return ranchers;
+    const matches = ranchers.filter(
+      (rancher) => normalizeText(rancher.NOME_PRODUTOR) === producer,
+    );
+    return matches.length > 0 ? matches : ranchers;
+  }, [manualForm.nome_produtor, ranchers]);
+
+  const applyRancherToManualForm = (rancher: ApiRancher) => {
+    setManualForm((current) => ({
+      ...current,
+      nome_produtor: rancher.NOME_PRODUTOR || current.nome_produtor,
+      nome_fazenda: rancher.NOME_FAZENDA || "",
+      municipio: rancher.MUNICIPIO || "",
+      uf: rancher.UF_FAZENDA || current.uf || "GO",
+    }));
+  };
+
+  const updateManualProducer = (value: string) => {
+    const match = ranchers.find(
+      (rancher) =>
+        normalizeText(rancher.NOME_PRODUTOR) === normalizeText(value),
+    );
+    if (match) {
+      applyRancherToManualForm(match);
+      return;
+    }
+    setManualForm((current) => ({ ...current, nome_produtor: value }));
+  };
+
+  const updateManualFarm = (value: string) => {
+    const match = manualFarmOptions.find(
+      (rancher) => normalizeText(rancher.NOME_FAZENDA) === normalizeText(value),
+    );
+    if (match) {
+      applyRancherToManualForm(match);
+      return;
+    }
+    setManualForm((current) => ({ ...current, nome_fazenda: value }));
+  };
 
   useEffect(() => {
     if (!editingOrderPaymentTerm) return;
@@ -749,6 +817,7 @@ export default function EscalaGerenciador() {
   const openInsertManualModal = () => {
     setManualForm({
       ...emptyManualForm(),
+      data_abate: scaleForm.data_abate || searchParams.get("data") || today,
       ordem_exibicao: String(records.length + 1),
     });
     setModalMode("insert-manual");
@@ -762,6 +831,13 @@ export default function EscalaGerenciador() {
     setManualForm({
       id_escala_item_manual: id,
       versao: toNumber(row.VERSAO_REGISTRO) || 1,
+      data_abate: row.DATA_ABATE?.split("T")[0] || scaleForm.data_abate || today,
+      sexo:
+        toNumber(row.QTD_VACA) > 0 && toNumber(row.QTD_BOI) > 0
+          ? "AMBOS"
+          : toNumber(row.QTD_VACA) > 0
+            ? "VACA"
+            : "BOI",
       nome_produtor: row.PRODUTOR || "",
       nome_fazenda: row.DESC_PROPRIEDADE || "",
       municipio: row.CIDADE_PROPRIEDADE || "",
@@ -801,12 +877,20 @@ export default function EscalaGerenciador() {
   };
 
   useEffect(() => {
-    if (!scaleId || loading || autoHandled) return;
+    if (loading || autoHandled) return;
 
     const editarPedido = Number(searchParams.get("editarPedido"));
     const editarManual = Number(searchParams.get("editarManual"));
     const novoManual = searchParams.get("novoManual") === "1";
     const novoPedido = searchParams.get("novoPedido") === "1";
+
+    if (novoManual) {
+      setAutoHandled("NOVO-MANUAL");
+      openInsertManualModal();
+      return;
+    }
+
+    if (!scaleId) return;
 
     if (Number.isFinite(editarPedido) && editarPedido > 0) {
       const row = linkedOrders.find(
@@ -828,12 +912,6 @@ export default function EscalaGerenciador() {
         setAutoHandled(`MANUAL-${editarManual}`);
         openEditManualModal(row);
       }
-      return;
-    }
-
-    if (novoManual) {
-      setAutoHandled("NOVO-MANUAL");
-      openInsertManualModal();
       return;
     }
 
@@ -1137,6 +1215,12 @@ export default function EscalaGerenciador() {
   };
 
   const validateManualForm = () => {
+    if (modalMode === "insert-manual" && !manualForm.data_abate) {
+      toast.warning("Informe a data do lançamento.");
+      focusModalField("data_abate");
+      return false;
+    }
+
     if (!normalizeText(manualForm.nome_produtor)) {
       toast.warning("Informe o nome do produtor.");
       focusModalField("nome_produtor");
@@ -1210,7 +1294,8 @@ export default function EscalaGerenciador() {
   };
 
   const handleSaveManual = async (curralCapacityConfirmed = false) => {
-    if (!scaleId || !validateManualForm()) return;
+    if (!validateManualForm()) return;
+    if (modalMode === "edit-manual" && !scaleId) return;
 
     const curral = toNullableNumber(manualForm.curral);
     const currentManualRow = records.find(
@@ -1237,7 +1322,9 @@ export default function EscalaGerenciador() {
 
     const payload = {
       nroempresa,
-      id_escala: scaleId,
+      id_escala: modalMode === "edit-manual" ? scaleId : null,
+      data_abate:
+        modalMode === "insert-manual" ? manualForm.data_abate : null,
       nome_produtor: normalizeText(manualForm.nome_produtor),
       nome_fazenda: normalizeText(manualForm.nome_fazenda) || null,
       municipio: normalizeText(manualForm.municipio) || null,
@@ -1960,28 +2047,93 @@ export default function EscalaGerenciador() {
           wide
         >
           <div className="space-y-5">
+            <datalist id="manual-producer-options">
+              {ranchers.map((rancher, index) => (
+                <option
+                  key={`${rancher.COD_PRODUTOR}-${rancher.INSCRICAO || index}`}
+                  value={rancher.NOME_PRODUTOR}
+                >
+                  {rancher.NOME_FAZENDA}
+                </option>
+              ))}
+            </datalist>
+            <datalist id="manual-farm-options">
+              {manualFarmOptions.map((rancher, index) => (
+                <option
+                  key={`${rancher.COD_PRODUTOR}-${rancher.INSCRICAO || index}`}
+                  value={rancher.NOME_FAZENDA}
+                >
+                  {rancher.NOME_PRODUTOR}
+                </option>
+              ))}
+            </datalist>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {modalMode === "insert-manual" && (
+                <Field label="Data do lançamento" required>
+                  <Input
+                    data-focus-field="data_abate"
+                    type="date"
+                    value={manualForm.data_abate}
+                    onChange={(event) =>
+                      setManualForm((current) => ({
+                        ...current,
+                        data_abate: event.target.value,
+                      }))
+                    }
+                  />
+                </Field>
+              )}
+              <Field label="Sexo" required>
+                <select
+                  value={manualForm.sexo}
+                  onChange={(event) => {
+                    const sexo = event.target.value as ManualForm["sexo"];
+                    setManualForm((current) => ({
+                      ...current,
+                      sexo,
+                      ...(sexo === "BOI"
+                        ? {
+                            qtd_vaca: "0",
+                            qtd_china_vaca: "0",
+                            qtd_agrotools_vaca: "0",
+                          }
+                        : sexo === "VACA"
+                          ? {
+                              qtd_boi: "0",
+                              qtd_china_boi: "0",
+                              qtd_agrotools_boi: "0",
+                            }
+                          : {}),
+                    }));
+                  }}
+                  className="flex h-10 w-full rounded-lg border border-[#C5D4E2] bg-white px-3 text-sm font-bold text-[#334E68] outline-none focus:border-[#1B58A0] focus:ring-2 focus:ring-[#1B58A0]/15"
+                >
+                  <option value="BOI">Boi</option>
+                  <option value="VACA">Vaca</option>
+                  {manualForm.sexo === "AMBOS" && (
+                    <option value="AMBOS">Boi e vaca (registro antigo)</option>
+                  )}
+                </select>
+              </Field>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Field label="Nome do produtor" className="lg:col-span-2" required>
                 <Input
                   data-focus-field="nome_produtor"
+                  list="manual-producer-options"
                   value={manualForm.nome_produtor}
-                  onChange={(event) =>
-                    setManualForm((current) => ({
-                      ...current,
-                      nome_produtor: event.target.value,
-                    }))
-                  }
+                  onChange={(event) => updateManualProducer(event.target.value)}
+                  placeholder="Selecione ou digite o produtor"
                 />
               </Field>
               <Field label="Fazenda">
                 <Input
+                  list="manual-farm-options"
                   value={manualForm.nome_fazenda}
-                  onChange={(event) =>
-                    setManualForm((current) => ({
-                      ...current,
-                      nome_fazenda: event.target.value,
-                    }))
-                  }
+                  onChange={(event) => updateManualFarm(event.target.value)}
+                  placeholder="Selecione ou digite a fazenda"
                 />
               </Field>
               <Field label="Município / UF">
@@ -2009,7 +2161,8 @@ export default function EscalaGerenciador() {
               </Field>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-2">
+            {manualForm.sexo === "AMBOS" ? (
+              <div className="grid gap-4 xl:grid-cols-2">
               <AnimalBlock
                 title="Vacas"
                 required
@@ -2063,7 +2216,69 @@ export default function EscalaGerenciador() {
                   agrotools: "qtd_agrotools_boi",
                 }}
               />
-            </div>
+              </div>
+            ) : (
+              <AnimalBlock
+                title={manualForm.sexo === "VACA" ? "Vacas" : "Bois"}
+                required
+                quantity={
+                  manualForm.sexo === "VACA"
+                    ? manualForm.qtd_vaca
+                    : manualForm.qtd_boi
+                }
+                arrobas={
+                  manualForm.sexo === "VACA"
+                    ? manualForm.arrobas_vaca
+                    : manualForm.arrobas_boi
+                }
+                unitValue={
+                  manualForm.sexo === "VACA"
+                    ? manualForm.vlrunitario_vaca
+                    : manualForm.vlrunitario_boi
+                }
+                china={
+                  manualForm.sexo === "VACA"
+                    ? manualForm.qtd_china_vaca
+                    : manualForm.qtd_china_boi
+                }
+                agrotools={
+                  manualForm.sexo === "VACA"
+                    ? manualForm.qtd_agrotools_vaca
+                    : manualForm.qtd_agrotools_boi
+                }
+                onChange={(field, value) =>
+                  setManualForm((current) => ({
+                    ...current,
+                    [field]: value,
+                    ...(field === "qtd_vaca" &&
+                    toNumber(current.qtd_agrotools_vaca) > 0
+                      ? { qtd_agrotools_vaca: value }
+                      : {}),
+                    ...(field === "qtd_boi" &&
+                    toNumber(current.qtd_agrotools_boi) > 0
+                      ? { qtd_agrotools_boi: value }
+                      : {}),
+                  }))
+                }
+                fieldMap={
+                  manualForm.sexo === "VACA"
+                    ? {
+                        quantity: "qtd_vaca",
+                        arrobas: "arrobas_vaca",
+                        unitValue: "vlrunitario_vaca",
+                        china: "qtd_china_vaca",
+                        agrotools: "qtd_agrotools_vaca",
+                      }
+                    : {
+                        quantity: "qtd_boi",
+                        arrobas: "arrobas_boi",
+                        unitValue: "vlrunitario_boi",
+                        china: "qtd_china_boi",
+                        agrotools: "qtd_agrotools_boi",
+                      }
+                }
+              />
+            )}
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
               <Field label="Prêmio unitário">

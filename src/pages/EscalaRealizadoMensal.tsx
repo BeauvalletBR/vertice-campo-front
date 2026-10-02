@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   BadgeCheck,
   CalendarRange,
   CircleDollarSign,
   ClipboardList,
+  FileDown,
   Loader2,
   TrendingUp,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Bar,
   BarChart,
@@ -23,6 +25,7 @@ import {
 } from "recharts";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -86,6 +89,10 @@ interface RealizedMonth {
   liquidWeight: number;
   averageArrobas: number | null;
   commission: number;
+  averageValue: number | null;
+  pricedQuantity: number;
+  chinaQuantity: number;
+  agrotoolsQuantity: number;
 }
 
 interface MetricCardProps {
@@ -131,7 +138,9 @@ export default function EscalaRealizadoMensal() {
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [records, setRecords] = useState<EscalaRealizadoMensal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reportRef = useRef<HTMLDivElement | null>(null);
   const nroempresa = getEmpresaLogada(user);
 
   const yearOptions = useMemo(() => {
@@ -201,6 +210,11 @@ export default function EscalaRealizadoMensal() {
               ? null
               : toNumber(record.MEDIA_ARROBA),
         commission: toNumber(record?.COMISSAO),
+        averageValue:
+          record?.VALOR_MEDIO == null ? null : toNumber(record.VALOR_MEDIO),
+        pricedQuantity: toNumber(record?.QTD_COM_VALOR),
+        chinaQuantity: toNumber(record?.QTD_CHINA),
+        agrotoolsQuantity: toNumber(record?.QTD_AGROTOOLS),
       };
     });
   }, [records]);
@@ -213,9 +227,24 @@ export default function EscalaRealizadoMensal() {
         accumulator.cows += month.cows;
         accumulator.liquidWeight += month.liquidWeight;
         accumulator.commission += month.commission;
+        accumulator.weightedValue +=
+          (month.averageValue ?? 0) * month.pricedQuantity;
+        accumulator.pricedQuantity += month.pricedQuantity;
+        accumulator.chinaQuantity += month.chinaQuantity;
+        accumulator.agrotoolsQuantity += month.agrotoolsQuantity;
         return accumulator;
       },
-      { quantity: 0, bulls: 0, cows: 0, liquidWeight: 0, commission: 0 },
+      {
+        quantity: 0,
+        bulls: 0,
+        cows: 0,
+        liquidWeight: 0,
+        commission: 0,
+        weightedValue: 0,
+        pricedQuantity: 0,
+        chinaQuantity: 0,
+        agrotoolsQuantity: 0,
+      },
     );
 
     return {
@@ -223,6 +252,10 @@ export default function EscalaRealizadoMensal() {
       averageArrobas:
         total.quantity > 0
           ? total.liquidWeight / total.quantity / 15
+          : null,
+      averageValue:
+        total.pricedQuantity > 0
+          ? total.weightedValue / total.pricedQuantity
           : null,
     };
   }, [months]);
@@ -270,10 +303,101 @@ export default function EscalaRealizadoMensal() {
 
   const hasData = totals.quantity > 0 || totals.commission !== 0;
 
+  const handleExportPdf = async () => {
+    const report = reportRef.current;
+    if (!report || loading || exportingPdf) return;
+
+    setExportingPdf(true);
+    try {
+      await document.fonts?.ready;
+      const [{ default: html2canvas }, { default: JsPDF }] =
+        await Promise.all([import("html2canvas"), import("jspdf")]);
+      const captureWidth = Math.max(report.scrollWidth, 1480);
+      const captureSection = (section: "summary" | "closing") =>
+        html2canvas(report, {
+          scale: 1.5,
+          useCORS: true,
+          logging: false,
+          backgroundColor: "#F3F7FA",
+          width: captureWidth,
+          windowWidth: captureWidth,
+          onclone: (clonedDocument) => {
+            const clonedReport = clonedDocument.getElementById(
+              "realizado-mensal-report",
+            );
+            if (clonedReport) {
+              clonedReport.style.width = `${captureWidth}px`;
+              clonedReport.style.maxWidth = "none";
+            }
+
+            clonedDocument
+              .querySelectorAll<HTMLElement>("[data-pdf-section]")
+              .forEach((element) => {
+                if (element.dataset.pdfSection !== section) {
+                  element.style.display = "none";
+                }
+              });
+          },
+        });
+
+      const [summaryCanvas, closingCanvas] = await Promise.all([
+        captureSection("summary"),
+        captureSection("closing"),
+      ]);
+
+      const pdf = new JsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+        compress: true,
+      });
+      const margin = 3;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const printableWidth = pageWidth - margin * 2;
+      const printableHeight = pageHeight - margin * 2;
+
+      const addCanvasPage = (
+        canvas: HTMLCanvasElement,
+        addPage: boolean,
+      ) => {
+        if (addPage) pdf.addPage("a4", "landscape");
+
+        pdf.addImage(
+          canvas.toDataURL("image/jpeg", 0.92),
+          "JPEG",
+          margin,
+          margin,
+          printableWidth,
+          printableHeight,
+          undefined,
+          "FAST",
+        );
+      };
+
+      addCanvasPage(summaryCanvas, false);
+      addCanvasPage(closingCanvas, true);
+
+      pdf.save(`realizado-mensal-${selectedYear}.pdf`);
+    } catch (exportError) {
+      console.error("Falha ao exportar o realizado mensal em PDF:", exportError);
+      toast.error("Não foi possível gerar o PDF do realizado mensal.");
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   return (
     <main className="min-h-full bg-[radial-gradient(circle_at_top_right,#E8F3F7_0,transparent_28%),linear-gradient(180deg,#F6F9FC_0%,#EEF3F7_100%)] p-3 sm:p-5 lg:p-6">
-      <div className="mx-auto max-w-[1680px] space-y-5">
-        <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div
+        id="realizado-mensal-report"
+        ref={reportRef}
+        className="mx-auto max-w-[1680px] space-y-5"
+      >
+        <header
+          data-pdf-section="summary"
+          className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between"
+        >
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#1B67AA]">
               Escala · desempenho industrial
@@ -286,26 +410,46 @@ export default function EscalaRealizadoMensal() {
             </p>
           </div>
 
-          <label className="flex w-full flex-col gap-1.5 rounded-2xl border border-[#D2DFEA] bg-white p-3 shadow-sm sm:w-[220px]">
-            <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[#60758A]">
-              Ano analisado
-            </span>
-            <Select
-              value={String(selectedYear)}
-              onValueChange={(value) => setSelectedYear(Number(value))}
+          <div className="flex w-full items-end gap-2 sm:w-auto">
+            <label className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-2xl border border-[#D2DFEA] bg-white p-3 shadow-sm sm:w-[220px] sm:flex-none">
+              <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[#60758A]">
+                Ano analisado
+              </span>
+              <Select
+                value={String(selectedYear)}
+                onValueChange={(value) => setSelectedYear(Number(value))}
+              >
+                <SelectTrigger className="h-10 rounded-xl border-[#C7D6E3] font-black text-[#173D6E]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((year) => (
+                    <SelectItem key={year} value={String(year)}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+
+            <Button
+              type="button"
+              data-html2canvas-ignore
+              disabled={loading || Boolean(error) || exportingPdf}
+              className="h-[74px] shrink-0 gap-2 rounded-2xl bg-[#173D6E] px-4 font-black text-white shadow-sm hover:bg-[#214F84] disabled:bg-[#9AABBA]"
+              onClick={() => void handleExportPdf()}
             >
-              <SelectTrigger className="h-10 rounded-xl border-[#C7D6E3] font-black text-[#173D6E]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {yearOptions.map((year) => (
-                  <SelectItem key={year} value={String(year)}>
-                    {year}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+              {exportingPdf ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileDown className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">
+                {exportingPdf ? "Gerando PDF..." : "Exportar PDF"}
+              </span>
+              <span className="sm:hidden">PDF</span>
+            </Button>
+          </div>
         </header>
 
         {loading ? (
@@ -326,20 +470,29 @@ export default function EscalaRealizadoMensal() {
           </Card>
         ) : (
           <>
-            <div className="flex gap-3 overflow-x-auto pb-2 xl:grid xl:grid-cols-5 xl:overflow-visible">
+            <div
+              data-pdf-section="summary"
+              className="flex gap-3 overflow-x-auto pb-2 xl:grid xl:grid-cols-5 xl:overflow-visible"
+            >
               {cards.map((card) => (
                 <MetricCard key={card.label} {...card} />
               ))}
             </div>
 
             {!hasData ? (
-              <Card className="rounded-2xl border border-dashed border-[#BFCFDF] bg-white/80">
+              <Card
+                data-pdf-section="summary"
+                className="rounded-2xl border border-dashed border-[#BFCFDF] bg-white/80"
+              >
                 <CardContent className="p-12 text-center text-sm font-semibold text-[#60758A]">
                   Nenhum abate realizado foi encontrado para {selectedYear}.
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[1.65fr_1fr]">
+              <div
+                data-pdf-section="summary"
+                className="grid grid-cols-1 gap-4 2xl:grid-cols-[1.65fr_1fr]"
+              >
                 <Card className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_5px_18px_rgba(23,61,110,0.05)]">
                   <CardHeader className="border-b border-[#E2EAF1] bg-[#F8FBFD]">
                     <CardTitle className="text-lg font-black text-[#173D6E]">
@@ -398,14 +551,17 @@ export default function EscalaRealizadoMensal() {
               </div>
             )}
 
-            <Card className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_5px_18px_rgba(23,61,110,0.05)]">
+            <Card
+              data-pdf-section="closing"
+              className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_5px_18px_rgba(23,61,110,0.05)]"
+            >
               <CardHeader className="border-b border-[#E2EAF1] bg-[#F8FBFD]">
                 <CardTitle className="text-lg font-black text-[#173D6E]">
                   Fechamento mensal de {selectedYear}
                 </CardTitle>
               </CardHeader>
               <CardContent className="overflow-x-auto p-0">
-                <table className="w-full min-w-[820px] border-collapse text-sm">
+                <table className="w-full min-w-[1120px] border-collapse text-sm">
                   <thead>
                     <tr className="bg-[#173D6E] text-left text-[10px] font-black uppercase tracking-[0.09em] text-white">
                       <th className="px-4 py-3">Mês</th>
@@ -414,6 +570,9 @@ export default function EscalaRealizadoMensal() {
                       <th className="px-4 py-3 text-right">Vacas</th>
                       <th className="px-4 py-3 text-right">Média @</th>
                       <th className="px-4 py-3 text-right">Comissão</th>
+                      <th className="px-4 py-3 text-right">Valor médio</th>
+                      <th className="px-4 py-3 text-right">China</th>
+                      <th className="px-4 py-3 text-right">Agrotools</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -425,6 +584,9 @@ export default function EscalaRealizadoMensal() {
                         <td className="px-4 py-3 text-right font-bold tabular-nums text-[#A85B15]">{month.cows ? numberFormat.format(month.cows) : "—"}</td>
                         <td className="px-4 py-3 text-right font-bold tabular-nums text-[#425B73]">{month.averageArrobas === null ? "—" : decimalFormat.format(month.averageArrobas)}</td>
                         <td className="px-4 py-3 text-right font-bold tabular-nums text-[#425B73]">{month.commission ? currencyFormat.format(month.commission) : "—"}</td>
+                        <td className="px-4 py-3 text-right font-bold tabular-nums text-[#425B73]">{month.averageValue === null ? "—" : currencyFormat.format(month.averageValue)}</td>
+                        <td className="px-4 py-3 text-right font-bold tabular-nums text-[#A85B15]">{month.chinaQuantity ? numberFormat.format(month.chinaQuantity) : "—"}</td>
+                        <td className="px-4 py-3 text-right font-bold tabular-nums text-[#2B7A63]">{month.agrotoolsQuantity ? numberFormat.format(month.agrotoolsQuantity) : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -436,6 +598,9 @@ export default function EscalaRealizadoMensal() {
                       <td className="px-4 py-3 text-right tabular-nums">{numberFormat.format(totals.cows)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{totals.averageArrobas === null ? "—" : decimalFormat.format(totals.averageArrobas)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{currencyFormat.format(totals.commission)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{totals.averageValue === null ? "—" : currencyFormat.format(totals.averageValue)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{numberFormat.format(totals.chinaQuantity)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{numberFormat.format(totals.agrotoolsQuantity)}</td>
                     </tr>
                   </tfoot>
                 </table>

@@ -16,6 +16,8 @@ export interface User {
   role: "ADMIN" | "COMPRADOR";
   empresa?: string;
   modulos?: string[];
+  sistemas?: string[];
+  modulosPorSistema?: Record<string, string[]>;
   nivel?: number;
 }
 
@@ -82,6 +84,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: response.user.role || "COMPRADOR",
           empresa,
           modulos: response.user.modulos || [],
+          sistemas: response.user.sistemas || [],
+          modulosPorSistema: response.user.modulos_por_sistema || {},
           nivel: response.user.nivel || 0,
         };
 

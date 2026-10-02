@@ -107,7 +107,7 @@ export default function LoginPage() {
         <div className="absolute inset-x-0 bottom-0 p-10 xl:p-14">
           <div className="max-w-xl">
             <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-white/70">
-              Vértice Compra de Gado
+              Vértice
             </p>
 
             <h2 className="mt-3 text-3xl font-extrabold leading-tight text-white xl:text-4xl">
@@ -145,7 +145,7 @@ export default function LoginPage() {
 
             <div className="mb-7">
               <p className="text-[10px] font-extrabold uppercase tracking-[0.17em] text-[#E30613]">
-                Bem-vindo ao Vértice - Compra de gado
+                Bem-vindo ao Vértice
               </p>
 
               <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-[#173D6E] sm:text-[2rem]">

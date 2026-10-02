@@ -2,6 +2,7 @@ import {
   CalendarDays,
   CalendarPlus,
   ChevronRight,
+  FileSignature,
   LayoutDashboard,
   MapPin,
   Users,
@@ -58,6 +59,13 @@ const START_OPTIONS: StartOption[] = [
     icon: CalendarDays,
     access: APP_ROUTE_ACCESS.escala,
   },
+  {
+    title: "Contratos",
+    description: "Acesso ao módulo de contratos.",
+    route: "/contratos",
+    icon: FileSignature,
+    access: APP_ROUTE_ACCESS.contratos,
+  },
 ];
 
 export default function StartPage() {
@@ -74,7 +82,7 @@ export default function StartPage() {
           <div className="h-2 bg-[linear-gradient(90deg,#E30613_0_34%,#1B58A0_34%_70%,#0AB1D8_70%)]" />
           <div className="px-5 py-7 sm:px-8 sm:py-9">
             <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#D96B1A]">
-              Vértice Compra de Gado
+              Vértice
             </p>
             <h1 className="mt-2 text-2xl font-black tracking-tight text-[#173D6E] sm:text-3xl">
               Onde você deseja entrar?

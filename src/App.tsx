@@ -48,6 +48,7 @@ import EscalaGerenciador from "./pages/EscalaGerenciador";
 import EscalaTVScreen from "./pages/EscalaTVScreen";
 import StartPage from "./pages/StartPage";
 import VisitaLocalizacaoPublica from "./pages/VisitaLocalizacaoPublica";
+import Contratos from "./pages/Contratos";
 
 const queryClient = new QueryClient();
 
@@ -176,6 +177,10 @@ function ProtectedLayout() {
                   path="/agendamento/gerenciar"
                   element={<AgendamentoGerenciador />}
                 />
+              </Route>
+
+              <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.contratos} />}>
+                <Route path="/contratos" element={<Contratos />} />
               </Route>
 
               <Route

@@ -321,7 +321,8 @@ export interface InativarVinculoPedidoPayload {
 
 export interface RegistroManualPayload {
   nroempresa: number;
-  id_escala: number;
+  id_escala?: number | null;
+  data_abate?: string | null;
 
   nome_produtor: string;
   nome_fazenda?: string | null;
@@ -416,4 +417,8 @@ export interface EscalaRealizadoMensal {
   PESO_LIQUIDO_TOTAL: number;
   MEDIA_ARROBA: number | null;
   COMISSAO: number;
+  VALOR_MEDIO: number | null;
+  QTD_CHINA: number;
+  QTD_AGROTOOLS: number;
+  QTD_COM_VALOR: number;
 }
