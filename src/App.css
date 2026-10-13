@@ -81,3 +81,28 @@
 *::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--brand-blue) / 0.55);
 }
+
+/* Mantém os módulos acessíveis quando vários grupos do menu estão expandidos. */
+.app-sidebar-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #8da9c2 #173d6e;
+}
+
+.app-sidebar-scroll::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.app-sidebar-scroll::-webkit-scrollbar-track {
+  background: #173d6e;
+}
+
+.app-sidebar-scroll::-webkit-scrollbar-thumb {
+  border: 0.125rem solid #173d6e;
+  border-radius: 999px;
+  background: #8da9c2;
+}
+
+.app-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: #b5c8d9;
+}

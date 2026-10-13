@@ -230,7 +230,7 @@ let fetchPromise: Promise<ApiRancher[]> | null = null;
 let cachedHistorico: ApiHistoricoCompra[] | null = null;
 let fetchHistoricoPromise: Promise<ApiHistoricoCompra[]> | null = null;
 
-const getAuthHeaders = (isJson = false) => {
+export const getAuthHeaders = (isJson = false) => {
   const apiToken = import.meta.env.VITE_N8N_SECRET_TOKEN;
   const apiHeaderName = import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key";
   const jwtToken = localStorage.getItem("jwt_token");
@@ -279,7 +279,7 @@ const getBackendBaseUrl = () => {
   return url.toString().replace(/\/+$/, "");
 };
 
-const getBackendUrl = (path: string) =>
+export const getBackendUrl = (path: string) =>
   `${getBackendBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 
 const checkSessionExpired = (response: Response) => {

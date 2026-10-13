@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import {
+  Boxes,
   CalendarDays,
   CalendarPlus,
   CalendarRange,
   ChevronDown,
   FileSignature,
+  FlaskConical,
   Folder,
   LayoutDashboard,
   ListTodo,
@@ -16,6 +18,8 @@ import {
   PlusCircle,
   ShieldCheck,
   TrendingUp,
+  Trash2,
+  UserCog,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -81,17 +85,22 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
 
   const isAgendamentoActive = location.pathname.startsWith("/agendamento");
+  const isUsuariosActive = location.pathname.startsWith("/admin/usuarios");
   const isEscalaActive = location.pathname.startsWith("/escala");
   const isContratosActive = location.pathname.startsWith("/contratos");
+  const isRendimentoActive = location.pathname.startsWith("/rendimento");
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    gerenciamento: isUsuariosActive,
     campo: true,
     escala: isEscalaActive,
     contratos: isContratosActive,
+    rendimento: isRendimentoActive,
   });
 
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
     agendamentos: isAgendamentoActive,
+    rendimentoCadastros: location.pathname.startsWith("/rendimento/cadastros"),
   });
 
   useEffect(() => {
@@ -112,6 +121,10 @@ export function AppSidebar() {
       }));
     }
 
+    if (isUsuariosActive) {
+      setOpenGroups((previous) => ({ ...previous, gerenciamento: true }));
+    }
+
     if (isContratosActive) {
       setOpenGroups((previous) => ({
         ...previous,
@@ -119,7 +132,17 @@ export function AppSidebar() {
       }));
     }
 
-  }, [collapsed, isAgendamentoActive, isContratosActive, isEscalaActive]);
+    if (isRendimentoActive) {
+      setOpenGroups((previous) => ({ ...previous, rendimento: true }));
+      if (location.pathname.startsWith("/rendimento/cadastros")) {
+        setOpenSubmenus((previous) => ({
+          ...previous,
+          rendimentoCadastros: true,
+        }));
+      }
+    }
+
+  }, [collapsed, isAgendamentoActive, isContratosActive, isEscalaActive, isRendimentoActive, isUsuariosActive, location.pathname]);
 
   const toggleGroup = (groupId: string) => {
     if (collapsed) return;
@@ -138,6 +161,20 @@ export function AppSidebar() {
   };
 
   const menuGroups: MenuGroup[] = [
+    {
+      id: "gerenciamento",
+      title: "Gerenciamento",
+      icon: UserCog,
+      items: [
+        {
+          id: "usuarios",
+          title: "Usuários",
+          url: "/admin/usuarios",
+          icon: UserCog,
+          access: APP_ROUTE_ACCESS.usuarios,
+        },
+      ],
+    },
     {
       id: "campo",
       title: "Campo",
@@ -243,6 +280,40 @@ export function AppSidebar() {
           url: "/contratos",
           icon: FileSignature,
           access: APP_ROUTE_ACCESS.contratos,
+        },
+      ],
+    },
+    {
+      id: "rendimento",
+      title: "Teste rendimento",
+      icon: FlaskConical,
+      items: [
+        {
+          id: "rendimento-testes",
+          title: "Testes",
+          url: "/rendimento/testes",
+          icon: FlaskConical,
+          access: APP_ROUTE_ACCESS.rendimento,
+        },
+        {
+          id: "rendimentoCadastros",
+          title: "Cadastros",
+          icon: Boxes,
+          access: APP_ROUTE_ACCESS.rendimento,
+          subItems: [
+            {
+              title: "Produtos/Cortes",
+              url: "/rendimento/cadastros/produtos",
+              icon: Boxes,
+              access: APP_ROUTE_ACCESS.rendimento,
+            },
+            {
+              title: "Tipos de descarte",
+              url: "/rendimento/cadastros/descartes",
+              icon: Trash2,
+              access: APP_ROUTE_ACCESS.rendimento,
+            },
+          ],
         },
       ],
     },
@@ -375,7 +446,7 @@ export function AppSidebar() {
       </div>
 
       {/* Área dos módulos com predominância do azul-marinho */}
-      <SidebarContent className="bg-[#173D6E] px-0 py-3">
+      <SidebarContent className="app-sidebar-scroll min-h-0 flex-1 overflow-y-scroll overscroll-contain bg-[#173D6E] px-0 py-4">
         {normalizedMenuGroups.map((group) => {
           const isGroupOpen = openGroups[group.id];
 
@@ -405,8 +476,30 @@ export function AppSidebar() {
 
           if (filteredItems.length === 0) return null;
 
+          const isGroupActive = filteredItems.some((item) => {
+            if (item.url) {
+              return (
+                location.pathname === item.url ||
+                location.pathname.startsWith(`${item.url}/`)
+              );
+            }
+
+            return item.subItems?.some(
+              (subItem) =>
+                location.pathname === subItem.url ||
+                location.pathname.startsWith(`${subItem.url}/`),
+            );
+          });
+
           return (
-            <SidebarGroup key={group.id} className="px-2 pb-3">
+            <SidebarGroup
+              key={group.id}
+              className={`mx-2.5 mb-3 w-auto overflow-hidden rounded-xl border bg-[#F8FAFC] p-0 shadow-[0_6px_16px_rgba(4,25,49,0.18)] transition-all duration-200 ${
+                isGroupActive
+                  ? "border-[#C9D5E2] shadow-[0_8px_20px_rgba(4,25,49,0.24)]"
+                  : "border-[#DCE4EC] hover:border-[#C7D3DF]"
+              }`}
+            >
               <SidebarMenuItem className="list-none">
                 <SidebarMenuButton
                   asChild
@@ -415,21 +508,30 @@ export function AppSidebar() {
                 >
                   <div
                     onClick={() => toggleGroup(group.id)}
-                    className={`flex w-full select-none items-center justify-between rounded-lg px-3 py-2 transition-all ${
-                      isGroupOpen
-                        ? "text-[#AFC8DF]"
-                        : "text-[#88A9C8] hover:bg-white/5 hover:text-white"
+                    aria-expanded={Boolean(isGroupOpen)}
+                    className={`flex w-full select-none items-center justify-between text-[#173D6E] transition-colors duration-150 ${
+                      collapsed ? "h-10 justify-center px-0" : "px-3 py-3"
+                    } ${
+                      isGroupActive
+                        ? "bg-white"
+                        : isGroupOpen
+                          ? "bg-[#F7F9FC]"
+                          : "bg-[#F8FAFC] hover:bg-[#EEF3F7]"
                     }`}
                   >
                     <div className="flex min-w-0 items-center">
-                      <group.icon
-                        className={`h-4 w-4 shrink-0 ${
-                          collapsed ? "" : "mr-3"
-                        } text-[#9FBDD8]`}
-                      />
+                      <span
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center transition-colors ${
+                          isGroupActive
+                            ? "text-[#DC2626]"
+                            : "text-[#31597D]"
+                        } ${collapsed ? "" : "mr-2.5"}`}
+                      >
+                        <group.icon className="h-4 w-4" />
+                      </span>
 
                       {!collapsed && (
-                        <span className="truncate text-[11px] font-extrabold uppercase tracking-[0.11em]">
+                        <span className="truncate text-[11px] font-black uppercase tracking-[0.105em] text-[#102F53]">
                           {group.title}
                         </span>
                       )}
@@ -437,7 +539,9 @@ export function AppSidebar() {
 
                     {!collapsed && (
                       <ChevronDown
-                        className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${
+                        className={`h-4 w-4 shrink-0 transition-all duration-200 ${
+                          isGroupActive ? "text-[#DC2626]" : "text-[#607A96]"
+                        } ${
                           isGroupOpen ? "rotate-180" : ""
                         }`}
                       />
@@ -447,10 +551,10 @@ export function AppSidebar() {
               </SidebarMenuItem>
 
               {isGroupOpen && !collapsed && (
-                <SidebarGroupContent className="mt-1.5 animate-in space-y-1 fade-in slide-in-from-top-1 duration-200">
-                  <SidebarMenu className="space-y-1">
+                <SidebarGroupContent className="animate-in space-y-1 border-t border-[#E1E7EE] bg-white p-2 fade-in slide-in-from-top-1 duration-150">
+                  <SidebarMenu className="space-y-1.5">
                     {filteredItems.length === 0 ? (
-                      <div className="px-4 py-2 text-[11px] font-medium italic text-white/35">
+                      <div className="px-4 py-2 text-[11px] font-medium italic text-[#7A8DA2]">
                         Nenhum recurso liberado
                       </div>
                     ) : (
@@ -469,7 +573,7 @@ export function AppSidebar() {
                           return (
                             <div
                               key={item.id}
-                              className="flex flex-col space-y-1"
+                              className="flex flex-col space-y-1.5"
                             >
                               <SidebarMenuItem>
                                 <SidebarMenuButton
@@ -482,18 +586,18 @@ export function AppSidebar() {
                                       event.stopPropagation();
                                       toggleSubmenu(item.id);
                                     }}
-                                    className={`flex w-full select-none items-center justify-between rounded-lg px-3 py-2.5 text-sm font-bold transition-all ${
+                                    className={`flex w-full select-none items-center justify-between rounded-lg border px-3 py-2.5 text-sm font-bold transition-all ${
                                       isParentActive
-                                        ? "!bg-[#F8FBFF] !text-[#123F73] ring-2 ring-inset ring-[#6BB6E3] shadow-[0_5px_14px_rgba(4,24,48,0.22)]"
-                                        : "text-[#CFDCE9] hover:bg-white/10 hover:text-white"
+                                        ? "border-[#D3DEE9] bg-[#EDF3F8] text-[#123F73]"
+                                        : "border-transparent text-[#294766] hover:border-[#E0E7EE] hover:bg-[#F3F6F9] hover:text-[#123F73]"
                                     }`}
                                   >
                                     <div className="flex min-w-0 items-center">
                                       <item.icon
                                         className={`mr-3 h-[18px] w-[18px] shrink-0 ${
                                           isParentActive
-                                            ? "!text-[#1B58A0]"
-                                            : "text-[#AFC8DF]"
+                                            ? "text-[#DC2626]"
+                                            : "text-[#607A96]"
                                         }`}
                                       />
 
@@ -512,7 +616,7 @@ export function AppSidebar() {
                               </SidebarMenuItem>
 
                               {isSubmenuOpen && (
-                                <div className="animate-in space-y-1 py-0.5 pl-7 fade-in slide-in-from-top-1 duration-150">
+                                <div className="animate-in space-y-1 py-0.5 pl-5 fade-in slide-in-from-top-1 duration-150">
                                   {item.subItems.map((subItem) => {
                                     const isSubActive = isSubItemActive(
                                       subItem.url,
@@ -523,17 +627,17 @@ export function AppSidebar() {
                                         key={subItem.title}
                                         to={subItem.url}
                                         end={subItem.url === "/escala" || subItem.url === "/campo"}
-                                        className={`flex w-full items-center rounded-lg px-3 py-2 text-xs transition-all ${
+                                        className={`flex w-full items-center rounded-lg border-l-[3px] px-3 py-2.5 text-xs transition-all ${
                                           isSubActive
-                                            ? "!bg-[#F8FBFF] font-extrabold !text-[#123F73] ring-1 ring-inset ring-[#8FC9EA] shadow-[0_4px_12px_rgba(4,24,48,0.18)]"
-                                            : "text-[#BBD0E2] hover:bg-white/10 hover:text-white"
+                                            ? "border-l-[#DC2626] bg-[#FEF2F2] font-extrabold text-[#B91C1C] shadow-[0_2px_8px_rgba(220,38,38,0.08)]"
+                                            : "border-l-transparent text-[#405D79] hover:bg-[#F3F6F9] hover:text-[#173D6E]"
                                         }`}
                                       >
                                         <subItem.icon
                                           className={`mr-2 h-3.5 w-3.5 shrink-0 ${
                                             isSubActive
-                                              ? "text-[#1B58A0]"
-                                              : "text-[#94B5D2]"
+                                              ? "text-[#DC2626]"
+                                              : "text-[#70879E]"
                                           }`}
                                         />
                                         <span className="truncate">
@@ -560,10 +664,10 @@ export function AppSidebar() {
                               <NavLink
                                 to={item.url}
                                 end
-                                className="flex w-full items-center rounded-lg px-3 py-2.5 text-sm font-bold text-[#CFDCE9] transition-all hover:bg-white/10 hover:text-white"
-                                activeClassName="!bg-[#F8FBFF] !text-[#123F73] font-extrabold ring-2 ring-inset ring-[#6BB6E3] shadow-[0_5px_14px_rgba(4,24,48,0.22)] hover:!bg-white hover:!text-[#123F73] [&_.module-icon]:!text-[#1B58A0]"
+                                className="flex w-full items-center rounded-lg border-l-[3px] border-l-transparent px-3 py-2.5 text-sm font-bold text-[#294766] transition-all hover:bg-[#F3F6F9] hover:text-[#173D6E]"
+                                activeClassName="!border-l-[#DC2626] !bg-[#FEF2F2] !text-[#B91C1C] font-extrabold shadow-[0_2px_8px_rgba(220,38,38,0.08)] hover:!bg-[#FDE8E8] hover:!text-[#991B1B] [&_.module-icon]:!text-[#DC2626]"
                               >
-                                <item.icon className="module-icon mr-3 h-[18px] w-[18px] shrink-0 text-[#AFC8DF]" />
+                                <item.icon className="module-icon mr-3 h-[18px] w-[18px] shrink-0 text-[#607A96]" />
                                 <span className="truncate">{item.title}</span>
                               </NavLink>
                             </SidebarMenuButton>

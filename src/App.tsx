@@ -49,6 +49,8 @@ import EscalaTVScreen from "./pages/EscalaTVScreen";
 import StartPage from "./pages/StartPage";
 import VisitaLocalizacaoPublica from "./pages/VisitaLocalizacaoPublica";
 import Contratos from "./pages/Contratos";
+import UserManagement from "./pages/UserManagement";
+import RendimentoModule from "./modules/rendimento/RendimentoModule";
 
 const queryClient = new QueryClient();
 
@@ -142,6 +144,10 @@ function ProtectedLayout() {
 
               <Route path="/inicio" element={<StartPage />} />
 
+              <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.usuarios} />}>
+                <Route path="/admin/usuarios" element={<UserManagement />} />
+              </Route>
+
               <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.dashboard} />}>
                 <Route
                   path="/dashboard"
@@ -181,6 +187,10 @@ function ProtectedLayout() {
 
               <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.contratos} />}>
                 <Route path="/contratos" element={<Contratos />} />
+              </Route>
+
+              <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.rendimento} />}>
+                <Route path="/rendimento/*" element={<RendimentoModule />} />
               </Route>
 
               <Route

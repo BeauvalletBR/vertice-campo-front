@@ -38,6 +38,32 @@ const contractsUser: User = {
   nivel: 1,
 };
 
+const mainUser: User = {
+  id: 4,
+  name: "Gestor de acessos",
+  login: "gestor",
+  role: "COMPRADOR",
+  modulos: [],
+  sistemas: ["VERTICEMAIN"],
+  modulosPorSistema: {
+    VERTICEMAIN: ["USUARIOS"],
+  },
+  nivel: 1,
+};
+
+const rendimentoUser: User = {
+  id: 5,
+  name: "Rendimento",
+  login: "rendimento",
+  role: "COMPRADOR",
+  modulos: [],
+  sistemas: ["VERTICECONTR"],
+  modulosPorSistema: {
+    VERTICECONTR: ["RENDIMENTO"],
+  },
+  nivel: 1,
+};
+
 describe("navegação após o login", () => {
   it("prioriza a rota originalmente solicitada e preserva seus parâmetros", () => {
     expect(
@@ -104,5 +130,23 @@ describe("navegação após o login", () => {
   it("não libera Campo ou Escala para usuário exclusivo do VERTICEPCP", () => {
     expect(canAccessAuthenticatedRoute(contractsUser, "/campo")).toBe(false);
     expect(canAccessAuthenticatedRoute(contractsUser, "/escala")).toBe(false);
+  });
+
+  it("libera o controle de usuários somente pelo VERTICEMAIN/USUARIOS", () => {
+    expect(canAccessAuthenticatedRoute(mainUser, "/admin/usuarios")).toBe(true);
+    expect(canAccessAuthenticatedRoute(contractsUser, "/admin/usuarios")).toBe(false);
+    expect(canAccessAuthenticatedRoute(fieldUser, "/admin/usuarios")).toBe(false);
+  });
+
+  it("libera Teste de Rendimento somente pelo VERTICECONTR/RENDIMENTO", () => {
+    expect(canAccessAuthenticatedRoute(rendimentoUser, "/rendimento/testes")).toBe(true);
+    expect(
+      canAccessAuthenticatedRoute(
+        rendimentoUser,
+        "/rendimento/cadastros/produtos",
+      ),
+    ).toBe(true);
+    expect(canAccessAuthenticatedRoute(contractsUser, "/rendimento/testes")).toBe(false);
+    expect(canAccessAuthenticatedRoute(fieldUser, "/rendimento/testes")).toBe(false);
   });
 });

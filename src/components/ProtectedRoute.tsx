@@ -8,6 +8,7 @@ import {
 import { toast } from "sonner";
 
 interface ProtectedRouteProps {
+  allowedSystems?: string[];
   allowedRoles?: string[];
   allowedModules?: string[];
   minNivel?: number;
@@ -15,6 +16,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({
+  allowedSystems = [],
   allowedRoles = [],
   allowedModules = [],
   minNivel,
@@ -36,6 +38,7 @@ export function ProtectedRoute({
   }
 
   const hasAccess = hasAccessToRule(user, {
+    allowedSystems,
     allowedRoles,
     allowedModules,
     minNivel,

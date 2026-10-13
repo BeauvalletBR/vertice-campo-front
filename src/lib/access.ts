@@ -10,6 +10,10 @@ export interface AccessRule {
 const normalize = (value: unknown) => String(value || "").trim().toUpperCase();
 
 export const APP_ROUTE_ACCESS = {
+  usuarios: {
+    allowedSystems: ["VERTICEMAIN"],
+    allowedModules: ["USUARIOS"],
+  },
   dashboard: {
     allowedSystems: ["VERTICECAMPO"],
     allowedModules: ["GERENCIAL"],
@@ -36,27 +40,36 @@ export const APP_ROUTE_ACCESS = {
   contratos: {
     allowedSystems: ["VERTICEPCP"],
   },
+  rendimento: {
+    allowedSystems: ["VERTICECONTR"],
+    allowedModules: ["RENDIMENTO"],
+  },
 } satisfies Record<string, AccessRule>;
 
 const DESKTOP_DEFAULT_ROUTE_ORDER = [
+  "/admin/usuarios",
   "/dashboard",
   "/campo",
   "/visitas",
   "/agendamento",
   "/escala",
   "/contratos",
+  "/rendimento/testes",
 ] as const;
 
 const MOBILE_DEFAULT_ROUTE_ORDER = [
+  "/admin/usuarios",
   "/campo",
   "/dashboard",
   "/visitas",
   "/agendamento",
   "/escala",
   "/contratos",
+  "/rendimento/testes",
 ] as const;
 
 const ACCESS_BY_PATH: Record<string, AccessRule> = {
+  "/admin/usuarios": APP_ROUTE_ACCESS.usuarios,
   "/dashboard": APP_ROUTE_ACCESS.dashboard,
   "/campo": APP_ROUTE_ACCESS.campo,
   "/campo/localizacao": APP_ROUTE_ACCESS.campo,
@@ -64,6 +77,7 @@ const ACCESS_BY_PATH: Record<string, AccessRule> = {
   "/agendamento": APP_ROUTE_ACCESS.agendamento,
   "/escala": APP_ROUTE_ACCESS.escala,
   "/contratos": APP_ROUTE_ACCESS.contratos,
+  "/rendimento/testes": APP_ROUTE_ACCESS.rendimento,
 };
 
 const getUserSystems = (user: User): string[] => {

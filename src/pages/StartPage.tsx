@@ -3,8 +3,10 @@ import {
   CalendarPlus,
   ChevronRight,
   FileSignature,
+  FlaskConical,
   LayoutDashboard,
   MapPin,
+  UserCog,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -24,6 +26,13 @@ interface StartOption {
 }
 
 const START_OPTIONS: StartOption[] = [
+  {
+    title: "Controle de usuários",
+    description: "Permissões, sistemas, módulos e aplicações do Vértice.",
+    route: "/admin/usuarios",
+    icon: UserCog,
+    access: APP_ROUTE_ACCESS.usuarios,
+  },
   {
     title: "Dashboard do Campo",
     description: "Indicadores estratégicos e visão geral da operação.",
@@ -65,6 +74,13 @@ const START_OPTIONS: StartOption[] = [
     route: "/contratos",
     icon: FileSignature,
     access: APP_ROUTE_ACCESS.contratos,
+  },
+  {
+    title: "Teste rendimento",
+    description: "Execução de testes e cadastros de produtos, cortes e descartes.",
+    route: "/rendimento/testes",
+    icon: FlaskConical,
+    access: APP_ROUTE_ACCESS.rendimento,
   },
 ];
 

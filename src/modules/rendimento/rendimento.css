@@ -1,0 +1,805 @@
+.yield-module {
+  --navy: #173d6e;
+  --navy-dark: #102f57;
+  --blue: #1b58a0;
+  --blue-soft: #eaf2fb;
+  --red: #e30613;
+  --cyan: #0ab1d8;
+  --green: #16805c;
+  --green-soft: #e8f6f0;
+  --amber: #a96310;
+  --amber-soft: #fff4df;
+  --ink: #243b53;
+  --muted: #60758a;
+  --line: #d8e2ec;
+  --line-soft: #e7edf3;
+  --bg: #f4f7fa;
+  --white: #ffffff;
+  --shadow: 0 4px 18px rgba(23, 61, 110, .06);
+  --shadow-raised: 0 16px 44px rgba(23, 61, 110, .14);
+}
+
+.yield-module * { box-sizing: border-box; }
+.yield-module { min-height: 100%; background: var(--bg); }
+.yield-module { min-height: 100%; margin: 0; background: var(--bg); color: var(--ink); font-family: inherit; text-rendering: optimizeLegibility; }
+.yield-module button, .yield-module input, .yield-module select, .yield-module textarea { font: inherit; }
+.yield-module button { cursor: pointer; }
+.yield-module button:disabled { cursor: not-allowed; opacity: .55; }
+.yield-module ::selection { background: rgba(27, 88, 160, .18); color: var(--navy); }
+.yield-module * { scrollbar-width: thin; scrollbar-color: rgba(23, 61, 110, .28) #edf2f6; }
+.yield-module *::-webkit-scrollbar { width: 10px; height: 10px; }
+.yield-module *::-webkit-scrollbar-track { background: #edf2f6; }
+.yield-module *::-webkit-scrollbar-thumb { border: 3px solid #edf2f6; border-radius: 999px; background: rgba(23, 61, 110, .3); }
+
+.yield-module .button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-radius: 10px; padding: 10px 16px; font-size: 12px; font-weight: 800; letter-spacing: .015em; transition: .18s ease; }
+.yield-module .button:hover:not(:disabled) { transform: translateY(-1px); }
+.yield-module .button--primary { color: #fff; background: var(--navy); box-shadow: 0 6px 16px rgba(23, 61, 110, .16); }
+.yield-module .button--primary:hover:not(:disabled) { background: var(--blue); }
+.yield-module .button--secondary { border-color: var(--line); color: var(--navy); background: #fff; }
+.yield-module .button--secondary:hover:not(:disabled) { border-color: #a9bfd3; background: #f7fafd; }
+.yield-module .button--ghost { color: var(--muted); background: transparent; }
+.yield-module .button--ghost:hover:not(:disabled) { color: var(--navy); background: #eef3f8; }
+.yield-module .button--danger { color: #fff; background: var(--red); }
+.yield-module .icon-button { width: 36px; height: 36px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; color: var(--navy); background: #fff; transition: .15s ease; }
+.yield-module .icon-button:hover { border-color: #9fb6cc; background: var(--blue-soft); }
+.yield-module .icon-button--danger { color: #a5232c; }
+.yield-module .table-action-button { min-height: 36px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; color: var(--navy); background: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.yield-module .table-action-button:hover { border-color: #9fb6cc; background: var(--blue-soft); }
+.yield-module .table-action-button--danger { border-color: #efc7ca; color: #a5232c; background: #fff8f8; }
+.yield-module .back-link { display: inline-flex; align-items: center; gap: 7px; margin: 0 0 18px; border: 0; padding: 0; color: var(--blue); background: transparent; font-size: 12px; font-weight: 800; }
+.yield-module .positive-value { color: var(--green) !important; }
+.yield-module .negative-text { color: #b63842 !important; }
+
+.yield-module .app-loading { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--muted); }
+.yield-module .app-loading span { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 15px; color: #fff; background: var(--navy); font-weight: 900; box-shadow: var(--shadow-raised); }
+.yield-module .app-loading p { font-size: 12px; font-weight: 700; }
+
+/* Entrada */
+.yield-module .entry-page { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 54%) minmax(430px, 46%); background: #fff; }
+.yield-module .entry-panel { display: flex; flex-direction: column; justify-content: center; padding: clamp(38px, 7.4vw, 112px); position: relative; }
+.yield-module .entry-panel::before { content: ""; position: absolute; inset: 0 0 0 auto; width: 7px; background: linear-gradient(var(--red) 0 34%, var(--blue) 34% 70%, var(--cyan) 70%); }
+.yield-module .entry-brand { display: flex; align-items: center; gap: 14px; margin-bottom: 54px; }
+.yield-module .entry-brand > span, .yield-module .brand-mark { width: 58px; height: 58px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 16px; color: #fff; background: var(--navy); font-size: 18px; font-weight: 900; letter-spacing: .04em; box-shadow: 0 12px 26px rgba(23, 61, 110, .2); }
+.yield-module .entry-brand > .entry-brand-logo { width: 76px; border-radius: 0; background: transparent; box-shadow: none; }
+.yield-module .entry-brand-logo img { width: 100%; height: 100%; object-fit: contain; }
+.yield-module .entry-brand > div { display: flex; flex-direction: column; gap: 3px; }
+.yield-module .entry-brand strong { color: var(--navy); font-size: 18px; }
+.yield-module .entry-brand small { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.yield-module .eyebrow { margin: 0 0 10px; color: var(--blue); font-size: 11px; font-weight: 900; letter-spacing: .15em; text-transform: uppercase; }
+.yield-module .entry-panel h1 { max-width: 600px; margin: 0; color: var(--navy); font-size: clamp(44px, 5.2vw, 70px); line-height: .98; letter-spacing: -.055em; }
+.yield-module .entry-description { max-width: 480px; margin: 26px 0 35px; color: var(--muted); font-size: 16px; line-height: 1.7; }
+.yield-module .entry-form { width: min(100%, 410px); display: grid; gap: 16px; }
+.yield-module .entry-field { display: grid; gap: 7px; color: var(--navy); font-size: 11px; font-weight: 800; letter-spacing: .035em; }
+.yield-module .entry-field > div { min-height: 48px; display: flex; align-items: center; gap: 11px; padding: 0 14px; border: 1px solid #d9e2eb; border-radius: 8px; background: #fff; transition: border-color .18s ease, box-shadow .18s ease; }
+.yield-module .entry-field > div:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(23, 82, 145, .1); }
+.yield-module .entry-field svg { flex: 0 0 auto; color: #71869b; }
+.yield-module .entry-field input { min-width: 0; width: 100%; border: 0; outline: 0; color: var(--navy); background: transparent; font: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0; }
+.yield-module .entry-field input::placeholder { color: #9aa9b7; font-weight: 500; }
+.yield-module .entry-panel .entry-button { width: min(100%, 350px); min-height: 54px; justify-content: space-between; padding: 15px 19px; text-transform: uppercase; letter-spacing: .055em; }
+.yield-module .entry-form .entry-button { width: 100%; margin-top: 5px; }
+.yield-module .entry-note { display: flex; align-items: center; gap: 7px; margin: 17px 0 0; color: #73879a; font-size: 11px; }
+.yield-module .entry-note svg { color: var(--green); }
+.yield-module .entry-visual { min-height: 100%; overflow: hidden; position: relative; background: var(--navy); }
+.yield-module .entry-visual-image { width: 100%; height: 100%; position: absolute; inset: 0; object-fit: cover; object-position: center 38%; }
+.yield-module .entry-visual-shade { position: absolute; inset: 0; background: linear-gradient(180deg, transparent 52%, rgba(5, 26, 50, .84) 100%); }
+.yield-module .entry-visual-caption { display: flex; flex-direction: column; gap: 8px; position: absolute; right: clamp(28px, 4vw, 70px); bottom: clamp(30px, 6vh, 70px); left: clamp(28px, 4vw, 70px); color: #fff; text-shadow: 0 2px 16px rgba(0, 0, 0, .3); }
+.yield-module .entry-visual-caption strong { font-size: clamp(22px, 2.5vw, 34px); letter-spacing: -.025em; }
+.yield-module .entry-visual-caption span { color: rgba(255, 255, 255, .82); font-size: 13px; }
+
+/* Estrutura */
+.yield-module .app-shell { min-height: 100vh; display: flex; }
+.yield-module .app-sidebar { width: 272px; display: flex; flex-direction: column; flex: 0 0 auto; position: sticky; top: 0; height: 100vh; color: #d7e5f1; background: var(--navy); box-shadow: 5px 0 18px rgba(23,61,110,.1); transition: width .22s ease; z-index: 20; }
+.yield-module .app-shell--collapsed .app-sidebar { width: 80px; }
+.yield-module .sidebar-brand { height: 104px; display: flex; align-items: center; gap: 10px; padding: 15px 18px; color: var(--navy); background: #fff; position: relative; }
+.yield-module .brand-home { min-width: 0; display: flex; align-items: center; gap: 10px; flex: 1; border: 0; padding: 0; color: inherit; background: transparent; text-align: left; }
+.yield-module .brand-logo { width: 61px; height: 55px; display: grid; place-items: center; flex: 0 0 auto; }
+.yield-module .brand-logo img { width: 100%; height: 100%; object-fit: contain; }
+.yield-module .brand-copy { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 3px; }
+.yield-module .brand-copy strong { color: var(--navy); font-size: 15px; line-height: 1.15; }
+.yield-module .brand-copy small { color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase; white-space: nowrap; }
+.yield-module .sidebar-brand > button:last-child { width: 28px; height: 28px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid #9bb0c3; border-radius: 5px; color: var(--navy); background: #fff; }
+.yield-module .app-shell--collapsed .sidebar-brand { justify-content: center; padding: 14px; }
+.yield-module .app-shell--collapsed .brand-home { flex: 0 0 auto; }
+.yield-module .app-shell--collapsed .sidebar-brand > button:last-child { width: 27px; height: 27px; position: absolute; right: -13px; border: 1px solid var(--line); background: #fff; box-shadow: var(--shadow); }
+.yield-module .brand-stripe { height: 6px; display: grid; grid-template-columns: 1.1fr 1fr .85fr; flex: 0 0 auto; }
+.yield-module .brand-stripe span:nth-child(1){background:var(--red)}.yield-module .brand-stripe span:nth-child(2){background:var(--blue)}.yield-module .brand-stripe span:nth-child(3){background:var(--cyan)}
+.yield-module .sidebar-nav { flex: 1; padding: 18px 11px; overflow-y: auto; }
+.yield-module .sidebar-section { display: flex; align-items: center; justify-content: space-between; margin: 8px 13px 8px; color: #91aec9; font-size: 9px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+.yield-module .sidebar-section--group { margin-top: 28px; }
+.yield-module .sidebar-nav > button { width: 100%; display: flex; align-items: center; gap: 12px; margin: 4px 0; border: 0; border-radius: 9px; padding: 12px 14px; color: #cbd9e6; background: transparent; font-size: 13px; font-weight: 750; text-align: left; transition: .16s ease; }
+.yield-module .sidebar-nav > button svg { flex: 0 0 auto; color: #a9c3d9; }
+.yield-module .sidebar-nav > button:hover { color: #fff; background: rgba(255,255,255,.09); }
+.yield-module .sidebar-nav > button.active { color: var(--navy); background: #fff; box-shadow: 0 5px 14px rgba(4,24,48,.17); }
+.yield-module .sidebar-nav > button.active svg { color: var(--blue); }
+.yield-module .app-shell--collapsed .sidebar-nav > button { justify-content: center; padding: 14px; }
+.yield-module .app-shell--collapsed .sidebar-nav > button span, .yield-module .app-shell--collapsed .sidebar-section { display: none; }
+.yield-module .sidebar-footer { padding: 12px; border-top: 1px solid rgba(255,255,255,.14); }
+.yield-module .sidebar-user { display: flex; align-items: center; gap: 11px; padding: 8px; }
+.yield-module .sidebar-user > span { width: 36px; height: 36px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px; color: var(--navy); background: #fff; }
+.yield-module .sidebar-user > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.yield-module .sidebar-user strong { font-size: 11px; white-space: nowrap; }
+.yield-module .sidebar-user small { color: #9fbbd3; font-size: 8px; }
+.yield-module .sidebar-logout { width: 100%; display: flex; align-items: center; gap: 11px; margin-top: 4px; border: 0; border-radius: 8px; padding: 10px 12px; color: #bfd0df; background: transparent; font-size: 11px; font-weight: 800; }
+.yield-module .sidebar-logout:hover { color: #fff; background: rgba(255,255,255,.08); }
+.yield-module .app-shell--collapsed .sidebar-user { justify-content: center; padding: 8px 0; }
+.yield-module .app-shell--collapsed .sidebar-logout { justify-content: center; }
+.yield-module .app-main { min-width: 0; flex: 1; }
+.yield-module .topbar { height: 62px; display: flex; align-items: center; justify-content: flex-end; gap: 28px; position: sticky; top: 0; z-index: 10; padding: 0 28px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.95); backdrop-filter: blur(12px); }
+.yield-module .mobile-menu { display: none; }
+.yield-module .topbar-status, .yield-module .topbar-user { display: flex; align-items: center; gap: 9px; }
+.yield-module .topbar-status > span { width: 7px; height: 7px; border-radius: 50%; background: #1dab79; box-shadow: 0 0 0 4px #ddf5eb; }
+.yield-module .topbar-status p, .yield-module .topbar-user p { display: flex; flex-direction: column; gap: 2px; margin: 0; }
+.yield-module .topbar-status strong, .yield-module .topbar-user strong { font-size: 10px; color: var(--ink); }
+.yield-module .topbar-status small, .yield-module .topbar-user small { font-size: 8px; color: var(--muted); }
+.yield-module .topbar-user > span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; color: #fff; background: var(--navy); font-size: 10px; font-weight: 900; }
+.yield-module .app-content { width: 100%; max-width: none; margin: 0; padding: 24px clamp(16px, 2.4vw, 32px) 48px; }
+.yield-module .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+.yield-module .page-header > div:first-child > span { display: block; margin-bottom: 4px; color: #60758a; font-size: 10px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+.yield-module .page-header h1 { margin: 0; color: var(--navy); font-size: 24px; font-weight: 900; letter-spacing: -.025em; line-height: 1.2; }
+.yield-module .page-header p { margin: 5px 0 0; color: #667b90; font-size: 12px; font-weight: 500; line-height: 1.5; }
+.yield-module .page-header__actions, .yield-module .detail-actions { display: flex; align-items: center; gap: 10px; }
+
+/* Campos e filtros */
+.yield-module .field { display: flex; flex-direction: column; gap: 7px; }
+.yield-module .field > span, .yield-module .filter-grid label > span { display: flex; align-items: center; justify-content: space-between; color: #4b6177; font-size: 10px; font-weight: 850; letter-spacing: .035em; text-transform: uppercase; }
+.yield-module .field > span small { color: #8396a8; font-size: 8px; }
+.yield-module .field input, .yield-module .field select, .yield-module .field textarea, .yield-module .filter-grid input, .yield-module .filter-grid select { width: 100%; min-height: 43px; border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; outline: 0; color: var(--ink); background: #fff; font-size: 12px; transition: .15s ease; }
+.yield-module .field textarea { resize: vertical; }
+.yield-module .field input:focus, .yield-module .field select:focus, .yield-module .field textarea:focus, .yield-module .filter-grid input:focus, .yield-module .filter-grid select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(27,88,160,.1); }
+.yield-module .field--calculated > span { color: var(--blue); }
+.yield-module .calculated-value { min-height: 43px; display: flex; align-items: center; gap: 8px; border: 1px solid #c9daeb; border-radius: 9px; padding: 10px 12px; color: var(--navy); background: #f0f6fc; font-size: 13px; font-weight: 850; }
+.yield-module .filter-panel { margin-bottom: 18px; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow); overflow: hidden; }
+.yield-module .quick-periods { display: flex; align-items: center; gap: 5px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+.yield-module .quick-periods > span { display: flex; align-items: center; gap: 7px; margin-right: 8px; color: var(--navy); font-size: 10px; font-weight: 900; text-transform: uppercase; }
+.yield-module .quick-periods button { border: 0; border-radius: 7px; padding: 7px 10px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 750; }
+.yield-module .quick-periods button:hover { background: #f1f5f9; }
+.yield-module .quick-periods button.active { color: #fff; background: var(--navy); }
+.yield-module .filter-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 15px 16px; }
+.yield-module .filter-grid label { display: flex; flex-direction: column; gap: 6px; }
+.yield-module .filter-grid input, .yield-module .filter-grid select { min-height: 38px; padding: 8px 10px; }
+
+/* Dashboard */
+.yield-module .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 16px; margin-bottom: 18px; }
+.yield-module .kpi-card { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+.yield-module .kpi-card::before { content: ""; width: 3px; position: absolute; inset: 0 auto 0 0; background: var(--blue); }
+.yield-module .kpi-card__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.yield-module .kpi-card__top > span { color: var(--muted); font-size: 9px; font-weight: 900; letter-spacing: .085em; text-transform: uppercase; }
+.yield-module .kpi-card__top > i { width: 33px; height: 33px; display: grid; place-items: center; border-radius: 9px; color: var(--blue); background: var(--blue-soft); }
+.yield-module .kpi-card > strong { display: block; margin: 13px 0 8px; overflow: hidden; color: var(--navy); font-size: clamp(21px, 2.3vw, 29px); letter-spacing: -.035em; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .kpi-card > small { color: #768a9d; font-size: 9px; }
+.yield-module .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(310px, .85fr); gap: 18px; }
+.yield-module .panel { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow); }
+.yield-module .chart-panel--wide { grid-row: span 2; }
+.yield-module .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 21px; }
+.yield-module .panel-heading span { display: block; margin-bottom: 5px; color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
+.yield-module .panel-heading h2 { margin: 0; color: var(--navy); font-size: 16px; }
+.yield-module .panel-heading > small { color: var(--muted); font-size: 9px; }
+.yield-module .bar-chart { min-height: 310px; display: flex; align-items: stretch; justify-content: center; gap: clamp(9px, 1.8vw, 24px); padding: 20px 8px 0; border-bottom: 1px solid var(--line-soft); position: relative; }
+.yield-module .bar-chart::before, .yield-module .bar-chart::after { content: ""; position: absolute; left: 0; right: 0; border-top: 1px dashed #e5ebf1; }
+.yield-module .bar-chart::before { top: 34%; }.yield-module .bar-chart::after { top: 64%; }
+.yield-module .bar-column { width: min(64px, 12%); min-width: 42px; display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; }
+.yield-module .bar-value { margin-bottom: 7px; color: var(--navy); font-size: 9px; font-weight: 900; }
+.yield-module .bar-track { width: 100%; flex: 1; display: flex; align-items: end; border-radius: 7px 7px 0 0; background: linear-gradient(180deg, #f5f8fb, #eaf0f6); overflow: hidden; }
+.yield-module .bar-track i { width: 100%; min-height: 14px; border-radius: 7px 7px 0 0; background: linear-gradient(180deg, var(--cyan), var(--blue)); box-shadow: 0 -5px 16px rgba(27,88,160,.16); }
+.yield-module .bar-column > strong { margin-top: 8px; font-size: 9px; color: var(--ink); }
+.yield-module .bar-column > small { margin-top: 2px; font-size: 8px; color: var(--muted); }
+.yield-module .chart-empty { align-self: center; margin: auto; color: var(--muted); font-size: 11px; text-align: center; }
+.yield-module .horizontal-chart { display: flex; flex-direction: column; gap: 14px; }
+.yield-module .horizontal-chart > div > header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.yield-module .horizontal-chart header span { max-width: 72%; overflow: hidden; color: var(--ink); font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .horizontal-chart header strong { color: var(--navy); font-size: 9px; }
+.yield-module .horizontal-chart > div > div { height: 7px; border-radius: 99px; background: #edf2f6; overflow: hidden; }
+.yield-module .horizontal-chart i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--blue), var(--cyan)); }
+.yield-module .discard-ranking { display: flex; flex-direction: column; gap: 12px; }
+.yield-module .discard-ranking > div { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: center; position: relative; }
+.yield-module .discard-ranking .rank { color: #9aabba; font-size: 9px; font-weight: 900; }
+.yield-module .discard-ranking p { display: flex; align-items: center; justify-content: space-between; margin: 0 0 6px; }
+.yield-module .discard-ranking p strong, .yield-module .discard-ranking p small { font-size: 9px; }
+.yield-module .discard-ranking p small { color: var(--muted); }
+.yield-module .discard-ranking i { height: 3px; grid-column: 2; margin-top: -7px; border-radius: 99px; background: var(--red); opacity: .75; }
+
+/* Tabelas */
+.yield-module .tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.yield-module .tabs button { display: flex; align-items: center; gap: 8px; position: relative; border: 0; padding: 11px 15px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.yield-module .tabs button::after { content: ""; position: absolute; right: 8px; bottom: -1px; left: 8px; height: 2px; background: transparent; }
+.yield-module .tabs button.active { color: var(--navy); }
+.yield-module .tabs button.active::after { background: var(--blue); }
+.yield-module .tabs button span { min-width: 21px; padding: 3px 6px; border-radius: 99px; color: var(--muted); background: #e9eff5; font-size: 8px; }
+.yield-module .tabs button.active span { color: #fff; background: var(--navy); }
+.yield-module .table-panel, .yield-module .tree-panel { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,.08); overflow: hidden; }
+.yield-module .table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #e2e8f0; background: #fff; }
+.yield-module .search-box { width: min(480px, 60%); display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 9px; padding: 0 12px; color: #8da0b2; }
+.yield-module .search-box input { width: 100%; min-height: 38px; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 11px; }
+.yield-module .select-filter { display: flex; align-items: center; gap: 7px; color: var(--muted); }
+.yield-module .select-filter select { min-height: 38px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 28px 8px 10px; color: var(--ink); background: #fff; font-size: 10px; }
+.yield-module .table-title { padding: 17px 19px; border-bottom: 1px solid var(--line-soft); }
+.yield-module .table-title > div { display: flex; flex-direction: column; gap: 4px; }
+.yield-module .table-title span { color: var(--navy); font-size: 13px; font-weight: 850; }
+.yield-module .table-title small { color: var(--muted); font-size: 9px; }
+.yield-module .responsive-table { position: relative; width: 100%; overflow-x: auto; }
+.yield-module table { width: 100%; border-collapse: collapse; caption-side: bottom; font-size: 14px; }
+.yield-module th { height: 48px; padding: 0 16px; border-bottom: 1px solid #cbd5e1; color: #334155; background: #f8fafc; font-size: 12px; font-weight: 700; letter-spacing: 0; text-align: left; text-transform: none; vertical-align: middle; white-space: nowrap; }
+.yield-module td { padding: 16px; border-bottom: 1px solid #e2e8f0; color: #475569; font-size: 14px; vertical-align: middle; white-space: nowrap; }
+.yield-module tbody tr:last-child td { border-bottom: 0; }
+.yield-module tbody tr { transition: background-color .15s ease; }
+.yield-module tbody tr:hover { background: #f8fafc; }
+.yield-module td > strong:not(.positive-value), .yield-module td > div > strong { color: var(--ink); }
+.yield-module td > small, .yield-module td > strong + small { display: block; margin-top: 4px; color: #8295a7; font-size: 8px; }
+.yield-module .row-actions { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.yield-module .row-actions .button { min-height: 34px; padding: 7px 10px; font-size: 9px; white-space: nowrap; }
+.yield-module .status-badge { width: fit-content; display: inline-flex; align-items: center; gap: 6px; border-radius: 99px; padding: 5px 8px; font-size: 8px; font-weight: 900; text-transform: uppercase; white-space: nowrap; }
+.yield-module .status-badge i { width: 6px; height: 6px; border-radius: 50%; }
+.yield-module .status-badge--rascunho { color: #65788b; background: #edf1f5; }.yield-module .status-badge--rascunho i{background:#7c8e9e}
+.yield-module .status-badge--aberto { color: #8e580c; background: var(--amber-soft); }.yield-module .status-badge--aberto i{background:#d6891c}
+.yield-module .status-badge--em_execucao { color: #165a96; background: #e5f1fb; }.yield-module .status-badge--em_execucao i{background:#2581c7}
+.yield-module .status-badge--finalizado { color: #116345; background: var(--green-soft); }.yield-module .status-badge--finalizado i{background:#1c956b}
+.yield-module .status-badge--cancelado { color: #9c2830; background: #faeaeb; }.yield-module .status-badge--cancelado i{background:#c83b44}
+.yield-module .empty-state { min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 34px; color: var(--muted); text-align: center; }
+.yield-module .empty-state strong { color: var(--navy); font-size: 15px; }
+.yield-module .empty-state p { margin: 0; font-size: 11px; }
+
+/* Formulário de teste */
+.yield-module .form-layout { display: flex; flex-direction: column; gap: 16px; }
+.yield-module .form-card { border: 1px solid var(--line); border-radius: 13px; padding: 21px; background: #fff; box-shadow: var(--shadow); }
+.yield-module .form-card > header { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.yield-module .form-card > header > span { width: 39px; height: 39px; display: grid; place-items: center; border-radius: 10px; color: var(--blue); background: var(--blue-soft); }
+.yield-module .form-card > header h2 { margin: 0 0 4px; color: var(--navy); font-size: 15px; }
+.yield-module .form-card > header p { margin: 0; color: var(--muted); font-size: 9px; }
+.yield-module .form-grid { display: grid; gap: 15px; }
+.yield-module .form-grid--2 { grid-template-columns: repeat(2, 1fr); }
+.yield-module .form-grid--3 { grid-template-columns: repeat(3, 1fr); }
+.yield-module .form-grid__wide { grid-column: 1 / -1; }
+.yield-module .form-grid__full { grid-column: 1 / -1; }
+.yield-module .product-chain { margin-top: 20px; padding: 15px; border: 1px solid #dce7f1; border-radius: 10px; background: #f7fafc; }
+.yield-module .product-chain > span { display: block; margin-bottom: 12px; color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.yield-module .product-chain > div { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.yield-module .product-chain > div > div { display: flex; align-items: center; gap: 8px; }
+.yield-module .product-chain i { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--navy); font-size: 8px; font-style: normal; font-weight: 900; }
+.yield-module .product-chain strong { font-size: 9px; color: var(--ink); }
+.yield-module .product-chain div span { color: #91a6b8; }
+.yield-module .form-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 4px; }
+.yield-module .form-actions > div { display: flex; gap: 9px; }
+.yield-module .form-error, .yield-module .inline-message { border: 1px solid #f0c5c8; border-radius: 9px; padding: 11px 13px; color: #9a3038; background: #fff1f2; font-size: 10px; font-weight: 750; }
+.yield-module .inline-message.success { border-color: #bce2d3; color: var(--green); background: #effaf6; }
+
+/* Execução */
+.yield-module .step-progress { display: flex; align-items: stretch; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 12px; padding: 13px 16px; background: #fff; box-shadow: var(--shadow); overflow-x: auto; }
+.yield-module .step-progress > button { min-width: 180px; display: flex; align-items: center; gap: 9px; flex: 1; border: 0; padding: 3px 0; color: #8295a7; background: transparent; text-align: left; position: relative; }
+.yield-module .step-progress > button > span { width: 28px; height: 28px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 50%; background: #f6f8fa; font-size: 9px; font-weight: 900; }
+.yield-module .step-progress button.complete > span { border-color: var(--green); color: #fff; background: var(--green); }
+.yield-module .step-progress button.active > span { border-color: var(--blue); color: #fff; background: var(--blue); box-shadow: 0 0 0 4px rgba(27,88,160,.1); }
+.yield-module .step-progress p { min-width: 0; display: flex; flex-direction: column; gap: 3px; margin: 0; }
+.yield-module .step-progress small { font-size: 7px; font-weight: 800; text-transform: uppercase; }
+.yield-module .step-progress strong { max-width: 120px; overflow: hidden; color: inherit; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .step-progress button.active { color: var(--navy); }
+.yield-module .step-progress button.terminal:disabled { cursor: default; opacity: 1; }
+.yield-module .step-progress button.terminal { color: var(--green); }
+.yield-module .step-progress button.terminal:not(.complete) > span { border-style: dashed; border-color: #9fc8b9; color: var(--green); background: var(--green-soft); }
+.yield-module .step-progress button > i { height: 1px; flex: 1; margin: 0 12px; background: var(--line); }
+.yield-module .execution-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; align-items: start; }
+.yield-module .step-card, .yield-module .calculation-card { border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow); overflow: hidden; }
+.yield-module .step-card > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 22px; border-bottom: 1px solid var(--line-soft); background: linear-gradient(90deg, #f9fbfd, #fff); }
+.yield-module .step-card > header > div:first-child > span { color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.yield-module .step-card > header h2 { margin: 5px 0 0; color: var(--navy); font-size: 19px; }
+.yield-module .step-weight { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.yield-module .step-weight small { color: var(--muted); font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.yield-module .step-weight strong { color: var(--navy); font-size: 16px; }
+.yield-module .step-weight input { width: 130px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--navy); font-size: 14px; font-weight: 800; text-align: right; }
+.yield-module .discard-heading { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px 10px; }
+.yield-module .discard-heading > div { display: flex; align-items: center; gap: 8px; color: var(--navy); font-size: 10px; font-weight: 900; text-transform: uppercase; }
+.yield-module .discard-heading > small { color: var(--muted); font-size: 8px; }
+.yield-module .discard-inputs { padding: 0 22px; }
+.yield-module .discard-row { display: grid; grid-template-columns: 1fr 145px 36px; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line-soft); }
+.yield-module .discard-row > div { display: flex; flex-direction: column; gap: 3px; }
+.yield-module .discard-row > div span { color: #8194a7; font-size: 7px; font-weight: 850; text-transform: uppercase; }
+.yield-module .discard-row > div .manual-tag { color: var(--amber); }
+.yield-module .discard-row > div strong { font-size: 11px; }
+.yield-module .discard-row > label { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.yield-module .discard-row input { width: 100%; min-width: 0; border: 0; outline: 0; padding: 9px 7px 9px 11px; color: var(--ink); font-size: 11px; text-align: right; }
+.yield-module .discard-row label span { padding-right: 9px; color: var(--muted); font-size: 9px; }
+.yield-module .discard-row .icon-button:not(.icon-button--danger) { visibility: hidden; }
+.yield-module .discard-row.filled { margin-inline: -10px; padding-inline: 10px; border-radius: 8px; background: #f0f8fd; box-shadow: inset 4px 0 0 #68c4e9; }
+.yield-module .discard-row.filled > div strong, .yield-module .discard-row.filled input, .yield-module .discard-row.filled label span { color: var(--navy); font-weight: 900; }
+.yield-module .discard-row.filled > label { border-color: #7cc6e6; background: #fff; box-shadow: 0 0 0 3px rgba(10,177,216,.09); }
+.yield-module .add-discard { display: flex; align-items: center; gap: 8px; margin: 14px 22px; border: 1px dashed #9fb8cf; border-radius: 9px; padding: 10px 13px; color: var(--blue); background: #f8fbfe; font-size: 9px; font-weight: 900; text-transform: uppercase; }
+.yield-module .step-card .inline-message { margin: 13px 22px; }
+.yield-module .step-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 16px 22px; border-top: 1px solid var(--line-soft); background: #fbfcfe; }
+.yield-module .calculation-card { position: sticky; top: 80px; }
+.yield-module .calculation-card > header { display: flex; align-items: center; gap: 9px; padding: 17px 19px; color: var(--navy); border-bottom: 1px solid var(--line-soft); }
+.yield-module .calculation-card > header h3 { margin: 0; font-size: 13px; }
+.yield-module .calculation-line { display: flex; align-items: center; justify-content: space-between; padding: 13px 19px; border-bottom: 1px solid var(--line-soft); }
+.yield-module .calculation-line span { color: var(--muted); font-size: 9px; }
+.yield-module .calculation-line strong { color: var(--ink); font-size: 11px; }
+.yield-module .calculation-line.negative strong { color: #ae3840; }
+.yield-module .calculation-result { margin: 14px; padding: 15px; border: 1px solid #c9daeb; border-radius: 10px; background: #eef5fb; }
+.yield-module .calculation-result span { display: flex; justify-content: space-between; margin-bottom: 7px; color: var(--blue); font-size: 8px; font-weight: 900; text-transform: uppercase; }
+.yield-module .calculation-result small { border-radius: 99px; padding: 2px 5px; color: var(--blue); background: #dceafa; font-size: 6px; }
+.yield-module .calculation-result strong { color: var(--navy); font-size: 25px; letter-spacing: -.035em; }
+.yield-module .yield-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); background: var(--line-soft); }
+.yield-module .yield-grid > div { padding: 14px; background: #fff; }
+.yield-module .yield-grid span { display: block; min-height: 22px; color: var(--muted); font-size: 7px; font-weight: 800; text-transform: uppercase; }
+.yield-module .yield-grid strong { color: var(--green); font-size: 18px; }
+.yield-module .yield-grid small { display: block; margin-top: 5px; color: #7b8fa2; font-size: 8px; line-height: 1.35; }
+.yield-module .yield-after-discards { margin: 14px; border: 1px solid #a8d9ec; border-radius: 10px; padding: 14px; background: #edf9fd; }
+.yield-module .yield-after-discards span { display: block; color: var(--blue); font-size: 9px; font-weight: 900; text-transform: uppercase; }
+.yield-module .yield-after-discards strong { display: block; margin: 5px 0 3px; color: var(--navy); font-size: 24px; }
+.yield-module .yield-after-discards small { color: #58758c; font-size: 9px; line-height: 1.4; }
+.yield-module .next-pattern { margin: 14px; padding: 14px; border-radius: 10px; color: #fff; background: var(--navy); }
+.yield-module .next-pattern > span { color: #b5caDD; font-size: 7px; font-weight: 900; text-transform: uppercase; }
+.yield-module .next-pattern > strong { display: block; margin: 5px 0; font-size: 11px; }
+.yield-module .next-pattern p { margin: 0; color: #c1d2e1; font-size: 8px; }
+
+/* Modal */
+.yield-module .modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: rgba(9, 28, 50, .62); backdrop-filter: blur(4px); }
+.yield-module .modal { width: min(650px, 100%); max-height: calc(100vh - 48px); display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,.45); border-radius: 15px; background: #fff; box-shadow: 0 28px 80px rgba(5,25,48,.3); overflow: hidden; }
+.yield-module .modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 19px 21px; border-bottom: 1px solid var(--line-soft); }
+.yield-module .modal > header h2 { margin: 0; color: var(--navy); font-size: 17px; }
+.yield-module .modal > header p { margin: 5px 0 0; color: var(--muted); font-size: 9px; }
+.yield-module .modal__body { display: flex; flex-direction: column; gap: 16px; padding: 21px; overflow-y: auto; }
+.yield-module .modal > footer { display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding: 14px 21px; border-top: 1px solid var(--line-soft); background: #f9fbfd; }
+.yield-module .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 9px; background: #edf2f6; }
+.yield-module .segmented button { border: 0; border-radius: 7px; padding: 9px; color: var(--muted); background: transparent; font-size: 9px; font-weight: 850; }
+.yield-module .segmented button.active { color: var(--navy); background: #fff; box-shadow: 0 2px 7px rgba(23,61,110,.1); }
+
+/* Detalhes */
+.yield-module .detail-summary { display: grid; grid-template-columns: repeat(4, 1fr); margin-bottom: 18px; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow); }
+.yield-module .detail-summary > div { display: flex; gap: 10px; padding: 17px 19px; border-right: 1px solid var(--line-soft); }
+.yield-module .detail-summary > div:last-child { border-right: 0; }
+.yield-module .detail-summary svg { color: var(--blue); }
+.yield-module .detail-summary p { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+.yield-module .detail-summary p span { color: var(--muted); font-size: 7px; font-weight: 900; text-transform: uppercase; }
+.yield-module .detail-summary p strong { color: var(--ink); font-size: 10px; }
+.yield-module .detail-summary p small { color: #8295a7; font-size: 8px; }
+.yield-module .timeline-section { border: 1px solid var(--line); border-radius: 13px; padding: 20px; background: #fff; box-shadow: var(--shadow); }
+.yield-module .timeline-section > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.yield-module .timeline-section > header span { color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase; }
+.yield-module .timeline-section > header h2 { margin: 4px 0 0; color: var(--navy); font-size: 16px; }
+.yield-module .final-yield { text-align: right; }
+.yield-module .final-yield strong { display: block; margin-top: 4px; color: var(--green); font-size: 20px; }
+.yield-module .process-timeline { max-width: 980px; margin: 0 auto; }
+.yield-module .timeline-item { display: grid; grid-template-columns: 35px 1fr; gap: 13px; position: relative; }
+.yield-module .timeline-index { width: 30px; height: 30px; display: grid; place-items: center; z-index: 1; border: 2px solid #cfdbe6; border-radius: 50%; color: #7d91a4; background: #fff; font-size: 9px; font-weight: 900; }
+.yield-module .timeline-item.complete .timeline-index { border-color: var(--green); color: #fff; background: var(--green); }
+.yield-module .timeline-item > article { margin-bottom: 26px; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+.yield-module .timeline-item > article > header { display: flex; align-items: center; justify-content: space-between; padding: 14px 17px; border-bottom: 1px solid var(--line-soft); background: #fafcfd; }
+.yield-module .timeline-item > article > header small { color: var(--blue); font-size: 7px; font-weight: 900; text-transform: uppercase; }
+.yield-module .timeline-item > article > header h3 { margin: 4px 0 0; color: var(--navy); font-size: 13px; }
+.yield-module .timeline-item > article > header > span { border-radius: 99px; padding: 4px 7px; color: var(--muted); background: #edf2f6; font-size: 7px; font-weight: 850; text-transform: uppercase; }
+.yield-module .timeline-item.complete > article > header > span { color: var(--green); background: var(--green-soft); }
+.yield-module .timeline-weights { display: grid; grid-template-columns: repeat(3, 1fr); }
+.yield-module .timeline-weights > div { padding: 13px 17px; border-right: 1px solid var(--line-soft); }
+.yield-module .timeline-weights > div:last-child { border-right: 0; }
+.yield-module .timeline-weights span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 7px; font-weight: 800; text-transform: uppercase; }
+.yield-module .timeline-weights strong { color: var(--ink); font-size: 11px; }
+.yield-module .timeline-discards { display: flex; flex-wrap: wrap; gap: 7px; padding: 10px 17px; border-top: 1px solid var(--line-soft); background: #fbfcfe; }
+.yield-module .timeline-discards span { border-radius: 6px; padding: 5px 7px; color: #8c4248; background: #fbedee; font-size: 8px; }
+.yield-module .timeline-discards strong { margin-right: 4px; }
+.yield-module .timeline-arrow { position: absolute; bottom: 4px; left: 6px; color: #94a9bc; }
+.yield-module .timeline-item.terminal > article { border-color: #b9dcca; background: #fbfefc; }
+.yield-module .timeline-item.terminal > article > header { background: var(--green-soft); }
+.yield-module .terminal-result-grid { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(150px, .7fr) 1.6fr; align-items: center; }
+.yield-module .terminal-result-grid > div { padding: 16px 18px; border-right: 1px solid #d9ece3; }
+.yield-module .terminal-result-grid > div span { display: block; margin-bottom: 5px; color: #60758a; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.yield-module .terminal-result-grid > div strong { color: var(--navy); font-size: 20px; }
+.yield-module .terminal-result-grid > div:nth-child(2) strong { color: var(--green); }
+.yield-module .terminal-result-grid > p { margin: 0; padding: 16px 18px; color: #587568; font-size: 11px; line-height: 1.5; }
+@media (max-width: 680px) {
+  .yield-module .terminal-result-grid { grid-template-columns: 1fr; }
+  .yield-module .terminal-result-grid > div { border-right: 0; border-bottom: 1px solid #d9ece3; }
+}
+
+/* Cadastros */
+.yield-module .tree-panel > header { display: flex; align-items: center; justify-content: space-between; padding: 16px 19px; border-bottom: 1px solid var(--line-soft); }
+.yield-module .tree-panel > header > div:first-child { display: flex; flex-direction: column; gap: 4px; }
+.yield-module .tree-panel > header > div:first-child span { color: var(--navy); font-size: 13px; font-weight: 850; }
+.yield-module .tree-panel > header small { color: var(--muted); font-size: 8px; }
+.yield-module .tree-tools { display: flex; align-items: center; gap: 16px; }
+.yield-module .catalog-type-filters { display: flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 9px; padding: 4px; background: #f7f9fb; }
+.yield-module .catalog-type-filters button { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; padding: 7px 9px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 850; }
+.yield-module .catalog-type-filters button span { min-width: 18px; border-radius: 99px; padding: 2px 5px; color: #6c8194; background: #e6edf3; font-size: 8px; text-align: center; }
+.yield-module .catalog-type-filters button.active { color: #fff; background: var(--navy); }
+.yield-module .catalog-type-filters button.active span { color: var(--navy); background: #fff; }
+.yield-module .tree-legend { display: flex; gap: 13px; }
+.yield-module .tree-legend span { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 8px; }
+.yield-module .tree-legend i { width: 6px; height: 6px; border-radius: 50%; background: #a5b3c0; }
+.yield-module .tree-legend i.active { background: var(--green); }
+.yield-module .product-tree { padding: 9px 13px 13px; }
+.yield-module .tree-children { margin-left: 29px; padding-left: 15px; border-left: 1px dashed #b9cad9; }
+.yield-module .tree-row { display: grid; grid-template-columns: 26px 35px minmax(180px, 1fr) minmax(180px, .8fr) 70px 82px; align-items: center; gap: 9px; margin: 5px 0; border: 1px solid var(--line-soft); border-radius: 9px; padding: 9px 10px; background: #fff; transition: .15s ease; }
+.yield-module .tree-row:hover { border-color: #bfd0df; box-shadow: 0 4px 12px rgba(23,61,110,.05); }
+.yield-module .tree-row.inactive { opacity: .64; background: #fafbfc; }
+.yield-module .tree-toggle { width: 25px; height: 25px; display: grid; place-items: center; border: 0; border-radius: 6px; color: var(--navy); background: #eef3f8; }
+.yield-module .tree-icon { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 8px; color: var(--blue); background: var(--blue-soft); }
+.yield-module .tree-name { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.yield-module .tree-name strong { overflow: hidden; color: var(--ink); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .tree-name small { color: var(--muted); font-size: 7px; }
+.yield-module .tree-discards { display: flex; flex-wrap: wrap; gap: 4px; }
+.yield-module .tree-discards span { border-radius: 99px; padding: 4px 6px; color: #526b82; background: #edf2f6; font-size: 7px; font-weight: 750; }
+.yield-module .tree-discards span.discard { color: #76590f; background: #fff4cf; }
+.yield-module .simple-status { width: fit-content; border-radius: 99px; padding: 5px 8px; color: #6d7e8d; background: #edf1f4; font-size: 7px; font-weight: 900; text-transform: uppercase; }
+.yield-module .simple-status.active { color: var(--green); background: var(--green-soft); }
+.yield-module .order-chip { width: 29px; height: 25px; display: grid; place-items: center; border-radius: 7px; color: var(--navy); background: var(--blue-soft); font-size: 8px; font-weight: 900; }
+.yield-module .checkbox-section { display: flex; flex-direction: column; gap: 9px; }
+.yield-module .checkbox-section > span { color: #4b6177; font-size: 9px; font-weight: 850; text-transform: uppercase; }
+.yield-module .checkbox-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.yield-module .checkbox-grid label { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 9px; cursor: pointer; }
+.yield-module .checkbox-grid input { accent-color: var(--navy); }
+.yield-module .checkbox-grid label > span { display: flex; flex-direction: column; gap: 2px; }
+.yield-module .checkbox-grid strong { font-size: 9px; }
+.yield-module .checkbox-grid small { color: var(--muted); font-size: 7px; }
+.yield-module .switch-field { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.yield-module .switch-field > input { display: none; }
+.yield-module .switch-field > span { width: 36px; height: 20px; border-radius: 99px; padding: 3px; background: #bac7d2; position: relative; transition: .16s ease; }
+.yield-module .switch-field > span::after { content: ""; width: 14px; height: 14px; position: absolute; left: 3px; top: 3px; border-radius: 50%; background: #fff; transition: .16s ease; }
+.yield-module .switch-field input:checked + span { background: var(--green); }
+.yield-module .switch-field input:checked + span::after { transform: translateX(16px); }
+.yield-module .switch-field > div { display: flex; flex-direction: column; gap: 2px; }
+.yield-module .switch-field strong { font-size: 9px; }
+.yield-module .switch-field small { color: var(--muted); font-size: 7px; }
+
+@media (max-width: 1180px) {
+  .yield-module .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .yield-module .dashboard-grid { grid-template-columns: 1fr; }
+  .yield-module .chart-panel--wide { grid-row: auto; }
+  .yield-module .filter-grid { grid-template-columns: repeat(2, 1fr); }
+  .yield-module .execution-layout { grid-template-columns: 1fr; }
+  .yield-module .calculation-card { position: static; }
+  .yield-module .detail-summary { grid-template-columns: repeat(2, 1fr); }
+  .yield-module .detail-summary > div:nth-child(2) { border-right: 0; }
+  .yield-module .detail-summary > div:nth-child(-n+2) { border-bottom: 1px solid var(--line-soft); }
+  .yield-module .tree-row { grid-template-columns: 26px 35px minmax(180px, 1fr) 70px 82px; }
+  .yield-module .tree-discards { display: none; }
+}
+@media (max-width: 900px) {
+  .yield-module .entry-page { grid-template-columns: 1fr; }
+  .yield-module .entry-visual { display: none; }
+  .yield-module .app-sidebar { width: 80px; }
+  .yield-module .sidebar-brand { justify-content: center; padding: 14px; }
+  .yield-module .brand-copy, .yield-module .sidebar-nav button span, .yield-module .sidebar-section, .yield-module .sidebar-user div, .yield-module .sidebar-logout span { display: none; }
+  .yield-module .sidebar-brand > button:last-child { width: 27px; height: 27px; position: absolute; right: -13px; border: 1px solid var(--line); background: #fff; }
+  .yield-module .sidebar-nav > button, .yield-module .sidebar-logout { justify-content: center; }
+  .yield-module .sidebar-user { justify-content: center; }
+  .yield-module .app-shell--collapsed .app-sidebar { width: 0; overflow: hidden; }
+  .yield-module .mobile-menu { width: 34px; height: 34px; display: grid; place-items: center; margin-right: auto; border: 0; border-radius: 8px; color: var(--navy); background: #edf3f8; }
+  .yield-module .form-grid--3 { grid-template-columns: repeat(2, 1fr); }
+  .yield-module .quick-periods { overflow-x: auto; }
+  .yield-module .quick-periods button { white-space: nowrap; }
+  .yield-module .timeline-weights { grid-template-columns: repeat(2, 1fr); }
+  .yield-module .timeline-weights > div:nth-child(2) { border-right: 0; }
+  .yield-module .timeline-weights > div:nth-child(-n+2) { border-bottom: 1px solid var(--line-soft); }
+}
+@media (max-width: 680px) {
+  .yield-module .entry-panel { padding: 42px 30px; }
+  .yield-module .entry-brand { margin-bottom: 38px; }
+  .yield-module .app-content { padding: 24px 16px 44px; }
+  .yield-module .topbar { padding: 0 16px; }
+  .yield-module .topbar-status { display: none; }
+  .yield-module .page-header { align-items: flex-start; flex-direction: column; }
+  .yield-module .page-header__actions { width: 100%; }
+  .yield-module .page-header__actions .button { width: 100%; }
+  .yield-module .kpi-grid, .yield-module .filter-grid, .yield-module .form-grid--2, .yield-module .form-grid--3, .yield-module .detail-summary { grid-template-columns: 1fr; }
+  .yield-module .detail-summary > div { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+  .yield-module .quick-periods > span { display: none; }
+  .yield-module .table-toolbar { align-items: stretch; flex-direction: column; }
+  .yield-module .search-box { width: 100%; }
+  .yield-module .select-filter select { flex: 1; }
+  .yield-module .form-actions { align-items: stretch; flex-direction: column-reverse; }
+  .yield-module .form-actions > div { flex-direction: column; }
+  .yield-module .form-actions .button { width: 100%; }
+  .yield-module .step-card > header { align-items: flex-start; flex-direction: column; }
+  .yield-module .step-weight { align-items: flex-start; }
+  .yield-module .discard-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .yield-module .discard-row { grid-template-columns: 1fr 120px 36px; }
+  .yield-module .step-card > footer { align-items: stretch; flex-direction: column-reverse; }
+  .yield-module .checkbox-grid { grid-template-columns: repeat(2, 1fr); }
+  .yield-module .tree-row { grid-template-columns: 24px 31px 1fr 66px; }
+  .yield-module .tree-panel > header, .yield-module .tree-tools { align-items: stretch; flex-direction: column; }
+  .yield-module .catalog-type-filters { overflow-x: auto; }
+  .yield-module .catalog-type-filters button { flex: 0 0 auto; }
+  .yield-module .tree-row > .row-actions { grid-column: 3 / 5; justify-content: flex-end; }
+  .yield-module .tree-children { margin-left: 13px; padding-left: 7px; }
+  .yield-module .modal-backdrop { padding: 12px; }
+}
+
+/* Escala tipográfica do Vértice */
+.yield-module { font-size: 14px; }
+.yield-module .button, .yield-module .back-link { font-size: 14px; font-weight: 600; }
+.yield-module .brand-copy small, .yield-module .topbar-status small, .yield-module .topbar-user small { font-size: 10px; }
+.yield-module .sidebar-section, .yield-module .kpi-card__top > span, .yield-module .panel-heading span { font-size: 11px; }
+.yield-module .page-header > div:first-child > span { font-size: 10px; }
+.yield-module .sidebar-nav > button { font-size: 14px; }
+.yield-module .sidebar-user strong, .yield-module .topbar-status strong, .yield-module .topbar-user strong { font-size: 12px; }
+.yield-module .sidebar-user small, .yield-module .sidebar-logout { font-size: 11px; }
+.yield-module .page-header h1 { font-size: 24px; font-weight: 900; }
+.yield-module .page-header p { font-size: 12px; }
+.yield-module .field > span, .yield-module .filter-grid label > span, .yield-module .quick-periods > span { font-size: 11px; }
+.yield-module .field > span small { font-size: 10px; }
+.yield-module .field input, .yield-module .field select, .yield-module .field textarea, .yield-module .filter-grid input, .yield-module .filter-grid select, .yield-module .calculated-value { font-size: 14px; }
+.yield-module .quick-periods button, .yield-module .tabs button, .yield-module .select-filter select { font-size: 12px; }
+.yield-module .kpi-card > small, .yield-module .panel-heading > small, .yield-module .bar-value, .yield-module .bar-column > strong, .yield-module .horizontal-chart header span, .yield-module .horizontal-chart header strong, .yield-module .discard-ranking .rank, .yield-module .discard-ranking p strong, .yield-module .discard-ranking p small { font-size: 11px; }
+.yield-module .panel-heading h2 { font-size: 18px; }
+.yield-module .search-box input { font-size: 12px; }
+.yield-module th { font-size: 12px; }
+.yield-module td { font-size: 14px; }
+.yield-module td > small, .yield-module td > strong + small { font-size: 11px; }
+.yield-module .date-primary { color: var(--navy); font-size: 13px; }
+.yield-module .row-actions .button, .yield-module .status-badge { font-size: 10px; }
+.yield-module .form-card > header h2 { font-size: 18px; }
+.yield-module .form-card > header p { font-size: 12px; }
+.yield-module .form-error, .yield-module .inline-message { font-size: 12px; }
+.yield-module .step-progress small, .yield-module .discard-row > div span, .yield-module .calculation-result span, .yield-module .yield-grid span, .yield-module .next-pattern > span, .yield-module .detail-summary p span, .yield-module .timeline-section > header span, .yield-module .timeline-item > article > header small, .yield-module .timeline-weights span { font-size: 10px; }
+.yield-module .step-progress strong, .yield-module .discard-row > div strong, .yield-module .discard-row input, .yield-module .calculation-line span, .yield-module .calculation-line strong, .yield-module .next-pattern > strong, .yield-module .detail-summary p strong, .yield-module .timeline-weights strong { font-size: 13px; }
+.yield-module .discard-heading > div { font-size: 12px; }
+.yield-module .discard-heading > small, .yield-module .next-pattern p, .yield-module .detail-summary p small, .yield-module .timeline-item > article > header > span, .yield-module .timeline-discards span { font-size: 10px; }
+.yield-module .calculation-card > header h3, .yield-module .timeline-item > article > header h3 { font-size: 15px; }
+.yield-module .tree-panel > header > div:first-child span { font-size: 15px; }
+.yield-module .tree-panel > header small, .yield-module .tree-legend span, .yield-module .tree-name small, .yield-module .tree-discards span, .yield-module .simple-status, .yield-module .order-chip, .yield-module .checkbox-grid small, .yield-module .switch-field small { font-size: 10px; }
+.yield-module .tree-name strong, .yield-module .checkbox-section > span, .yield-module .checkbox-grid strong, .yield-module .switch-field strong { font-size: 12px; }
+
+/* Múltiplos produtos e sequências independentes */
+.yield-module .flow-editor-list { display: grid; gap: 16px; }
+.yield-module .flow-editor { border: 1px solid var(--line); border-radius: 12px; padding: 17px; background: #fbfcfe; }
+.yield-module .flow-editor > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.yield-module .flow-editor > header > div { display: flex; flex-direction: column; gap: 3px; }
+.yield-module .flow-editor > header span { color: var(--blue); font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.yield-module .flow-editor > header strong { color: var(--navy); font-size: 16px; }
+.yield-module .route-settings-row { display: grid; grid-template-columns: minmax(260px, 1.3fr) minmax(220px, .7fr); gap: 12px; margin-bottom: 14px; }
+.yield-module .route-builder { overflow: hidden; border: 1px solid #cddae6; border-radius: 12px; background: #fff; }
+.yield-module .route-builder > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid #e2e9ef; background: #f6f9fc; }
+.yield-module .route-builder > header > div { display: flex; flex-direction: column; gap: 3px; }
+.yield-module .route-builder > header span { color: var(--navy); font-size: 11px; font-weight: 900; text-transform: uppercase; }
+.yield-module .route-builder > header small { color: var(--muted); font-size: 10px; }
+.yield-module .route-builder > header > strong { flex: 0 0 auto; border-radius: 99px; padding: 5px 9px; color: var(--blue); background: var(--blue-soft); font-size: 9px; text-transform: uppercase; }
+.yield-module .route-track { display: flex; align-items: stretch; gap: 28px; padding: 20px 18px 22px; overflow-x: auto; background: linear-gradient(180deg, #fff 0%, #f8fbfd 100%); }
+.yield-module .route-node { position: relative; min-width: 178px; display: flex; align-items: center; gap: 9px; border: 1px solid #b8cad9; border-radius: 10px; padding: 11px 32px 11px 10px; cursor: grab; background: #fff; box-shadow: 0 3px 10px rgba(15, 52, 85, .06); }
+.yield-module .route-node:active { cursor: grabbing; }
+.yield-module .route-node.locked { cursor: default; background: #f4f8fb; }
+.yield-module .route-node.locked > svg { opacity: .35; }
+.yield-module .route-node.start { border-color: #2f72af; box-shadow: inset 3px 0 0 #2f72af, 0 3px 10px rgba(15, 52, 85, .08); }
+.yield-module .route-node.finish { border-color: #14956e; box-shadow: inset 3px 0 0 #14956e, 0 3px 10px rgba(15, 52, 85, .08); }
+.yield-module .route-node > svg { flex: 0 0 auto; color: #8ca0b2; }
+.yield-module .route-node > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.yield-module .route-node small { color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.yield-module .route-node strong { overflow: hidden; color: var(--navy); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .route-node span { color: var(--muted); font-size: 9px; }
+.yield-module .route-node > button { position: absolute; top: 7px; right: 7px; width: 20px; height: 20px; display: grid; place-items: center; border: 0; border-radius: 5px; color: #7f91a2; cursor: pointer; background: transparent; }
+.yield-module .route-node > button:hover { color: #c52d35; background: #fff0f1; }
+.yield-module .route-node > i { position: absolute; z-index: 1; top: 50%; right: -29px; width: 29px; height: 2px; color: #467ead; background: #9bbbd4; transform: translateY(-50%); }
+.yield-module .route-node > i svg { position: absolute; right: -4px; top: -7px; padding-left: 2px; background: #f9fbfd; }
+.yield-module .route-empty { margin: 18px; border: 1px dashed #9cb5ca; border-radius: 9px; padding: 18px; color: #60778c; background: #f7fafc; text-align: center; font-size: 11px; }
+.yield-module .route-palette { padding: 14px; border-top: 1px solid #e1e9ef; }
+.yield-module .route-palette > span { display: block; margin-bottom: 9px; color: #63798e; font-size: 9px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.yield-module .route-palette > div { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: 8px; }
+.yield-module .route-palette button { min-width: 0; display: flex; align-items: center; gap: 9px; border: 1px solid #d4dfe8; border-radius: 9px; padding: 9px 10px; color: var(--ink); cursor: pointer; background: #fff; text-align: left; transition: border-color .15s ease, background .15s ease, transform .15s ease; }
+.yield-module .route-palette button:hover { border-color: #80a6c5; background: #f5faff; transform: translateY(-1px); }
+.yield-module .route-palette button.suggested { border-color: #79adcf; background: #f1f9fe; }
+.yield-module .route-palette button.selected { border-color: #2f72af; background: #eaf4fc; }
+.yield-module .route-palette button > i { width: 25px; height: 25px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 7px; color: #416d91; background: #e8f0f6; font-size: 9px; font-style: normal; font-weight: 900; }
+.yield-module .route-palette button.selected > i { color: #fff; background: #2f72af; }
+.yield-module .route-palette button > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.yield-module .route-palette button strong { overflow: hidden; color: var(--navy); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .route-palette button small { color: var(--muted); font-size: 8px; }
+.yield-module .route-palette-empty { margin: 0; border: 1px dashed #c4d2de; border-radius: 8px; padding: 12px; color: var(--muted); background: #f8fafc; font-size: 10px; text-align: center; }
+.yield-module .confirm-dialog-message { display: flex; align-items: flex-start; gap: 12px; margin: 0; border: 1px solid #edc671; border-radius: 10px; padding: 14px; color: #654b13; background: #fff9e9; font-size: 12px; line-height: 1.65; }
+.yield-module .confirm-dialog-message > span { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 8px; color: #a76700; background: #ffedbc; }
+.yield-module .confirm-dialog-message p { margin: 0; }
+.yield-module .confirm-dialog-message.danger { border-color: #efb0b4; color: #78252b; background: #fff5f5; }
+.yield-module .confirm-dialog-message.danger > span { color: #c42c36; background: #ffe3e5; }
+.yield-module .product-origins > span { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.yield-module .product-origins > span small { color: var(--muted); font-size: 9px; font-weight: 500; text-transform: none; }
+.yield-module .product-origins .checkbox-grid label.disabled { opacity: .48; cursor: not-allowed; background: #f2f4f6; }
+.yield-module .sequence-picker { margin-top: 17px; }
+.yield-module .sequence-picker > span { display: block; margin-bottom: 9px; color: #4b6177; font-size: 11px; font-weight: 850; text-transform: uppercase; }
+.yield-module .sequence-picker > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 8px; }
+.yield-module .sequence-picker button { min-height: 62px; display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 2px 9px; border: 1px solid var(--line); border-radius: 9px; padding: 9px; color: var(--muted); background: #fff; text-align: left; }
+.yield-module .sequence-picker button.selected { border-color: #8db2d6; color: var(--navy); background: var(--blue-soft); box-shadow: inset 0 0 0 1px rgba(27,88,160,.08); }
+.yield-module .sequence-picker button i { width: 26px; height: 26px; display: grid; place-items: center; grid-row: 1 / 3; border-radius: 50%; color: #fff; background: #9aabba; font-size: 10px; font-style: normal; font-weight: 900; }
+.yield-module .sequence-picker button.selected i { background: var(--blue); }
+.yield-module .sequence-picker button.final-product { border-color: #8fc5aa; background: var(--green-soft); }
+.yield-module .sequence-picker button.final-product i { background: var(--green); }
+.yield-module .sequence-picker button.final-product small { color: var(--green); font-weight: 800; }
+.yield-module .sequence-picker button strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .sequence-picker button small { font-size: 10px; }
+.yield-module .sequence-picker > p { margin: 9px 0 0; color: var(--muted); font-size: 11px; }
+.yield-module .flow-save-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line-soft); }
+.yield-module .flow-save-row > span { color: var(--muted); font-size: 11px; font-weight: 750; }
+.yield-module .add-flow-button { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; border: 1px dashed #8caac4; border-radius: 10px; padding: 13px; color: var(--blue); background: #f5f9fd; font-size: 12px; font-weight: 850; }
+
+.yield-module .attached-products { margin-bottom: 16px; border: 1px solid var(--line); border-radius: 12px; padding: 15px; background: #fff; box-shadow: var(--shadow); }
+.yield-module .attached-products > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
+.yield-module .attached-products > header > div { display: flex; align-items: center; gap: 8px; color: var(--navy); font-size: 13px; font-weight: 850; }
+.yield-module .attached-products > header small { color: var(--muted); font-size: 11px; }
+.yield-module .attached-products > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 9px; }
+.yield-module .attached-products > div > button { min-width: 0; display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 11px; color: var(--ink); background: #fbfcfe; text-align: left; }
+.yield-module .attached-products > div > button.active { border-color: var(--blue); background: var(--blue-soft); box-shadow: 0 0 0 2px rgba(27,88,160,.08); }
+.yield-module .attached-products > div > button.completed-editable { cursor: pointer; opacity: 1; }
+.yield-module .attached-products > div > button.completed-editable:hover { border-color: #85bba6; background: #f3fbf7; }
+.yield-module .attached-products > div > button.completed-editable.active { border-color: var(--green); background: var(--green-soft); box-shadow: 0 0 0 2px rgba(17,130,91,.08); }
+.yield-module .attached-products button > i { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--navy); font-size: 11px; font-style: normal; font-weight: 900; }
+.yield-module .attached-products button > p { min-width: 0; display: flex; flex-direction: column; gap: 3px; margin: 0; }
+.yield-module .attached-products button > p strong { font-size: 13px; }
+.yield-module .attached-products button > p small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .flow-status { border-radius: 99px; padding: 5px 7px; color: #6e8091; background: #edf2f6; font-size: 9px; font-weight: 900; text-transform: uppercase; white-space: nowrap; }
+.yield-module .flow-status--em_execucao { color: var(--blue); background: #dfeefa; }
+.yield-module .flow-status--finalizado { color: var(--green); background: var(--green-soft); }
+.yield-module .completed-flow-editing { display: flex; align-items: center; gap: 9px; margin: 0 0 16px; border-color: #edc779; color: #80540b; background: #fff8e8; }
+.yield-module .completed-flow-editing svg { flex: 0 0 auto; }
+.yield-module .flow-timelines { display: grid; gap: 18px; }
+.yield-module .flow-timeline { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.yield-module .flow-timeline > header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 15px 18px; border-bottom: 1px solid var(--line); background: #f7fafc; }
+.yield-module .flow-timeline > header > div:first-child span { color: var(--blue); font-size: 10px; font-weight: 900; text-transform: uppercase; }
+.yield-module .flow-timeline > header h3 { margin: 3px 0; color: var(--navy); font-size: 17px; }
+.yield-module .flow-timeline > header p { margin: 0; color: var(--muted); font-size: 11px; }
+.yield-module .flow-timeline > header > .flow-header-summary { display: flex; align-items: center; gap: 18px; }
+.yield-module .flow-header-yield { min-width: 105px; padding-left: 16px; border-left: 1px solid var(--line); text-align: right; }
+.yield-module .flow-header-yield span { display: block; margin-bottom: 3px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .02em; text-transform: none; }
+.yield-module .flow-header-yield strong { color: var(--green); font-size: 20px; line-height: 1; }
+.yield-module .flow-header-yield--gross { min-width: 170px; }
+.yield-module .flow-header-yield--gross strong { color: var(--ink); font-size: 27px; }
+.yield-module .flow-timeline .process-timeline { padding: 18px 18px 0; }
+
+@media (max-width: 680px) {
+  .yield-module .flow-save-row, .yield-module .attached-products > header, .yield-module .flow-timeline > header { align-items: flex-start; flex-direction: column; }
+  .yield-module .flow-timeline > header > .flow-header-summary { width: 100%; align-items: flex-end; flex-wrap: wrap; }
+  .yield-module .flow-header-yield { flex: 1; text-align: left; }
+  .yield-module .attached-products > div { grid-template-columns: 1fr; }
+  .yield-module .attached-products > div > button { grid-template-columns: 30px 1fr; }
+  .yield-module .attached-products .flow-status { grid-column: 2; width: fit-content; }
+}
+
+/* Cards verticais de testes pendentes — referência Visitas / Vértice Campo */
+.yield-module .tests-panel { overflow: hidden; }
+.yield-module .pending-cards-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 20px 14px; }
+.yield-module .pending-cards-heading > div { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.yield-module .pending-heading-icon { width: 39px; height: 39px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 9px; color: #a96310; background: var(--amber-soft); }
+.yield-module .pending-cards-heading h2 { margin: 0; color: var(--ink); font-size: 18px; font-weight: 900; }
+.yield-module .pending-cards-heading p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+.yield-module .pending-cards-heading > div > strong { flex: 0 0 auto; margin-left: 5px; border-radius: 99px; padding: 6px 10px; color: #fff; background: var(--red); font-size: 11px; font-weight: 850; }
+.yield-module .pending-card-rail { display: flex; flex-direction: column; gap: 14px; padding: 5px 20px 20px; }
+.yield-module .pending-test-card { width: 100%; min-width: 0; min-height: 300px; display: flex; flex-direction: column; position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; padding: 21px 22px 19px 27px; color: var(--ink); background: #fff; box-shadow: 0 5px 16px rgba(23,61,110,.08); cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.yield-module .pending-test-card:hover, .yield-module .pending-test-card:focus-visible { border-color: #9bb9d2; outline: 0; box-shadow: 0 10px 26px rgba(23,61,110,.13); transform: translateY(-2px); }
+.yield-module .pending-card-accent { width: 6px; position: absolute; inset: 0 auto 0 0; background: #68c4e9; }
+.yield-module .pending-test-card--rascunho .pending-card-accent { background: #94a3b8; }
+.yield-module .pending-test-card--aberto .pending-card-accent { background: #e69520; }
+.yield-module .pending-test-card--em_execucao .pending-card-accent { background: #68c4e9; }
+.yield-module .pending-test-card > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.yield-module .pending-test-card > header > div { display: flex; flex-direction: column; gap: 3px; }
+.yield-module .pending-test-card > header > div > span { color: var(--navy); font-size: 20px; font-weight: 900; letter-spacing: -.025em; }
+.yield-module .pending-test-card > header > div > small { color: var(--muted); font-size: 10px; font-weight: 800; }
+.yield-module .pending-card-main { margin-top: 17px; }
+.yield-module .pending-card-main h3 { min-height: 22px; margin: 0; overflow: hidden; color: var(--ink); font-size: 19px; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .pending-card-main p { margin: 4px 0 0; color: var(--muted); font-size: 11px; font-weight: 750; text-transform: uppercase; }
+.yield-module .pending-card-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.yield-module .pending-card-title h3 { min-width: 0; flex: 1; }
+.yield-module .pending-card-title button { min-height: 36px; display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; border: 1px solid #efb25b; border-radius: 9px; padding: 7px 10px; color: #97520b; background: #fff8e9; font-size: 10px; font-weight: 900; }
+.yield-module .pending-card-title button:hover { border-color: #dc8b22; background: #ffefd0; }
+.yield-module .pending-card-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 13px; }
+.yield-module .pending-card-chips span { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line-soft); border-radius: 6px; padding: 6px 7px; color: #52697f; background: #f7f9fb; font-size: 10px; font-weight: 800; }
+.yield-module .pending-card-chips svg { color: #8298ab; }
+.yield-module .pending-card-products { margin-top: 14px; }
+.yield-module .pending-card-products > span { display: block; margin-bottom: 7px; color: #72869a; font-size: 9px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.yield-module .pending-card-products > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.yield-module .pending-card-products i { border-radius: 99px; padding: 5px 8px; color: var(--blue); background: var(--blue-soft); font-size: 10px; font-style: normal; font-weight: 850; }
+.yield-module .pending-card-progress { margin-top: 15px; border-top: 1px solid var(--line-soft); padding-top: 13px; }
+.yield-module .pending-card-progress > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #64798d; font-size: 10px; font-weight: 800; }
+.yield-module .pending-card-progress > header span { display: inline-flex; align-items: center; gap: 5px; }
+.yield-module .pending-card-progress > header strong { color: var(--navy); font-size: 11px; }
+.yield-module .pending-card-progress > div { height: 6px; margin: 8px 0 10px; overflow: hidden; border-radius: 99px; background: #e7edf3; }
+.yield-module .pending-card-progress > div i { height: 100%; display: block; border-radius: inherit; background: var(--green); }
+.yield-module .pending-card-progress > p { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; }
+.yield-module .pending-card-progress > p span { color: var(--muted); font-size: 10px; }
+.yield-module .pending-card-progress > p strong { max-width: 65%; overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .pending-test-card > footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 16px; }
+.yield-module .pending-test-card > footer > small { max-width: 110px; color: #8598a9; font-size: 9px; line-height: 1.4; }
+.yield-module .pending-test-card > footer > div { display: flex; align-items: center; gap: 7px; }
+.yield-module .pending-test-card > footer .button { min-height: 36px; padding: 8px 10px; font-size: 10px; }
+.yield-module .pending-test-card > footer .icon-button { width: 36px; height: 36px; }
+
+@media (max-width: 680px) {
+  .yield-module .pending-cards-heading { align-items: flex-start; padding-inline: 15px; }
+  .yield-module .pending-cards-heading > div > strong { display: none; }
+  .yield-module .pending-cards-heading p { display: none; }
+  .yield-module .pending-card-rail { padding-inline: 15px; }
+  .yield-module .pending-test-card { width: 100%; min-width: 0; min-height: 0; }
+  .yield-module .pending-test-card > footer { align-items: stretch; flex-direction: column; }
+  .yield-module .pending-test-card > footer > small { max-width: none; }
+  .yield-module .pending-test-card > footer > div, .yield-module .pending-test-card > footer .button { flex: 1; }
+}
+
+/* Dados de entrada opcionais e editáveis */
+.yield-module .form-grid--4 { grid-template-columns: repeat(4, 1fr); }
+.yield-module .optional-input-card > header h2 { display: flex; align-items: center; gap: 8px; }
+.yield-module .optional-input-card > header h2 i { border-radius: 99px; padding: 4px 7px; color: var(--blue); background: var(--blue-soft); font-size: 9px; font-style: normal; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.yield-module .optional-data-note { display: flex; align-items: center; gap: 8px; margin: -7px 0 17px; border: 1px solid #cbe2d8; border-radius: 9px; padding: 10px 12px; color: #326b56; background: #f0faf6; font-size: 11px; font-weight: 750; }
+.yield-module .weight-entry-field { display: flex; flex-direction: column; gap: 7px; }
+.yield-module .weight-entry-field > span { color: #52687d; font-size: 11px; font-weight: 800; }
+.yield-module .weight-mode-switch { min-height: 44px; display: flex; align-items: center; gap: 9px; position: relative; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: #f8fafc; cursor: pointer; }
+.yield-module .weight-mode-switch.disabled { opacity: .5; cursor: not-allowed; }
+.yield-module .weight-mode-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.yield-module .weight-mode-switch > i { width: 34px; height: 20px; display: block; position: relative; flex: 0 0 auto; border-radius: 99px; background: #aab8c5; transition: .18s ease; }
+.yield-module .weight-mode-switch > i span { width: 14px; height: 14px; position: absolute; top: 3px; left: 3px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(15,35,55,.28); transition: .18s ease; }
+.yield-module .weight-mode-switch input:checked + i { background: var(--blue); }
+.yield-module .weight-mode-switch input:checked + i span { transform: translateX(14px); }
+.yield-module .weight-mode-switch > div { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.yield-module .weight-mode-switch strong { color: var(--navy); font-size: 10px; }
+.yield-module .weight-mode-switch small { overflow: hidden; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .piece-weights-panel { overflow: hidden; border: 1px solid #cbdbe8; border-radius: 10px; background: #f8fbfd; }
+.yield-module .piece-weights-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; border-bottom: 1px solid #dce7ef; }
+.yield-module .piece-weights-panel > header > div { display: flex; flex-direction: column; gap: 2px; }
+.yield-module .piece-weights-panel > header strong { color: var(--navy); font-size: 12px; }
+.yield-module .piece-weights-panel > header span { color: var(--muted); font-size: 10px; }
+.yield-module .piece-weights-panel > header button { display: inline-flex; align-items: center; gap: 5px; border: 0; color: var(--blue); background: transparent; font-size: 10px; font-weight: 850; }
+.yield-module .piece-weight-grid { max-height: 380px; display: grid; grid-template-columns: 1fr; gap: 8px; padding: 13px; overflow-y: auto; }
+.yield-module .piece-weight-grid label { display: grid; grid-template-columns: 80px minmax(0, 1fr); align-items: center; gap: 10px; }
+.yield-module .piece-weight-grid label > span { color: #64788c; font-size: 9px; font-weight: 850; text-transform: uppercase; }
+.yield-module .piece-weight-grid label > div { min-height: 39px; display: flex; align-items: center; border: 1px solid var(--line); border-radius: 7px; padding: 0 9px; background: #fff; }
+.yield-module .piece-weight-grid input { min-width: 0; width: 100%; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 12px; font-weight: 750; }
+.yield-module .piece-weight-grid small { color: #8092a3; font-size: 9px; }
+.yield-module .product-flows-locked { display: flex; align-items: center; gap: 14px; border: 1px dashed #aebfce; border-radius: 12px; padding: 22px; color: #52687d; background: #f7f9fb; }
+.yield-module .product-flows-locked > span { width: 43px; height: 43px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px; color: #6f8294; background: #e8edf2; }
+.yield-module .product-flows-locked strong { display: block; color: var(--navy); font-size: 14px; }
+.yield-module .product-flows-locked p { margin: 4px 0 0; font-size: 11px; line-height: 1.5; }
+.yield-module .product-flows-card > header { flex-wrap: wrap; }
+.yield-module .product-flows-card > header > div:nth-child(2) { flex: 1; }
+.yield-module .autosave-state { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; border-radius: 99px; padding: 6px 9px; color: #62778a; background: #edf2f6; font-size: 10px; font-weight: 850; white-space: nowrap; }
+.yield-module .autosave-state.saved { color: var(--green); background: var(--green-soft); }
+.yield-module .autosave-state.saving { color: var(--blue); background: var(--blue-soft); }
+.yield-module .flow-save-row > strong { display: inline-flex; align-items: center; gap: 5px; color: var(--green); font-size: 10px; }
+
+.yield-module .test-input-card { margin-bottom: 16px; border: 1px solid #c9d9e7; border-radius: 12px; padding: 16px 18px; background: linear-gradient(135deg, #fff 0%, #f7fbff 100%); box-shadow: var(--shadow); }
+.yield-module .test-input-card.editing { border-color: #8bb0d3; background: #fff; }
+.yield-module .test-input-card > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.yield-module .test-input-card > header > div { display: flex; align-items: center; gap: 11px; }
+.yield-module .test-input-card > header > div > span { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 9px; color: var(--blue); background: var(--blue-soft); }
+.yield-module .test-input-card > header h2 { margin: 0; color: var(--navy); font-size: 17px; }
+.yield-module .test-input-card > header p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+.yield-module .test-name-summary { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; border: 1px solid #cfe3f1; border-radius: 10px; padding: 12px 14px; color: var(--blue); background: #f5faff; }
+.yield-module .test-name-summary p { display: flex; flex-direction: column; gap: 3px; margin: 0; }
+.yield-module .test-name-summary p span { color: #71869a; font-size: 9px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.yield-module .test-name-summary p strong { color: var(--navy); font-size: 14px; }
+.yield-module .test-input-summary { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line-soft); border-radius: 10px; overflow: hidden; background: #fff; }
+.yield-module .test-input-summary > div { min-width: 0; display: flex; align-items: flex-start; gap: 9px; padding: 13px 14px; border-right: 1px solid var(--line-soft); }
+.yield-module .test-input-summary > div:last-child { border-right: 0; }
+.yield-module .test-input-summary > div > svg { flex: 0 0 auto; margin-top: 2px; color: #7d96aa; }
+.yield-module .test-input-summary p { min-width: 0; display: flex; flex-direction: column; gap: 4px; margin: 0; }
+.yield-module .test-input-summary p span { color: #71869a; font-size: 9px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.yield-module .test-input-summary p strong { overflow: hidden; color: var(--ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .test-input-summary p small { color: var(--muted); font-size: 9px; }
+.yield-module .input-data-empty { margin-top: 10px; border: 1px dashed #a9c5dc; border-radius: 8px; padding: 9px 11px; color: #52708a; background: #f5faff; font-size: 11px; }
+.yield-module .test-input-card .inline-message { margin-top: 10px; }
+.yield-module .test-input-edit { padding-top: 2px; }
+.yield-module .direct-input-card > header .button { flex: 0 0 auto; }
+.yield-module .input-edit-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; border-top: 1px solid var(--line-soft); padding-top: 13px; }
+.yield-module .input-edit-footer > span { color: var(--muted); font-size: 11px; }
+.yield-module .input-edit-footer > span strong { color: var(--navy); }
+.yield-module .input-edit-footer > div { display: flex; gap: 8px; }
+
+@media (max-width: 1180px) {
+  .yield-module .form-grid--4, .yield-module .test-input-summary { grid-template-columns: repeat(2, 1fr); }
+  .yield-module .test-input-summary > div:nth-child(2) { border-right: 0; }
+  .yield-module .test-input-summary > div:nth-child(-n+2) { border-bottom: 1px solid var(--line-soft); }
+}
+@media (max-width: 680px) {
+  .yield-module .form-grid--4, .yield-module .test-input-summary { grid-template-columns: 1fr; }
+  .yield-module .test-input-card > header, .yield-module .input-edit-footer { align-items: stretch; flex-direction: column; }
+  .yield-module .test-input-card > header > div { align-items: flex-start; }
+  .yield-module .test-input-summary > div { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+  .yield-module .test-input-summary > div:last-child { border-bottom: 0; }
+  .yield-module .input-edit-footer > div { flex-direction: column; }
+  .yield-module .input-edit-footer .button { width: 100%; }
+  .yield-module .autosave-state { width: 100%; justify-content: center; margin-left: 0; }
+  .yield-module .piece-weight-grid { grid-template-columns: 1fr; }
+  .yield-module .piece-weight-grid label { grid-template-columns: 70px minmax(0, 1fr); }
+  .yield-module .product-flows-locked { align-items: flex-start; }
+  .yield-module .route-builder > header { align-items: flex-start; flex-direction: column; }
+  .yield-module .route-track { gap: 23px; padding-inline: 12px; }
+  .yield-module .route-node { min-width: 155px; }
+  .yield-module .route-node > i { right: -24px; width: 24px; }
+  .yield-module .route-palette > div { grid-template-columns: 1fr; }
+  .yield-module .product-origins > span { align-items: flex-start; flex-direction: column; }
+  .yield-module .route-settings-row { grid-template-columns: 1fr; }
+}
+.yield-module {
+  min-height: calc(100vh - 3rem);
+  background: var(--bg);
+}

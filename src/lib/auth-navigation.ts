@@ -15,6 +15,7 @@ export const normalizeAuthenticatedRoute = (value: unknown): string | null => {
   const route = `${url.pathname}${url.search}${url.hash}`;
 
   if (url.pathname === "/inicio") return route;
+  if (url.pathname === "/admin/usuarios") return route;
   if (url.pathname === "/dashboard") return route;
   if (url.pathname === "/campo") return route;
   if (url.pathname === "/visitas") return route;
@@ -25,6 +26,9 @@ export const normalizeAuthenticatedRoute = (value: unknown): string | null => {
     return route;
   }
   if (url.pathname === "/contratos" || url.pathname.startsWith("/contratos/")) {
+    return route;
+  }
+  if (url.pathname === "/rendimento" || url.pathname.startsWith("/rendimento/")) {
     return route;
   }
 
@@ -40,6 +44,9 @@ export const canAccessAuthenticatedRoute = (
 
   const pathname = getPathname(route);
   if (pathname === "/inicio") return true;
+  if (pathname === "/admin/usuarios") {
+    return hasAccessToRule(user, APP_ROUTE_ACCESS.usuarios);
+  }
   if (pathname === "/dashboard") {
     return hasAccessToRule(user, APP_ROUTE_ACCESS.dashboard);
   }
@@ -57,6 +64,9 @@ export const canAccessAuthenticatedRoute = (
   }
   if (pathname === "/contratos" || pathname.startsWith("/contratos/")) {
     return hasAccessToRule(user, APP_ROUTE_ACCESS.contratos);
+  }
+  if (pathname === "/rendimento" || pathname.startsWith("/rendimento/")) {
+    return hasAccessToRule(user, APP_ROUTE_ACCESS.rendimento);
   }
 
   return false;
