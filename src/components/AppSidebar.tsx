@@ -89,13 +89,22 @@ export function AppSidebar() {
   const isEscalaActive = location.pathname.startsWith("/escala");
   const isContratosActive = location.pathname.startsWith("/contratos");
   const isRendimentoActive = location.pathname.startsWith("/rendimento");
+  const activeGroupId = isUsuariosActive
+    ? "gerenciamento"
+    : isEscalaActive
+      ? "escala"
+      : isContratosActive
+        ? "contratos"
+        : isRendimentoActive
+          ? "rendimento"
+          : "campo";
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    gerenciamento: isUsuariosActive,
-    campo: true,
-    escala: isEscalaActive,
-    contratos: isContratosActive,
-    rendimento: isRendimentoActive,
+    gerenciamento: activeGroupId === "gerenciamento",
+    campo: activeGroupId === "campo",
+    escala: activeGroupId === "escala",
+    contratos: activeGroupId === "contratos",
+    rendimento: activeGroupId === "rendimento",
   });
 
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
@@ -106,34 +115,24 @@ export function AppSidebar() {
   useEffect(() => {
     if (collapsed) return;
 
+    setOpenGroups((previous) =>
+      Object.keys(previous).reduce<Record<string, boolean>>(
+        (groups, groupId) => {
+          groups[groupId] = groupId === activeGroupId;
+          return groups;
+        },
+        {},
+      ),
+    );
+
     if (isAgendamentoActive) {
-      setOpenGroups((previous) => ({ ...previous, campo: true }));
       setOpenSubmenus((previous) => ({
         ...previous,
         agendamentos: true,
       }));
     }
 
-    if (isEscalaActive) {
-      setOpenGroups((previous) => ({
-        ...previous,
-        escala: true,
-      }));
-    }
-
-    if (isUsuariosActive) {
-      setOpenGroups((previous) => ({ ...previous, gerenciamento: true }));
-    }
-
-    if (isContratosActive) {
-      setOpenGroups((previous) => ({
-        ...previous,
-        contratos: true,
-      }));
-    }
-
     if (isRendimentoActive) {
-      setOpenGroups((previous) => ({ ...previous, rendimento: true }));
       if (location.pathname.startsWith("/rendimento/cadastros")) {
         setOpenSubmenus((previous) => ({
           ...previous,
@@ -142,15 +141,23 @@ export function AppSidebar() {
       }
     }
 
-  }, [collapsed, isAgendamentoActive, isContratosActive, isEscalaActive, isRendimentoActive, isUsuariosActive, location.pathname]);
+  }, [activeGroupId, collapsed, isAgendamentoActive, isRendimentoActive, location.pathname]);
 
   const toggleGroup = (groupId: string) => {
     if (collapsed) return;
 
-    setOpenGroups((previous) => ({
-      ...previous,
-      [groupId]: !previous[groupId],
-    }));
+    setOpenGroups((previous) => {
+      const nextOpenState = !previous[groupId];
+
+      return Object.keys(previous).reduce<Record<string, boolean>>(
+        (groups, currentGroupId) => {
+          groups[currentGroupId] =
+            currentGroupId === groupId ? nextOpenState : false;
+          return groups;
+        },
+        {},
+      );
+    });
   };
 
   const toggleSubmenu = (submenuId: string) => {
@@ -446,7 +453,7 @@ export function AppSidebar() {
       </div>
 
       {/* Área dos módulos com predominância do azul-marinho */}
-      <SidebarContent className="app-sidebar-scroll min-h-0 flex-1 overflow-y-scroll overscroll-contain bg-[#173D6E] px-0 py-4">
+      <SidebarContent className="app-sidebar-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#173D6E] px-0 py-4">
         {normalizedMenuGroups.map((group) => {
           const isGroupOpen = openGroups[group.id];
 

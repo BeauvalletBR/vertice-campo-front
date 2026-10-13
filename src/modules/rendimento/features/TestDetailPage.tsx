@@ -19,6 +19,7 @@ import { Button } from "../components/ui";
 import { testService } from "../services/testService";
 import { useRendimentoData } from "../context/RendimentoDataContext";
 import type { NavigationTarget } from "../types/navigation";
+import { calculateTotalDiscard, consolidateDiscards } from "../utils/calculations";
 import {
   formatDate,
   formatDateTime,
@@ -35,6 +36,7 @@ export function TestDetailPage({
   onNavigate: (target: NavigationTarget) => void;
 }) {
   const [confirmReopen, setConfirmReopen] = useState(false);
+  const [actionError, setActionError] = useState("");
   const { products, tests, refreshTests } = useRendimentoData();
   const test = testId ? tests.find((item) => item.id === testId) : undefined;
   const productName = (id?: string) =>
@@ -59,9 +61,21 @@ export function TestDetailPage({
   const finalInputYield =
     test.inputWeightKg > 0 ? (finalWeight / test.inputWeightKg) * 100 : 0;
   const reopen = async () => {
-    if (await testService.reopen(test.id)) {
+    setActionError("");
+    try {
+      const reopened = await testService.reopen(test.id);
+      if (!reopened) {
+        setActionError("Este teste não está disponível para reabertura.");
+        return;
+      }
       await refreshTests();
       onNavigate({ route: "execute", id: test.id });
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível reabrir o teste.",
+      );
     }
   };
 
@@ -122,6 +136,7 @@ export function TestDetailPage({
           </div>
         }
       />
+      {actionError && <div className="inline-message">{actionError}</div>}
       <section className="detail-summary detail-summary--compact">
         <div>
           <CalendarDays size={17} />
@@ -175,7 +190,9 @@ export function TestDetailPage({
           <div>
             <span>Processo</span>
             <h2>Fluxo de rendimento</h2>
-            <p>Os descartes estão agrupados no produto em que foram retirados.</p>
+            <p>
+              Os descartes estão agrupados no produto em que foram retirados.
+            </p>
           </div>
           <div className="final-yield">
             <span>Final sobre a entrada</span>
@@ -184,13 +201,13 @@ export function TestDetailPage({
         </header>
         <div className="yield-processes">
           {test.flows.map((flow, flowIndex) => {
-            const confirmedSteps = flow.steps.filter((step) => step.confirmed);
-            const visibleSteps = confirmedSteps.length
-              ? confirmedSteps
-              : flow.steps;
+            const visibleSteps = flow.steps;
             const operationSteps = visibleSteps.slice(0, -1);
             const finalStep = visibleSteps.at(-1);
             const firstWeight = operationSteps[0]?.initialWeightKg || 0;
+            const finalDiscards = consolidateDiscards(
+              operationSteps.flatMap((step) => step.discards),
+            );
             return (
               <article className="yield-process" key={flow.id}>
                 <header>
@@ -237,9 +254,14 @@ export function TestDetailPage({
                         {discards.length > 0 && (
                           <div className="yield-discard-group">
                             {discards.map((discard) => (
-                              <div className="yield-discard-row" key={discard.id}>
+                              <div
+                                className="yield-discard-row"
+                                key={discard.id}
+                              >
                                 <span>{discard.name}</span>
-                                <strong>− {formatWeight(discard.weightKg)}</strong>
+                                <strong>
+                                  − {formatWeight(discard.weightKg)}
+                                </strong>
                               </div>
                             ))}
                           </div>
@@ -256,21 +278,37 @@ export function TestDetailPage({
                   })}
 
                   {finalStep && (
-                    <div className="yield-product-row yield-product-row--final">
-                      <span className="yield-product-marker">
-                        <PackageCheck size={15} />
-                      </span>
-                      <strong>{productName(finalStep.productId)}</strong>
-                      <b>{formatWeight(finalStep.cleanWeightKg)}</b>
-                      <b>{formatPercent(finalStep.inputYieldPercent)}</b>
-                      <b>
-                        {formatPercent(
-                          firstWeight
-                            ? (finalStep.cleanWeightKg / firstWeight) * 100
-                            : 0,
-                        )}
-                      </b>
-                    </div>
+                    <>
+                      <div className="yield-product-row yield-product-row--final">
+                        <span className="yield-product-marker">
+                          <PackageCheck size={15} />
+                        </span>
+                        <strong>{productName(finalStep.productId)}</strong>
+                        <b>{formatWeight(finalStep.cleanWeightKg)}</b>
+                        <b>{formatPercent(finalStep.inputYieldPercent)}</b>
+                        <b>
+                          {formatPercent(
+                            firstWeight
+                              ? (finalStep.cleanWeightKg / firstWeight) * 100
+                              : 0,
+                          )}
+                        </b>
+                      </div>
+                      {finalDiscards.length > 0 && (
+                        <div className="yield-final-discards">
+                          {finalDiscards.map((discard) => (
+                            <div key={`${discard.discardTypeId}-${discard.name}`}>
+                              <span>{discard.name}</span>
+                              <b>− {formatWeight(discard.weightKg)}</b>
+                            </div>
+                          ))}
+                          <div className="yield-final-discards__total">
+                            <span>Total retirado</span>
+                            <b>− {formatWeight(calculateTotalDiscard(finalDiscards))}</b>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </article>

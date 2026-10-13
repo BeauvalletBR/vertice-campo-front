@@ -8,6 +8,21 @@ export const calculateAverageWeight = (weight: number, quantity: number) =>
 export const calculateTotalDiscard = (discards: TestDiscard[]) =>
   round3(discards.reduce((total, discard) => total + Math.max(0, discard.weightKg || 0), 0));
 
+export const consolidateDiscards = (discards: TestDiscard[]) => {
+  const consolidated = new Map<string, TestDiscard>();
+  discards.forEach((discard) => {
+    if (discard.weightKg <= 0) return;
+    const key = discard.name.trim().toLocaleUpperCase("pt-BR");
+    const current = consolidated.get(key);
+    if (current) {
+      current.weightKg = round3(current.weightKg + discard.weightKg);
+      return;
+    }
+    consolidated.set(key, { ...discard });
+  });
+  return [...consolidated.values()];
+};
+
 export const calculateCleanWeight = (initialWeight: number, discards: TestDiscard[]) =>
   round3(Math.max(0, initialWeight - calculateTotalDiscard(discards)));
 

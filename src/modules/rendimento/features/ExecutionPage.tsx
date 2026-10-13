@@ -7,6 +7,7 @@ import {
   Check,
   CirclePlus,
   PackageCheck,
+  Plus,
   Save,
   SquarePen,
   Trash2,
@@ -28,6 +29,7 @@ import {
 import {
   formatPercent,
   formatWeight,
+  handleWeightInputKeyDown,
   parseDecimal,
   sanitizeWeightInput,
   toInputDecimal,
@@ -56,6 +58,11 @@ export function ExecutionPage({
   const [stepIndex, setStepIndex] = useState(flow?.currentStepIndex || 0);
   const step = flow?.steps[stepIndex];
   const [initialWeight, setInitialWeight] = useState("");
+  const [pieceWeights, setPieceWeights] = useState<number[]>([]);
+  const [weightModalOpen, setWeightModalOpen] = useState(false);
+  const [pieceWeightInput, setPieceWeightInput] = useState("");
+  const [discardWeightModalId, setDiscardWeightModalId] = useState<string | null>(null);
+  const [discardPieceWeightInput, setDiscardPieceWeightInput] = useState("");
   const [draftDiscards, setDraftDiscards] = useState<TestDiscard[]>([]);
   const [discardInputs, setDiscardInputs] = useState<Record<string, string>>(
     {},
@@ -72,6 +79,7 @@ export function ExecutionPage({
     flowId: flow?.id,
     stepId: step?.id,
     initialWeightKg: step?.initialWeightKg || 0,
+    pieceWeightsKg: step?.pieceWeightsKg || [],
     discards: step?.discards || [],
   });
 
@@ -79,9 +87,11 @@ export function ExecutionPage({
     const refresh = window.setTimeout(() => {
       const draft = JSON.parse(stepDraft) as {
         initialWeightKg: number;
+        pieceWeightsKg: number[];
         discards: TestDiscard[];
       };
       setInitialWeight(toInputDecimal(draft.initialWeightKg, true));
+      setPieceWeights(draft.pieceWeightsKg);
       setDraftDiscards(draft.discards);
       setDiscardInputs(
         Object.fromEntries(
@@ -119,6 +129,17 @@ export function ExecutionPage({
   const editingReopenedTest = Boolean(test?.reopenedAt);
   const editingCompletedFlow =
     flow?.status === "FINALIZADO" && test?.status === "EM_EXECUCAO";
+  const weightEditable =
+    editingReopenedTest || editingCompletedFlow || !step?.confirmed;
+  const basePieceWeights =
+    pieceWeights.length > 0
+      ? pieceWeights
+      : numericInitial > 0
+        ? [numericInitial]
+        : [];
+  const newPieceWeight = parseDecimal(pieceWeightInput);
+  const previewPieceTotal =
+    basePieceWeights.reduce((sum, value) => sum + value, 0) + newPieceWeight;
 
   const selectFlow = (nextFlowId: string) => {
     const nextFlow = test?.flows.find((item) => item.id === nextFlowId);
@@ -136,11 +157,17 @@ export function ExecutionPage({
         : "",
     );
   };
-  const updateWeight = (discardId: string, value: string) =>
+  const updateWeight = (discardId: string, value: string) => {
+    setDraftDiscards((current) =>
+      current.map((item) =>
+        item.id === discardId ? { ...item, pieceWeightsKg: [] } : item,
+      ),
+    );
     setDiscardInputs((current) => ({
       ...current,
       [discardId]: sanitizeWeightInput(value),
     }));
+  };
   const saveProgress = async () => {
     if (!test || !flow || !step) return;
     setSaving(true);
@@ -150,7 +177,11 @@ export function ExecutionPage({
         test.id,
         flow.id,
         stepIndex,
-        { initialWeightKg: numericInitial, discards: calculatedDiscards },
+        {
+          initialWeightKg: numericInitial,
+          pieceWeightsKg: pieceWeights,
+          discards: calculatedDiscards,
+        },
         false,
       );
       const updatedFlow = updated.flows.find(
@@ -189,7 +220,11 @@ export function ExecutionPage({
         test.id,
         flow.id,
         stepIndex,
-        { initialWeightKg: numericInitial, discards: calculatedDiscards },
+        {
+          initialWeightKg: numericInitial,
+          pieceWeightsKg: pieceWeights,
+          discards: calculatedDiscards,
+        },
         true,
       );
       await refreshTests();
@@ -270,6 +305,91 @@ export function ExecutionPage({
       delete next[discardId];
       return next;
     });
+  };
+  const addPieceWeight = () => {
+    if (newPieceWeight <= 0) return;
+    const next = [...basePieceWeights, newPieceWeight];
+    setPieceWeights(next);
+    setInitialWeight(
+      toInputDecimal(
+        next.reduce((sum, value) => sum + value, 0),
+        true,
+      ),
+    );
+    setPieceWeightInput("");
+    setWeightModalOpen(false);
+  };
+  const removePieceWeight = (index: number) => {
+    const next = pieceWeights.filter((_, itemIndex) => itemIndex !== index);
+    setPieceWeights(next);
+    setInitialWeight(
+      toInputDecimal(
+        next.reduce((sum, value) => sum + value, 0),
+        true,
+      ),
+    );
+  };
+  const useTotalWeight = () => {
+    setPieceWeights([]);
+    setPieceWeightInput("");
+    setWeightModalOpen(false);
+  };
+  const selectedDiscardForWeight = draftDiscards.find(
+    (item) => item.id === discardWeightModalId,
+  );
+  const selectedDiscardTotal = selectedDiscardForWeight
+    ? parseDecimal(discardInputs[selectedDiscardForWeight.id] || "0")
+    : 0;
+  const discardPieceWeights = selectedDiscardForWeight?.pieceWeightsKg?.length
+    ? selectedDiscardForWeight.pieceWeightsKg
+    : selectedDiscardTotal > 0
+      ? [selectedDiscardTotal]
+      : [];
+  const newDiscardPieceWeight = parseDecimal(discardPieceWeightInput);
+  const previewDiscardTotal =
+    discardPieceWeights.reduce((sum, value) => sum + value, 0) +
+    newDiscardPieceWeight;
+  const setDiscardPieces = (values: number[]) => {
+    if (!selectedDiscardForWeight) return;
+    setDraftDiscards((current) =>
+      current.map((item) =>
+        item.id === selectedDiscardForWeight.id
+          ? { ...item, pieceWeightsKg: values }
+          : item,
+      ),
+    );
+    setDiscardInputs((current) => ({
+      ...current,
+      [selectedDiscardForWeight.id]: toInputDecimal(
+        values.reduce((sum, value) => sum + value, 0),
+        true,
+      ),
+    }));
+  };
+  const addDiscardPieceWeight = () => {
+    if (newDiscardPieceWeight <= 0) return;
+    setDiscardPieces([...discardPieceWeights, newDiscardPieceWeight]);
+    setDiscardPieceWeightInput("");
+    setDiscardWeightModalId(null);
+  };
+  const removeDiscardPieceWeight = (index: number) => {
+    setDiscardPieces(
+      (selectedDiscardForWeight?.pieceWeightsKg || []).filter(
+        (_, itemIndex) => itemIndex !== index,
+      ),
+    );
+  };
+  const useDiscardTotalWeight = () => {
+    if (!selectedDiscardForWeight) return;
+    setDraftDiscards((current) =>
+      current.map((item) =>
+        item.id === selectedDiscardForWeight.id
+          ? { ...item, pieceWeightsKg: [] }
+          : item,
+      ),
+    );
+    setDiscardPieceWeightInput("");
+    setDiscardWeightModalId(null);
   };
 
   if (!test || !flow || !step)
@@ -445,20 +565,48 @@ export function ExecutionPage({
             </div>
             <div className="step-weight">
               <small>
-                {editingReopenedTest || editingCompletedFlow
-                  ? "Peso inicial · editável"
-                  : "Peso inicial"}
+                {weightEditable ? "Peso inicial · editável" : "Peso inicial"}
               </small>
-              {editingReopenedTest ||
-              editingCompletedFlow ||
-              (stepIndex === 0 && !step.confirmed) ? (
-                <input
-                  value={initialWeight}
-                  onChange={(event) =>
-                    setInitialWeight(sanitizeWeightInput(event.target.value))
-                  }
-                  inputMode="decimal"
-                />
+              {weightEditable ? (
+                <div className="step-weight-editor">
+                  {pieceWeights.length > 0 && (
+                    <span className="piece-weight-count">
+                      {pieceWeights.length} valores somados
+                    </span>
+                  )}
+                  <div>
+                    <input
+                      value={initialWeight}
+                      readOnly={pieceWeights.length > 0}
+                      aria-label="Peso inicial do produto"
+                      onFocus={(event) => event.currentTarget.select()}
+                      onKeyDown={(event) => {
+                        if (!pieceWeights.length) {
+                          handleWeightInputKeyDown(
+                            event,
+                            initialWeight || "0,000",
+                            setInitialWeight,
+                          );
+                        }
+                      }}
+                      onChange={(event) =>
+                        setInitialWeight(
+                          sanitizeWeightInput(event.target.value),
+                        )
+                      }
+                      inputMode="decimal"
+                    />
+                    <button
+                      type="button"
+                      className="add-piece-weight-button"
+                      title="Somar uma pesagem individual"
+                      aria-label="Adicionar pesagem individual"
+                      onClick={() => setWeightModalOpen(true)}
+                    >
+                      <Plus size={18} />
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <strong>{formatWeight(numericInitial)}</strong>
               )}
@@ -484,17 +632,41 @@ export function ExecutionPage({
                       {item.manual ? "Manual" : "Cadastrado"}
                     </span>
                     <strong>{item.name}</strong>
+                    {item.pieceWeightsKg && item.pieceWeightsKg.length > 0 && (
+                      <span className="discard-piece-count">
+                        {item.pieceWeightsKg.length} valores somados
+                      </span>
+                    )}
                   </div>
-                  <label>
+                  <label className="discard-weight-editor">
                     <input
                       inputMode="decimal"
                       value={discardInputs[item.id] ?? "0,000"}
+                      readOnly={Boolean(item.pieceWeightsKg?.length)}
                       placeholder="0,000"
+                      onFocus={(event) => event.currentTarget.select()}
+                      onKeyDown={(event) => {
+                        if (!item.pieceWeightsKg?.length) {
+                          handleWeightInputKeyDown(
+                            event,
+                            discardInputs[item.id] ?? "0,000",
+                            (value) => updateWeight(item.id, value),
+                          );
+                        }
+                      }}
                       onChange={(event) =>
                         updateWeight(item.id, event.target.value)
                       }
                     />
                     <span>kg</span>
+                    <button
+                      type="button"
+                      title="Somar uma pesagem ao descarte"
+                      aria-label={`Adicionar pesagem em ${item.name}`}
+                      onClick={() => setDiscardWeightModalId(item.id)}
+                    >
+                      <Plus size={17} />
+                    </button>
                   </label>
                   {item.manual && (
                     <button
@@ -654,6 +826,14 @@ export function ExecutionPage({
         <Field label="Peso" hint="kg">
           <input
             value={manualWeight}
+            onFocus={(event) => event.currentTarget.select()}
+            onKeyDown={(event) =>
+              handleWeightInputKeyDown(
+                event,
+                manualWeight || "0,000",
+                setManualWeight,
+              )
+            }
             onChange={(event) =>
               setManualWeight(sanitizeWeightInput(event.target.value))
             }
@@ -661,6 +841,196 @@ export function ExecutionPage({
             placeholder="0,125"
           />
         </Field>
+      </Modal>
+      <Modal
+        open={weightModalOpen}
+        title="Adicionar pesagem ao produto"
+        subtitle="Informe somente o novo valor. Ele será somado ao peso atual."
+        onClose={() => {
+          setWeightModalOpen(false);
+          setPieceWeightInput("");
+        }}
+        footer={
+          <>
+            {pieceWeights.length > 0 && (
+              <Button variant="ghost" onClick={useTotalWeight}>
+                Voltar para peso total
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setWeightModalOpen(false);
+                setPieceWeightInput("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button disabled={newPieceWeight <= 0} onClick={addPieceWeight}>
+              <Plus size={16} /> Adicionar à soma
+            </Button>
+          </>
+        }
+      >
+        <div className="piece-weight-modal-summary">
+          <span>
+            {basePieceWeights.length}{" "}
+            {basePieceWeights.length === 1 ? "valor atual" : "valores atuais"}
+          </span>
+          <strong>
+            {formatWeight(
+              basePieceWeights.reduce((sum, value) => sum + value, 0),
+            )}
+          </strong>
+        </div>
+        <Field label="Nova pesagem" hint="kg">
+          <input
+            autoFocus
+            value={pieceWeightInput}
+            inputMode="decimal"
+            placeholder="0,000"
+            onChange={(event) =>
+              setPieceWeightInput(sanitizeWeightInput(event.target.value))
+            }
+            onKeyDown={(event) => {
+              if (
+                handleWeightInputKeyDown(
+                  event,
+                  pieceWeightInput || "0,000",
+                  setPieceWeightInput,
+                )
+              ) {
+                return;
+              }
+              if (event.key === "Enter" && newPieceWeight > 0) {
+                addPieceWeight();
+              }
+            }}
+          />
+        </Field>
+        <div className="piece-weight-preview">
+          <span>Total após adicionar</span>
+          <strong>{formatWeight(previewPieceTotal)}</strong>
+          <small>
+            {basePieceWeights.length + (newPieceWeight > 0 ? 1 : 0)} valores
+            somados
+          </small>
+        </div>
+        {pieceWeights.length > 0 && (
+          <div className="piece-weight-list">
+            <span>Pesagens que formam o total</span>
+            {pieceWeights.map((value, index) => (
+              <div key={`${index}-${value}`}>
+                <span>Valor {index + 1}</span>
+                <strong>{formatWeight(value)}</strong>
+                <button
+                  type="button"
+                  className="icon-button icon-button--danger"
+                  aria-label={`Remover valor ${index + 1}`}
+                  onClick={() => removePieceWeight(index)}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+      <Modal
+        open={Boolean(discardWeightModalId)}
+        title={`Somar peso em ${selectedDiscardForWeight?.name || "descarte"}`}
+        subtitle="Informe o novo valor. Ele será somado ao total deste descarte."
+        onClose={() => {
+          setDiscardWeightModalId(null);
+          setDiscardPieceWeightInput("");
+        }}
+        footer={
+          <>
+            {selectedDiscardForWeight?.pieceWeightsKg?.length ? (
+              <Button variant="ghost" onClick={useDiscardTotalWeight}>
+                Voltar para peso total
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDiscardWeightModalId(null);
+                setDiscardPieceWeightInput("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={newDiscardPieceWeight <= 0}
+              onClick={addDiscardPieceWeight}
+            >
+              <Plus size={16} /> Adicionar à soma
+            </Button>
+          </>
+        }
+      >
+        <div className="piece-weight-modal-summary">
+          <span>
+            {discardPieceWeights.length}{" "}
+            {discardPieceWeights.length === 1 ? "valor atual" : "valores atuais"}
+          </span>
+          <strong>
+            {formatWeight(
+              discardPieceWeights.reduce((sum, value) => sum + value, 0),
+            )}
+          </strong>
+        </div>
+        <Field label="Novo peso de descarte" hint="kg">
+          <input
+            autoFocus
+            value={discardPieceWeightInput}
+            inputMode="decimal"
+            placeholder="0,000"
+            onChange={(event) =>
+              setDiscardPieceWeightInput(sanitizeWeightInput(event.target.value))
+            }
+            onKeyDown={(event) => {
+              if (
+                handleWeightInputKeyDown(
+                  event,
+                  discardPieceWeightInput || "0,000",
+                  setDiscardPieceWeightInput,
+                )
+              ) {
+                return;
+              }
+              if (event.key === "Enter" && newDiscardPieceWeight > 0) {
+                addDiscardPieceWeight();
+              }
+            }}
+          />
+        </Field>
+        <div className="piece-weight-preview">
+          <span>Total após adicionar</span>
+          <strong>{formatWeight(previewDiscardTotal)}</strong>
+          <small>
+            {discardPieceWeights.length + (newDiscardPieceWeight > 0 ? 1 : 0)} valores somados
+          </small>
+        </div>
+        {selectedDiscardForWeight?.pieceWeightsKg?.length ? (
+          <div className="piece-weight-list">
+            <span>Pesagens que formam o descarte</span>
+            {selectedDiscardForWeight.pieceWeightsKg.map((value, index) => (
+              <div key={`${index}-${value}`}>
+                <span>Valor {index + 1}</span>
+                <strong>{formatWeight(value)}</strong>
+                <button
+                  type="button"
+                  className="icon-button icon-button--danger"
+                  aria-label={`Remover peso de descarte ${index + 1}`}
+                  onClick={() => removeDiscardPieceWeight(index)}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </Modal>
     </>
   );

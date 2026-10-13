@@ -1,5 +1,5 @@
 import type { Product, YieldTest } from "../types/domain";
-import { calculateTotalDiscard } from "./calculations";
+import { calculateTotalDiscard, consolidateDiscards } from "./calculations";
 import {
   formatDate,
   formatDateTime,
@@ -133,7 +133,7 @@ async function loadImageDataUrl(url: string) {
   }
 }
 
-export async function exportFinalizedTestReport(
+export async function exportFinalizedTestReportLegacy(
   test: YieldTest,
   products: Product[],
 ) {
@@ -379,6 +379,311 @@ export async function exportFinalizedTestReport(
     cursorY + 5,
     { align: "right" },
   );
+
+  const safeName = (test.name || `teste-${test.number}`)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  doc.save(`relatorio-teste-${test.number}-${safeName}.pdf`);
+  return true;
+}
+
+export async function exportFinalizedTestReport(
+  test: YieldTest,
+  products: Product[],
+) {
+  if (test.status !== "FINALIZADO") return false;
+
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 12;
+  const contentWidth = pageWidth - margin * 2;
+  const productName = (id?: string) =>
+    products.find((item) => item.id === id)?.name || "Não informado";
+  const finalWeight = test.flows.reduce(
+    (total, flow) =>
+      total +
+      ([...flow.steps].reverse().find((step) => step.confirmed)
+        ?.cleanWeightKg || 0),
+    0,
+  );
+  const finalYield = test.inputWeightKg
+    ? (finalWeight / test.inputWeightKg) * 100
+    : 0;
+  const logo = await loadImageDataUrl(`${window.location.origin}/logo.png`);
+
+  const drawPageHeader = (continuation = false) => {
+    if (logo) doc.addImage(logo, "PNG", margin, 7, 22, 19, undefined, "FAST");
+    const titleX = logo ? margin + 27 : margin;
+    doc.setTextColor(23, 61, 110);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(continuation ? 14 : 18);
+    doc.text(
+      continuation
+        ? "Fluxo de rendimento · continuação"
+        : "Relatório de Teste de Rendimento",
+      titleX,
+      continuation ? 15 : 13,
+    );
+    doc.setFontSize(10);
+    doc.text(
+      test.name || `Teste ${test.number}`,
+      titleX,
+      continuation ? 21 : 20,
+    );
+    doc.setTextColor(92, 111, 130);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text(
+      `Teste ${test.number} · ${formatDate(test.date)}`,
+      titleX,
+      continuation ? 26 : 25,
+    );
+    doc.setDrawColor(23, 61, 110);
+    doc.setLineWidth(1.1);
+    doc.line(margin, 30, pageWidth - margin, 30);
+  };
+
+  drawPageHeader();
+
+  const summary = [
+    ["Peso de entrada", formatWeight(test.inputWeightKg)],
+    ["Quantidade", `${test.inputQuantity} peças`],
+    ["Peso final", formatWeight(finalWeight)],
+    ["Rendimento final", formatPercent(finalYield)],
+  ];
+  const summaryWidth = contentWidth / summary.length;
+  summary.forEach(([label, value], index) => {
+    const x = margin + index * summaryWidth;
+    doc.setFillColor(
+      index === summary.length - 1 ? 239 : 248,
+      index === summary.length - 1 ? 249 : 250,
+      index === summary.length - 1 ? 244 : 252,
+    );
+    doc.setDrawColor(216, 226, 236);
+    doc.roundedRect(x, 36, summaryWidth - 1.5, 18, 1.5, 1.5, "FD");
+    doc.setTextColor(101, 122, 141);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.text(label.toUpperCase(), x + 3, 42);
+    doc.setTextColor(
+      index === summary.length - 1 ? 17 : 30,
+      index === summary.length - 1 ? 121 : 53,
+      index === summary.length - 1 ? 84 : 74,
+    );
+    doc.setFontSize(10);
+    doc.text(doc.splitTextToSize(value, summaryWidth - 6)[0] || "—", x + 3, 49);
+  });
+
+  let cursorY = 61;
+  const newPage = () => {
+    doc.addPage();
+    drawPageHeader(true);
+    cursorY = 37;
+  };
+  const ensureSpace = (height: number) => {
+    if (cursorY + height > pageHeight - 15) newPage();
+  };
+  const productX = margin + 13;
+  const weightX = 116;
+  const inputYieldX = 154;
+  const processYieldX = pageWidth - margin - 4;
+
+  test.flows.forEach((flow, flowIndex) => {
+    const confirmedSteps = flow.steps.filter((step) => step.confirmed);
+    const steps = confirmedSteps.length ? confirmedSteps : flow.steps;
+    const operationSteps = steps.slice(0, -1);
+    const finalStep = steps.at(-1);
+    const firstWeight = operationSteps[0]?.initialWeightKg || 0;
+    const finalDiscards = consolidateDiscards(
+      operationSteps.flatMap((step) => step.discards),
+    );
+
+    ensureSpace(34);
+    doc.setFillColor(247, 250, 252);
+    doc.setDrawColor(203, 215, 225);
+    doc.roundedRect(margin, cursorY, contentWidth, 14, 2, 2, "FD");
+    doc.setTextColor(27, 88, 160);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.text(`PRODUTO ${flowIndex + 1}`, margin + 4, cursorY + 4.5);
+    doc.setTextColor(23, 61, 110);
+    doc.setFontSize(11.5);
+    doc.text(productName(flow.rootProductId), margin + 4, cursorY + 10.5);
+    cursorY += 18;
+
+    doc.setTextColor(96, 117, 138);
+    doc.setFontSize(6.5);
+    doc.text("PRODUTO / DESCARTE", productX, cursorY);
+    doc.text("PESO", weightX, cursorY, { align: "right" });
+    doc.text("SOBRE ENTRADA", inputYieldX, cursorY, { align: "right" });
+    doc.text("REND. PROCESSO", processYieldX, cursorY, { align: "right" });
+    cursorY += 4;
+
+    operationSteps.forEach((step, stepIndex) => {
+      const discards = step.discards.filter((discard) => discard.weightKg > 0);
+      ensureSpace(19 + discards.length * 6);
+
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(218, 228, 236);
+      doc.roundedRect(margin, cursorY, contentWidth, 12, 1.5, 1.5, "FD");
+      doc.setFillColor(23, 61, 110);
+      doc.circle(margin + 5, cursorY + 6, 2.8, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.5);
+      doc.text(String(stepIndex + 1), margin + 5, cursorY + 6.8, {
+        align: "center",
+      });
+      doc.setTextColor(23, 61, 110);
+      doc.setFontSize(9.5);
+      doc.text(
+        doc.splitTextToSize(productName(step.productId), 76)[0] || "—",
+        productX,
+        cursorY + 7.4,
+      );
+      doc.setTextColor(38, 52, 67);
+      doc.text(formatWeight(step.initialWeightKg), weightX, cursorY + 7.4, {
+        align: "right",
+      });
+      doc.setTextColor(27, 88, 160);
+      doc.text(
+        formatPercent(step.inputYieldPercent),
+        inputYieldX,
+        cursorY + 7.4,
+        { align: "right" },
+      );
+      doc.setTextColor(17, 121, 84);
+      const processYield = firstWeight
+        ? (step.initialWeightKg / firstWeight) * 100
+        : 0;
+      doc.text(
+        stepIndex === 0 ? "Entrada" : formatPercent(processYield),
+        processYieldX,
+        cursorY + 7.4,
+        { align: "right" },
+      );
+      cursorY += 12;
+
+      discards.forEach((discard) => {
+        doc.setDrawColor(211, 166, 172);
+        doc.setLineWidth(0.25);
+        doc.line(margin + 5, cursorY, margin + 5, cursorY + 3);
+        doc.line(margin + 5, cursorY + 3, margin + 10, cursorY + 3);
+        doc.setTextColor(132, 57, 65);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.text(discard.name, productX, cursorY + 4);
+        doc.setTextColor(195, 34, 46);
+        doc.setFont("helvetica", "bold");
+        doc.text(`- ${formatWeight(discard.weightKg)}`, weightX, cursorY + 4, {
+          align: "right",
+        });
+        cursorY += 6;
+      });
+
+      doc.setDrawColor(116, 143, 165);
+      doc.setLineWidth(0.35);
+      doc.line(margin + 5, cursorY, margin + 5, cursorY + 5);
+      doc.line(margin + 3.7, cursorY + 3.6, margin + 5, cursorY + 5);
+      doc.line(margin + 6.3, cursorY + 3.6, margin + 5, cursorY + 5);
+      cursorY += 7;
+    });
+
+    if (finalStep) {
+      ensureSpace(23 + finalDiscards.length * 6);
+      doc.setFillColor(239, 249, 244);
+      doc.setDrawColor(173, 216, 197);
+      doc.roundedRect(margin, cursorY, contentWidth, 13, 1.5, 1.5, "FD");
+      doc.setFillColor(17, 121, 84);
+      doc.circle(margin + 5, cursorY + 6.5, 2.8, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.text("F", margin + 5, cursorY + 7.3, { align: "center" });
+      doc.setTextColor(13, 101, 72);
+      doc.setFontSize(9.5);
+      doc.text(
+        doc.splitTextToSize(productName(finalStep.productId), 76)[0] || "—",
+        productX,
+        cursorY + 7.8,
+      );
+      doc.text(formatWeight(finalStep.cleanWeightKg), weightX, cursorY + 7.8, {
+        align: "right",
+      });
+      doc.text(
+        formatPercent(finalStep.inputYieldPercent),
+        inputYieldX,
+        cursorY + 7.8,
+        { align: "right" },
+      );
+      doc.text(
+        formatPercent(
+          firstWeight ? (finalStep.cleanWeightKg / firstWeight) * 100 : 0,
+        ),
+        processYieldX,
+        cursorY + 7.8,
+        { align: "right" },
+      );
+      cursorY += 14;
+      if (finalDiscards.length > 0) {
+        finalDiscards.forEach((discard, index) => {
+          const rowY = cursorY + 4 + index * 6;
+          doc.setDrawColor(211, 166, 172);
+          doc.setLineWidth(0.25);
+          doc.line(margin + 5, rowY - 4, margin + 5, rowY - 1);
+          doc.line(margin + 5, rowY - 1, margin + 10, rowY - 1);
+          doc.setTextColor(139, 58, 66);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(8.5);
+          doc.text(discard.name, productX, rowY);
+          doc.setTextColor(195, 34, 46);
+          doc.setFont("helvetica", "bold");
+          doc.text(`- ${formatWeight(discard.weightKg)}`, weightX, rowY, {
+            align: "right",
+          });
+        });
+        const totalY = cursorY + 4 + finalDiscards.length * 6;
+        doc.setDrawColor(195, 34, 46);
+        doc.line(margin + 8, totalY - 4, margin + 8, totalY - 1);
+        doc.line(margin + 8, totalY - 1, margin + 14, totalY - 1);
+        doc.setTextColor(169, 31, 42);
+        doc.setFont("helvetica", "bold");
+        doc.text("Total retirado", productX + 4, totalY);
+        doc.text(
+          `- ${formatWeight(calculateTotalDiscard(finalDiscards))}`,
+          weightX,
+          totalY,
+          { align: "right" },
+        );
+        cursorY = totalY + 8;
+      } else {
+        cursorY += 5;
+      }
+    }
+  });
+
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page);
+    doc.setDrawColor(211, 221, 230);
+    doc.line(margin, pageHeight - 11, pageWidth - margin, pageHeight - 11);
+    doc.setTextColor(105, 122, 138);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text(
+      `Responsável: ${test.finalizedBy || test.updatedBy}`,
+      margin,
+      pageHeight - 6,
+    );
+    doc.text(`Página ${page} de ${pages}`, pageWidth - margin, pageHeight - 6, {
+      align: "right",
+    });
+  }
 
   const safeName = (test.name || `teste-${test.number}`)
     .normalize("NFD")

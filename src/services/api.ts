@@ -231,21 +231,9 @@ let cachedHistorico: ApiHistoricoCompra[] | null = null;
 let fetchHistoricoPromise: Promise<ApiHistoricoCompra[]> | null = null;
 
 export const getAuthHeaders = (isJson = false) => {
-  const apiToken = import.meta.env.VITE_N8N_SECRET_TOKEN;
-  const apiHeaderName = import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key";
   const jwtToken = localStorage.getItem("jwt_token");
-  const configuredApiUrl =
-    import.meta.env.VITE_N8N_WEBHOOK_URL_LOGIN ||
-    import.meta.env.VITE_N8N_WEBHOOK_URL_USUARIOS ||
-    "";
-  const endpointOrigin = new URL(configuredApiUrl, window.location.origin).origin;
-  const usesSameOriginProxy = endpointOrigin === window.location.origin;
 
   const headers: Record<string, string> = {};
-
-  if (apiToken && !usesSameOriginProxy) {
-    headers[apiHeaderName] = apiToken;
-  }
 
   if (isJson) {
     headers["Content-Type"] = "application/json";
@@ -259,24 +247,7 @@ export const getAuthHeaders = (isJson = false) => {
 };
 
 const getBackendBaseUrl = () => {
-  const explicitBase = import.meta.env.VITE_API_BASE_URL;
-  if (explicitBase) return String(explicitBase).replace(/\/+$/, "");
-
-  const configuredUrl =
-    import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA ||
-    import.meta.env.VITE_N8N_WEBHOOK_URL_LOGIN ||
-    import.meta.env.VITE_N8N_WEBHOOK_URL_USUARIOS ||
-    window.location.origin;
-  const url = new URL(configuredUrl, window.location.origin);
-  const knownSuffixes = ["/visitas/select", "/login/acess", "/users"];
-  const suffix = knownSuffixes.find((item) => url.pathname.endsWith(item));
-
-  if (suffix) {
-    url.pathname = url.pathname.slice(0, -suffix.length);
-  }
-  url.search = "";
-  url.hash = "";
-  return url.toString().replace(/\/+$/, "");
+  return String(import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/+$/, "");
 };
 
 export const getBackendUrl = (path: string) =>
@@ -370,7 +341,7 @@ export const fetchPecuaristasAgendamento = async (forceRefresh = false): Promise
   if (fetchPromise && !forceRefresh) return fetchPromise;
 
   const loadFromApi = async () => {
-    const url = import.meta.env.VITE_N8N_WEBHOOK_URL_PECUARISTAS;
+    const url = getBackendUrl("/pecuaristas/select");
     try {
       const response = await fetch(url, { headers: getAuthHeaders() });
       checkSessionExpired(response);
@@ -412,7 +383,7 @@ export const fetchHistoricoCompras = async (forceRefresh = false): Promise<ApiHi
   }
 
   const loadFromApi = async () => {
-    const url = import.meta.env.VITE_N8N_WEBHOOK_URL_PECUARISTAS_HISTORICO;
+    const url = getBackendUrl("/pecuaristas/select/historico");
     if (!url) return [];
 
     try {
@@ -445,7 +416,7 @@ export const fetchHistoricoCompras = async (forceRefresh = false): Promise<ApiHi
 };
 
 export const fetchAgendamentosPendentes = async (): Promise<ApiAgendamento[]> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO_CONSULTA;
+  const url = getBackendUrl("/agendamento/select");
   try {
     const response = await fetch(url, { headers: getAuthHeaders() });
     checkSessionExpired(response); 
@@ -466,7 +437,7 @@ export const fetchAgendamentosPendentes = async (): Promise<ApiAgendamento[]> =>
 };
 
 export const fetchRelatorioVisitas = async (): Promise<ApiVisita[]> => {
-  const baseUrl = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA;
+  const baseUrl = getBackendUrl("/visitas/select");
   if (!baseUrl) return [];
 
   // Adiciona um parâmetro único para impedir resposta 304 e uso do cache antigo.
@@ -503,7 +474,7 @@ export const fetchDashboardCampo = async (
   dataInicio: string,
   dataFim: string,
 ): Promise<ApiVisitaDashboard[]> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_CAMPO_DASHBOARD;
+  const url = getBackendUrl("/campo/dashboard");
   const rows = await n8nPost<ApiDashboardCampoRow[]>(url, {
     data_inicio: dataInicio || null,
     data_fim: dataFim || null,
@@ -536,7 +507,7 @@ export const fetchDashboardCampo = async (
 export const fetchVisitaDetalhe = async (
   id_visita: string | number
 ): Promise<ApiVisitaDetalhe | null> => {
-  const baseUrl = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA_DETALHE;
+  const baseUrl = getBackendUrl("/visitas/detalhe");
 
   if (!baseUrl) {
     console.error("VITE_N8N_WEBHOOK_URL_VISITAS_CONSULTA_DETALHE não configurada.");
@@ -681,7 +652,7 @@ export const criarLinkLocalizacaoCampo = async (
 };
 
 export const fetchAuditoriaVisita = async (id_visita: string | number): Promise<ApiAuditoria[]> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_AUDITORIA_CONSULTAR;
+  const url = getBackendUrl("/auditorias/select");
   if (!url) return [];
   
   try {
@@ -705,7 +676,7 @@ export const fetchAuditoriaVisita = async (id_visita: string | number): Promise<
 
 // 👇 NOVA FUNÇÃO: BUSCAR LOTES DINÂMICOS 👇
 export const fetchLotesVisita = async (id_visita: string | number): Promise<ApiLote[]> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_LOTES_CONSULTAR; 
+  const url = getBackendUrl("/visitas/lotes/consultar");
   if (!url) return [];
   
   try {
@@ -741,7 +712,7 @@ export const fetchLotesVisita = async (id_visita: string | number): Promise<ApiL
 };
 
 export const fetchUsuarios = async (): Promise<ApiUsuario[]> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_USUARIOS;
+  const url = getBackendUrl("/users");
   if (!url) return [];
   try {
     const response = await fetch(url, { headers: getAuthHeaders() });
@@ -759,7 +730,7 @@ export const fetchUsuarios = async (): Promise<ApiUsuario[]> => {
 };
 
 export const saveAgendamento = async (dados: any): Promise<{ success: boolean; message?: string }> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO; 
+  const url = getBackendUrl("/agendamento/insert");
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -774,7 +745,7 @@ export const saveAgendamento = async (dados: any): Promise<{ success: boolean; m
 };
 
 export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean; message?: string, id_visita?: number }> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS; 
+  const url = getBackendUrl("/visitas/insert");
   if (!url) return { success: false };
   try {
     const response = await fetch(url, {
@@ -797,7 +768,7 @@ export const saveVisitaCampo = async (dados: any): Promise<{ success: boolean; m
 };
 
 export const saveAuditoriaAvulsa = async (dados: any): Promise<{ success: boolean; message?: string }> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_AUDITORIA_INSERT_AVULSA;
+  const url = getBackendUrl("/auditorias/avulsa/insert");
   if (!url) return { success: false, message: "URL de gravação de auditoria avulsa não definida no ambiente" };
 
   try {
@@ -820,7 +791,7 @@ export const saveAuditoriaAvulsa = async (dados: any): Promise<{ success: boolea
 };
 
 export const savePedidoVisita = async (id_visita: string | number, numero_pedido: string | number): Promise<{ success: boolean; message?: string }> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_PEDIDO_INSERT; 
+  const url = getBackendUrl("/pedidos/insert");
   if (!url) return { success: false, message: "URL de inserção de pedido não configurada" };
   
   try {
@@ -844,7 +815,7 @@ export const savePedidoVisita = async (id_visita: string | number, numero_pedido
 };
 
 export const vincularVisitaPecuarista = async (dados: any): Promise<{ success: boolean; message?: string }> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_VINCULAR;
+  const url = getBackendUrl("/visitas/vincular");
   if (!url) return { success: false, message: "URL de vínculo não configurada no .env" };
   try {
     const response = await fetch(url, {
@@ -864,7 +835,7 @@ export const vincularVisitaPecuarista = async (dados: any): Promise<{ success: b
 };
 
 export const inativarVisita = async (id_visita: string | number): Promise<{ success: boolean; message?: string }> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_INATIVAR;
+  const url = getBackendUrl("/visitas/inativar");
   if (!url) return { success: false, message: "URL de inativação não configurada no .env" };
   
   try {
@@ -885,7 +856,7 @@ export const inativarVisita = async (id_visita: string | number): Promise<{ succ
 };
 
 export const inativarAgendamento = async (id_agendamento: string | number): Promise<{ success: boolean; message?: string }> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO_INATIVAR;
+  const url = getBackendUrl("/agendamento/inativar");
   if (!url) return { success: false, message: "URL de inativação não configurada no .env" };
   
   try {
@@ -906,7 +877,7 @@ export const inativarAgendamento = async (id_agendamento: string | number): Prom
 };
 
 export const editarAgendamento = async (dados: any): Promise<{ success: boolean; message?: string }> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_AGENDAMENTO_EDITAR;
+  const url = getBackendUrl("/agendamento/editar");
   if (!url) return { success: false, message: "URL de edição de agendamento não configurada" };
   
   try {
@@ -927,7 +898,7 @@ export const editarAgendamento = async (dados: any): Promise<{ success: boolean;
 };
 
 export const editarVisita = async (dados: any): Promise<{ success: boolean; message?: string }> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_VISITAS_EDITAR;
+  const url = getBackendUrl("/visitas/editar");
   if (!url) return { success: false, message: "URL de edição de visita não configurada" };
   
   try {
@@ -965,7 +936,7 @@ export interface LoginResponse {
 }
 
 export const realizarLogin = async (login: string, senha: string, empresa: string): Promise<LoginResponse> => {
-  const url = import.meta.env.VITE_N8N_WEBHOOK_URL_LOGIN; 
+  const url = getBackendUrl("/login/acess");
   if (!url) return { success: false, message: "URL de login não configurada no .env" };
 
   try {

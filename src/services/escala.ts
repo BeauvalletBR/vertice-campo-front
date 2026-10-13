@@ -1,4 +1,4 @@
-import { n8nPost } from "./api";
+import { getBackendUrl, n8nPost } from "./api";
 import type {
   ApiMessage,
   BuscarPedidoErpPayload,
@@ -24,40 +24,26 @@ import type {
   RegistroManualPayload,
 } from "../types/escala";
 
-const env = import.meta.env;
-
 const urls = {
-  // Os mesmos nomes do frontend passam a apontar para o planejamento.
-  select: env.VITE_N8N_WEBHOOK_URL_ESCALA_SELECT,
-  resumo: env.VITE_N8N_WEBHOOK_URL_ESCALA_RESUMO,
-  realizadoMensal: env.VITE_N8N_WEBHOOK_URL_ESCALA_REALIZADO_MENSAL,
-  planejamentoPreparar:
-    env.VITE_N8N_WEBHOOK_URL_ESCALA_PLANEJAMENTO_PREPARAR,
-
-  insert: env.VITE_N8N_WEBHOOK_URL_ESCALA_INSERT,
-  editar: env.VITE_N8N_WEBHOOK_URL_ESCALA_EDITAR,
-  inativar: env.VITE_N8N_WEBHOOK_URL_ESCALA_INATIVAR,
-  ocorrencias: env.VITE_N8N_WEBHOOK_URL_ESCALA_OCORRENCIAS_SELECT,
-
-  pedidoErpBuscar: env.VITE_N8N_WEBHOOK_URL_ESCALA_PEDIDO_ERP_BUSCAR,
-  pedidoVinculoInsert:
-    env.VITE_N8N_WEBHOOK_URL_ESCALA_PEDIDO_VINCULO_INSERT,
-  pedidoVinculoInsertDia:
-    env.VITE_N8N_WEBHOOK_URL_ESCALA_PEDIDO_VINCULO_INSERT_DIA,
-  pedidoVinculoEditar:
-    env.VITE_N8N_WEBHOOK_URL_ESCALA_PEDIDO_VINCULO_EDITAR,
-  pedidoVinculoInativar:
-    env.VITE_N8N_WEBHOOK_URL_ESCALA_PEDIDO_VINCULO_INATIVAR,
-  prazoPagamentoSelect:
-    env.VITE_N8N_WEBHOOK_URL_ESCALA_PRAZO_PAGTO_SELECT,
-  chinaSincronizar:
-    env.VITE_N8N_WEBHOOK_URL_ESCALA_CHINA_SINCRONIZAR,
-  chinaAlertasCiente:
-    env.VITE_N8N_WEBHOOK_URL_ESCALA_CHINA_ALERTAS_CIENTE,
-
-  manualInsert: env.VITE_N8N_WEBHOOK_URL_ESCALA_MANUAL_INSERT,
-  manualEditar: env.VITE_N8N_WEBHOOK_URL_ESCALA_MANUAL_EDITAR,
-  manualInativar: env.VITE_N8N_WEBHOOK_URL_ESCALA_MANUAL_INATIVAR,
+  select: getBackendUrl("/escala/planejamento/select"),
+  resumo: getBackendUrl("/escala/planejamento/resumo"),
+  realizadoMensal: getBackendUrl("/escala/realizado-mensal"),
+  planejamentoPreparar: getBackendUrl("/escala/planejamento/preparar"),
+  insert: getBackendUrl("/escala/insert"),
+  editar: getBackendUrl("/escala/editar"),
+  inativar: getBackendUrl("/escala/inativar"),
+  ocorrencias: getBackendUrl("/escala/ocorrencias/select"),
+  pedidoErpBuscar: getBackendUrl("/escala/pedido-erp/buscar"),
+  pedidoVinculoInsert: getBackendUrl("/escala/pedido-vinculo/insert"),
+  pedidoVinculoInsertDia: getBackendUrl("/escala/pedido-vinculo/insert-dia"),
+  pedidoVinculoEditar: getBackendUrl("/escala/pedido-vinculo/editar"),
+  pedidoVinculoInativar: getBackendUrl("/escala/pedido-vinculo/inativar"),
+  prazoPagamentoSelect: getBackendUrl("/escala/prazo-pagto/select"),
+  chinaSincronizar: getBackendUrl("/escala/china/sincronizar"),
+  chinaAlertasCiente: getBackendUrl("/escala/china/alertas/ciente"),
+  manualInsert: getBackendUrl("/escala/manual/insert"),
+  manualEditar: getBackendUrl("/escala/manual/editar"),
+  manualInativar: getBackendUrl("/escala/manual/inativar"),
 } as const;
 
 let cachedPaymentTerms: PrazoPagamento[] | null = null;

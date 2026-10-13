@@ -1,3 +1,5 @@
+import { getAuthHeaders, getBackendUrl } from "./api";
+
 export interface AdminSystem {
   SISTEMA: string;
   DESCRICAO: string;
@@ -60,24 +62,10 @@ export interface AdminCatalog {
   empresas: AdminCompany[];
 }
 
-const baseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
-
-const headers = (json = false): HeadersInit => {
-  const result: Record<string, string> = {
-    [import.meta.env.VITE_N8N_HEADER_KEY || "x-api-key"]:
-      import.meta.env.VITE_N8N_SECRET_TOKEN || "",
-  };
-  const token = localStorage.getItem("jwt_token");
-  if (token) result.Authorization = `Bearer ${token}`;
-  if (json) result["Content-Type"] = "application/json";
-  return result;
-};
-
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  if (!baseUrl) throw new Error("VITE_API_BASE_URL não configurada.");
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(getBackendUrl(path), {
     ...init,
-    headers: { ...headers(Boolean(init?.body)), ...(init?.headers || {}) },
+    headers: { ...getAuthHeaders(Boolean(init?.body)), ...(init?.headers || {}) },
   });
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) window.dispatchEvent(new Event("sessao-expirada"));

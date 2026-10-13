@@ -84,7 +84,6 @@
 
 /* Mantém os módulos acessíveis quando vários grupos do menu estão expandidos. */
 .app-sidebar-scroll {
-  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: #8da9c2 #173d6e;
 }

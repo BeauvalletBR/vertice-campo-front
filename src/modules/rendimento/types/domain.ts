@@ -1,9 +1,19 @@
-export const LOCAL_USER = { id: "USUARIO_LOCAL", name: "Usuário Local" } as const;
+export const LOCAL_USER = {
+  id: "USUARIO_LOCAL",
+  name: "Usuário Local",
+} as const;
 
 export type ProductType = "ENTRADA" | "PRODUTO";
-export type TestStatus = "RASCUNHO" | "ABERTO" | "EM_EXECUCAO" | "FINALIZADO" | "CANCELADO";
+export type TestStatus =
+  "RASCUNHO" | "ABERTO" | "EM_EXECUCAO" | "FINALIZADO" | "CANCELADO";
 export type FlowStatus = "PENDENTE" | "EM_EXECUCAO" | "FINALIZADO";
-export type AuditAction = "INSERT" | "UPDATE" | "DELETE" | "FINALIZACAO" | "CANCELAMENTO" | "REABERTURA";
+export type AuditAction =
+  | "INSERT"
+  | "UPDATE"
+  | "DELETE"
+  | "FINALIZACAO"
+  | "CANCELAMENTO"
+  | "REABERTURA";
 
 export interface AuditFields {
   createdBy: string;
@@ -40,6 +50,7 @@ export interface TestDiscard {
   discardTypeId: string | null;
   name: string;
   weightKg: number;
+  pieceWeightsKg?: number[];
   manual: boolean;
 }
 
@@ -47,6 +58,7 @@ export interface TestStep {
   id: string;
   productId: string;
   initialWeightKg: number;
+  pieceWeightsKg?: number[];
   discards: TestDiscard[];
   cleanWeightKg: number;
   yieldPercent: number;
