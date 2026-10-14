@@ -684,6 +684,18 @@ export function ExecutionPage({
           <button className="add-discard" onClick={() => setModalOpen(true)}>
             <CirclePlus size={17} /> Adicionar outro descarte
           </button>
+          <div className="inline-clean-summary" aria-label="Resultado líquido da transformação">
+            <div>
+              <span>Peso líquido após limpeza</span>
+              <strong>{formatWeight(clean)}</strong>
+              <small>Peso inicial menos todos os descartes</small>
+            </div>
+            <div>
+              <span>Rendimento do peso limpo</span>
+              <strong>{formatPercent(stageYield)}</strong>
+              <small>Peso líquido sobre a entrada desta transformação</small>
+            </div>
+          </div>
           {message && (
             <div
               className={`inline-message ${message.includes("salvo") || message.includes("finalizado") ? "success" : ""}`}

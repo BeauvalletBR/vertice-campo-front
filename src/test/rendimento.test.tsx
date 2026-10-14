@@ -639,4 +639,49 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     fireEvent.click(screen.getByRole("button", { name: /Alterar forma/i }));
     expect(screen.getByDisplayValue("58,500")).toBeInTheDocument();
   });
+
+  it("preserva pesos ao aumentar a quantidade e confirma antes de perder peças preenchidas", () => {
+    function QuantityHarness() {
+      const [quantity, setQuantity] = useState("4");
+      const [pieces, setPieces] = useState([
+        "10,000",
+        "11,000",
+        "12,000",
+        "13,000",
+      ]);
+      return (
+        <InputWeightFields
+          quantity={quantity}
+          weight=""
+          pieceWeights={pieces}
+          mode="pieces"
+          onQuantityChange={setQuantity}
+          onWeightChange={() => undefined}
+          onPieceWeightsChange={setPieces}
+          onModeChange={() => undefined}
+        />
+      );
+    }
+
+    render(<QuantityHarness />);
+    const quantityInput = screen.getByRole("spinbutton");
+
+    fireEvent.change(quantityInput, { target: { value: "" } });
+    fireEvent.change(quantityInput, { target: { value: "5" } });
+    expect(screen.getByLabelText("Peça 1")).toHaveValue("10,000");
+    expect(screen.getByLabelText("Peça 4")).toHaveValue("13,000");
+    expect(screen.getByLabelText("Peça 5")).toHaveValue("");
+
+    fireEvent.change(quantityInput, { target: { value: "3" } });
+    expect(
+      screen.getByRole("heading", { name: /Reduzir a quantidade de peças/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/peça 4 \(13,000 kg\)/i)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Reduzir quantidade/i }),
+    );
+
+    expect(screen.queryByLabelText("Peça 4")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Peça 3")).toHaveValue("12,000");
+  });
 });

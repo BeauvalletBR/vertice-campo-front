@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Scale } from "lucide-react";
 import { handleWeightInputKeyDown, parseDecimal, sanitizeWeightInput, toInputDecimal } from "../utils/format";
 import { Field } from "./ui";
@@ -23,14 +23,59 @@ interface InputWeightFieldsProps {
 export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuantityChange, onWeightChange, onPieceWeightsChange, onModeChange, onBlur }: InputWeightFieldsProps) {
   const [expanded, setExpanded] = useState(true);
   const [pendingMode, setPendingMode] = useState<WeightEntryMode | null>(null);
-  const count = Math.max(0, Math.min(200, Math.trunc(Number(quantity) || 0)));
+  const [quantityDraft, setQuantityDraft] = useState(quantity);
+  const [pendingQuantity, setPendingQuantity] = useState<{
+    value: string;
+    count: number;
+    removed: Array<{ position: number; value: string }>;
+  } | null>(null);
+  const committedCount = useRef(
+    Math.max(0, Math.min(200, Math.trunc(Number(quantity) || 0))),
+  );
+  const count = Math.max(
+    0,
+    Math.min(200, Math.trunc(Number(quantityDraft) || 0)),
+  );
   const totalPieces = pieceWeights.slice(0, count).reduce((sum, value) => sum + parseDecimal(value), 0);
 
-  const changeQuantity = (value: string) => {
-    const nextCount = Math.max(0, Math.min(200, Math.trunc(Number(value) || 0)));
-    const next = Array.from({ length: nextCount }, (_, index) => pieceWeights[index] || "");
+  useEffect(() => {
+    setQuantityDraft(quantity);
+    committedCount.current = Math.max(
+      0,
+      Math.min(200, Math.trunc(Number(quantity) || 0)),
+    );
+  }, [quantity]);
+
+  const applyQuantity = (value: string, nextCount: number) => {
+    const next = Array.from(
+      { length: nextCount },
+      (_, index) => pieceWeights[index] || "",
+    );
+    committedCount.current = nextCount;
+    setQuantityDraft(value);
     onQuantityChange(value);
     onPieceWeightsChange(next);
+  };
+
+  const changeQuantity = (value: string) => {
+    setQuantityDraft(value);
+    if (value === "") return;
+
+    const nextCount = Math.max(0, Math.min(200, Math.trunc(Number(value) || 0)));
+    const removed = pieceWeights
+      .slice(nextCount, committedCount.current)
+      .map((pieceValue, index) => ({
+        position: nextCount + index + 1,
+        value: pieceValue,
+      }))
+      .filter((item) => parseDecimal(item.value) > 0);
+
+    if (nextCount < committedCount.current && removed.length > 0) {
+      setPendingQuantity({ value, count: nextCount, removed });
+      return;
+    }
+
+    applyQuantity(value, nextCount);
   };
   const changePiece = (index: number, value: string) => {
     const next = Array.from({ length: count }, (_, itemIndex) => itemIndex === index ? sanitizeWeightInput(value) : pieceWeights[itemIndex] || "");
@@ -59,7 +104,7 @@ export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuan
   };
 
   return <>
-    <Field label="Quantidade" hint="necessária somente na execução"><input type="number" min="0" max="200" placeholder="Ex.: 10" value={quantity} onChange={(event) => changeQuantity(event.target.value)} onBlur={onBlur} /></Field>
+    <Field label="Quantidade" hint="necessária somente na execução"><input type="number" min="0" max="200" placeholder="Ex.: 10" value={quantityDraft} onChange={(event) => changeQuantity(event.target.value)} onBlur={() => { if (quantityDraft === "") setQuantityDraft(quantity); onBlur?.(); }} /></Field>
     <div className="weight-entry-field">
       <span>Forma de informar o peso</span>
       <label className={`weight-mode-switch ${!count ? "disabled" : ""}`}><input type="checkbox" role="switch" aria-label="Informar peso por peça" checked={mode === "pieces"} disabled={!count} onChange={(event) => requestMode(event.target.checked ? "pieces" : "total")} /><i><span /></i><div><strong>Peso por peça</strong><small>{mode === "pieces" ? "Ligado · informe cada peça abaixo" : "Desligado · informe o peso total"}</small></div></label>
@@ -72,5 +117,20 @@ export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuan
       {expanded && <div className="piece-weight-grid">{Array.from({ length: count }, (_, index) => <label key={index}><span>Peça {index + 1}</span><div><input aria-label={`Peça ${index + 1}`} inputMode="decimal" placeholder="0,000" value={pieceWeights[index] || ""} onFocus={(event) => event.currentTarget.select()} onKeyDown={(event) => handleWeightInputKeyDown(event, pieceWeights[index] || "0,000", (value) => changePiece(index, value))} onChange={(event) => changePiece(index, event.target.value)} onBlur={onBlur} /><small>kg</small></div></label>)}</div>}
     </div>}
     <ConfirmDialog open={pendingMode !== null} title="Alterar forma de informar o peso?" description={pendingMode === "pieces" ? "O peso total digitado será mantido. Ao voltar para peso total, ele reaparecerá." : "Os pesos informados por peça serão mantidos. Ao ligar novamente, todos reaparecerão."} confirmLabel="Alterar forma" onCancel={() => setPendingMode(null)} onConfirm={() => { if (pendingMode) applyMode(pendingMode); setPendingMode(null); }} />
+    <ConfirmDialog
+      open={pendingQuantity !== null}
+      title="Reduzir a quantidade de peças?"
+      description={pendingQuantity ? `Ao reduzir de ${committedCount.current} para ${pendingQuantity.count}, você perderá ${pendingQuantity.removed.map((item) => `o valor da peça ${item.position} (${toInputDecimal(parseDecimal(item.value))} kg)`).join(", ")}.` : ""}
+      confirmLabel="Reduzir quantidade"
+      danger
+      onCancel={() => {
+        setQuantityDraft(String(committedCount.current));
+        setPendingQuantity(null);
+      }}
+      onConfirm={() => {
+        if (pendingQuantity) applyQuantity(pendingQuantity.value, pendingQuantity.count);
+        setPendingQuantity(null);
+      }}
+    />
   </>;
 }
