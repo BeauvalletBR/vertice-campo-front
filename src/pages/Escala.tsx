@@ -2701,6 +2701,7 @@ export default function Escala() {
           onOpenChange={setPlaybackDialogOpen}
           initialWeek={selectedWeek}
           weekOptions={weekOptions}
+          nroempresa={nroempresa}
           onStart={({ week, scrollDurationSeconds, showFinancial }) => {
             setPlaybackDialogOpen(false);
             navigate(

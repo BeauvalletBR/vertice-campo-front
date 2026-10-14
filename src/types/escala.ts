@@ -270,6 +270,29 @@ export interface CriarVinculoPedidoPayload {
   qtd_base_boi?: number | null;
 }
 
+export interface EscalaReproducaoCompartilharPayload {
+  nroempresa: number;
+  data_inicio: string;
+  data_fim: string;
+  duracao_segundos: number;
+  validade_dias: number;
+}
+
+export interface EscalaReproducaoLink {
+  success: boolean;
+  token: string;
+  expires_at: string;
+  expires_in_days: number;
+}
+
+export interface EscalaReproducaoPublica {
+  data_inicio: string;
+  data_fim: string;
+  duracao_segundos: number;
+  exibir_financeiro: false;
+  linhas: EscalaLinha[];
+}
+
 export interface PrazoPagamento {
   CODCONDPAGTO: number;
   DESCRICAO?: string | null;

@@ -16,6 +16,9 @@ import type {
   EscalaPedidoErp,
   EscalaRealizadoMensal,
   EscalaRealizadoMensalFiltro,
+  EscalaReproducaoCompartilharPayload,
+  EscalaReproducaoLink,
+  EscalaReproducaoPublica,
   EscalaResumo,
   InativarEscalaPayload,
   InativarRegistroManualPayload,
@@ -44,6 +47,8 @@ const urls = {
   manualInsert: getBackendUrl("/escala/manual/insert"),
   manualEditar: getBackendUrl("/escala/manual/editar"),
   manualInativar: getBackendUrl("/escala/manual/inativar"),
+  reproducaoCompartilhar: getBackendUrl("/escala/reproducao/compartilhar"),
+  reproducaoPublica: getBackendUrl("/public/escala/reproducao"),
 } as const;
 
 let cachedPaymentTerms: PrazoPagamento[] | null = null;
@@ -51,6 +56,26 @@ let paymentTermsPromise: Promise<PrazoPagamento[]> | null = null;
 
 export const consultarEscala = (filtro: EscalaFiltro) =>
   n8nPost<EscalaLinha[]>(urls.select, filtro);
+
+export const criarLinkReproducaoEscala = (
+  payload: EscalaReproducaoCompartilharPayload,
+) => n8nPost<EscalaReproducaoLink>(urls.reproducaoCompartilhar, payload);
+
+export const consultarReproducaoPublicaEscala = async (token: string) => {
+  const query = new URLSearchParams({ token });
+  const response = await fetch(`${urls.reproducaoPublica}?${query.toString()}`, {
+    cache: "no-store",
+  });
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      String(data?.detail || "Não foi possível carregar esta reprodução."),
+    );
+  }
+
+  return data as EscalaReproducaoPublica;
+};
 
 export const consultarResumoEscala = (filtro: EscalaFiltro) =>
   n8nPost<EscalaResumo[]>(urls.resumo, filtro);

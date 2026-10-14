@@ -294,6 +294,10 @@ function AppContent() {
         path="/localizacao/visita/:token"
         element={<VisitaLocalizacaoPublica />}
       />
+      <Route
+        path="/escala/reproducao"
+        element={<EscalaTVScreen publicMode />}
+      />
       <Route path="/*" element={<AuthenticatedAppContent />} />
     </Routes>
   );

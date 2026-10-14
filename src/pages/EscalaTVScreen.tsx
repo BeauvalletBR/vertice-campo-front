@@ -12,9 +12,12 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { consultarEscala } from "@/services/escala";
+import {
+  consultarEscala,
+  consultarReproducaoPublicaEscala,
+} from "@/services/escala";
 import { api, type ApiUsuario } from "@/services/api";
-import type { EscalaLinha } from "@/types/escala";
+import type { EscalaLinha, EscalaReproducaoPublica } from "@/types/escala";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   addDays,
@@ -28,6 +31,7 @@ import {
   getPlanningKey,
   getStartDateFromWeek,
   getUniquePlanningRecords,
+  getWeekValueFromDate,
   toNumber,
 } from "@/lib/escala-planning";
 import {
@@ -50,6 +54,8 @@ const currencyFormat = new Intl.NumberFormat("pt-BR", {
 const numberFormat = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 0,
 });
+
+const formatPlaybackDuration = (seconds: number) => `${seconds}s`;
 
 const DATA_REFRESH_INTERVAL_MS = 15_000;
 
@@ -164,20 +170,28 @@ const sortPlanningRows = (
     return aBuyer.localeCompare(bBuyer);
   });
 
-export default function EscalaTVScreen() {
+interface EscalaTVScreenProps {
+  publicMode?: boolean;
+}
+
+export default function EscalaTVScreen({ publicMode = false }: EscalaTVScreenProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
-  const week = searchParams.get("week") || "";
-  const scrollSeconds = Math.max(
+  const requestedWeek = searchParams.get("week") || "";
+  const publicToken = searchParams.get("token") || "";
+  const authenticatedScrollSeconds = Math.max(
     30,
-    Math.min(120, Number(searchParams.get("duration")) || 60),
+    Math.min(120, Number(searchParams.get("duration")) || 90),
   );
-  const showFinancial = searchParams.get("financial") === "1";
+  const authenticatedShowFinancial = searchParams.get("financial") === "1";
   const requestFullscreenOnStart = searchParams.get("fullscreen") === "1";
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [lines, setLines] = useState<EscalaLinha[]>([]);
+  const [publicPlayback, setPublicPlayback] =
+    useState<EscalaReproducaoPublica | null>(null);
   const [buyerUsers, setBuyerUsers] = useState<ApiUsuario[]>([]);
   const [isPaused, setIsPaused] = useState(false);
   const [playbackCycle, setPlaybackCycle] = useState(0);
@@ -193,6 +207,7 @@ export default function EscalaTVScreen() {
   const timeoutIdsRef = useRef<number[]>([]);
   const controlsHideTimeoutRef = useRef<number | null>(null);
   const pauseRef = useRef(isPaused);
+  const manualScrollUntilRef = useRef(0);
   const linesSignatureRef = useRef("");
   const pendingLinesRef = useRef<EscalaLinha[] | null>(null);
   const pendingLinesSignatureRef = useRef("");
@@ -202,8 +217,25 @@ export default function EscalaTVScreen() {
     () => buildBuyerDirectory(buyerUsers),
     [buyerUsers],
   );
-  const dateStart = useMemo(() => getStartDateFromWeek(week), [week]);
-  const dateEnd = useMemo(() => addDays(dateStart, 6), [dateStart]);
+  const authenticatedDateStart = useMemo(
+    () => getStartDateFromWeek(requestedWeek),
+    [requestedWeek],
+  );
+  const authenticatedDateEnd = useMemo(
+    () => addDays(authenticatedDateStart, 6),
+    [authenticatedDateStart],
+  );
+  const dateStart = publicMode
+    ? publicPlayback?.data_inicio || ""
+    : authenticatedDateStart;
+  const dateEnd = publicMode
+    ? publicPlayback?.data_fim || ""
+    : authenticatedDateEnd;
+  const week = dateStart ? getWeekValueFromDate(dateStart) : requestedWeek;
+  const scrollSeconds = publicMode
+    ? publicPlayback?.duracao_segundos || 90
+    : authenticatedScrollSeconds;
+  const showFinancial = publicMode ? false : authenticatedShowFinancial;
 
   useEffect(() => {
     pauseRef.current = isPaused;
@@ -216,19 +248,35 @@ export default function EscalaTVScreen() {
     const loadData = async (initialLoad = false) => {
       if (requestInFlight) return;
       requestInFlight = true;
-      if (initialLoad) setLoading(true);
+      if (initialLoad) {
+        setLoading(true);
+        setLoadError("");
+      }
 
       try {
-        const dataPromise = consultarEscala({
-          nroempresa,
-          data_inicio: dateStart,
-          data_fim: dateEnd,
-        });
-        const [data, users] = initialLoad
-          ? await Promise.all([dataPromise, api.getUsuarios()])
-          : [await dataPromise, null];
+        let data: EscalaLinha[];
+        let users: ApiUsuario[] | null = null;
+
+        if (publicMode) {
+          if (!publicToken) {
+            throw new Error("Link público de reprodução inválido.");
+          }
+          const response = await consultarReproducaoPublicaEscala(publicToken);
+          data = response.linhas;
+          if (!cancelled) setPublicPlayback(response);
+        } else {
+          const dataPromise = consultarEscala({
+            nroempresa,
+            data_inicio: authenticatedDateStart,
+            data_fim: authenticatedDateEnd,
+          });
+          [data, users] = initialLoad
+            ? await Promise.all([dataPromise, api.getUsuarios()])
+            : [await dataPromise, null];
+        }
 
         if (cancelled) return;
+        setLoadError("");
 
         const safeLines = Array.isArray(data) ? data : [];
         const nextSignature = JSON.stringify(safeLines);
@@ -248,6 +296,14 @@ export default function EscalaTVScreen() {
         if (Array.isArray(users)) setBuyerUsers(users);
       } catch (error) {
         console.error("Falha ao atualizar o modo TV da escala:", error);
+        if (!cancelled && (initialLoad || publicMode)) {
+          setLoadError(
+            error instanceof Error
+              ? error.message
+              : "Não foi possível carregar a reprodução.",
+          );
+          if (publicMode) setLines([]);
+        }
       } finally {
         requestInFlight = false;
         if (initialLoad && !cancelled) setLoading(false);
@@ -272,7 +328,13 @@ export default function EscalaTVScreen() {
       window.removeEventListener("focus", synchronize);
       document.removeEventListener("visibilitychange", synchronize);
     };
-  }, [dateEnd, dateStart, nroempresa]);
+  }, [
+    authenticatedDateEnd,
+    authenticatedDateStart,
+    nroempresa,
+    publicMode,
+    publicToken,
+  ]);
 
   const orderedLines = useMemo(
     () => sortPlanningRows(getUniquePlanningRecords(lines), buyerDirectory),
@@ -398,90 +460,92 @@ export default function EscalaTVScreen() {
 
     const introPauseMs = 2500;
     const endPauseMs = 3000;
-    const resetPauseMs = 1200;
     const resetDurationMs = 1100;
+    let phase: "intro" | "down" | "end" | "reset" = "intro";
+    let phaseStartedAt = performance.now();
+    let previousFrameAt = phaseStartedAt;
+    let virtualScrollTop = container.scrollTop;
+    let resyncAfterManualScroll = false;
 
-    const runLoop = () => {
-      if (!scrollContainerRef.current || pauseRef.current) return;
-
+    const animate = (now: number) => {
       const currentContainer = scrollContainerRef.current;
-      currentContainer.scrollTop = 0;
+      if (!currentContainer || pauseRef.current) return;
 
-      const pendingLines = pendingLinesRef.current;
-      if (pendingLines) {
-        linesSignatureRef.current = pendingLinesSignatureRef.current;
-        pendingLinesRef.current = null;
-        pendingLinesSignatureRef.current = "";
-        setLines(pendingLines);
+      const elapsed = Math.min(50, Math.max(0, now - previousFrameAt));
+      previousFrameAt = now;
+
+      if (now < manualScrollUntilRef.current) {
+        resyncAfterManualScroll = true;
+        animationFrameRef.current = requestAnimationFrame(animate);
         return;
+      }
+
+      if (resyncAfterManualScroll) {
+        virtualScrollTop = currentContainer.scrollTop;
+        resyncAfterManualScroll = false;
       }
 
       const maxScroll = Math.max(
         0,
         currentContainer.scrollHeight - currentContainer.clientHeight,
       );
-
       if (maxScroll <= 0) return;
 
-      const startTimeout = window.setTimeout(() => {
-        const startAt = performance.now();
+      if (phase === "intro") {
+        if (now - phaseStartedAt >= introPauseMs) {
+          phase = "down";
+          phaseStartedAt = now;
+        }
+      } else if (phase === "down") {
+        const pixelsPerMs = maxScroll / (scrollSeconds * 1000);
+        virtualScrollTop = Math.min(
+          maxScroll,
+          virtualScrollTop + pixelsPerMs * elapsed,
+        );
+        currentContainer.scrollTop = virtualScrollTop;
 
-        const animateDown = (now: number) => {
-          if (!scrollContainerRef.current || pauseRef.current) return;
-
-          const progress = Math.min(
-            1,
-            (now - startAt) / (scrollSeconds * 1000),
-          );
-
-          scrollContainerRef.current.scrollTop = maxScroll * progress;
-
-          if (progress < 1) {
-            animationFrameRef.current = requestAnimationFrame(animateDown);
+        if (currentContainer.scrollTop >= maxScroll - 1) {
+          phase = "end";
+          phaseStartedAt = now;
+        }
+      } else if (phase === "end") {
+        if (currentContainer.scrollTop < maxScroll - 2) {
+          phase = "down";
+          phaseStartedAt = now;
+        } else if (now - phaseStartedAt >= endPauseMs) {
+          const pendingLines = pendingLinesRef.current;
+          if (pendingLines) {
+            currentContainer.scrollTop = 0;
+            linesSignatureRef.current = pendingLinesSignatureRef.current;
+            pendingLinesRef.current = null;
+            pendingLinesSignatureRef.current = "";
+            setLines(pendingLines);
             return;
           }
 
-          if (scrollContainerRef.current) {
-            scrollContainerRef.current.scrollTop = maxScroll;
-          }
+          phase = "reset";
+          phaseStartedAt = now;
+        }
+      } else {
+        const resetPixelsPerMs = maxScroll / resetDurationMs;
+        virtualScrollTop = Math.max(
+          0,
+          virtualScrollTop - resetPixelsPerMs * elapsed,
+        );
+        currentContainer.scrollTop = virtualScrollTop;
 
-          const endTimeout = window.setTimeout(() => {
-            const from = scrollContainerRef.current?.scrollTop || 0;
-            const resetStart = performance.now();
+        if (currentContainer.scrollTop <= 1) {
+          currentContainer.scrollTop = 0;
+          virtualScrollTop = 0;
+          phase = "intro";
+          phaseStartedAt = now;
+        }
+      }
 
-            const animateUp = (resetNow: number) => {
-              if (!scrollContainerRef.current || pauseRef.current) return;
-
-              const resetProgress = Math.min(
-                1,
-                (resetNow - resetStart) / resetDurationMs,
-              );
-
-              scrollContainerRef.current.scrollTop =
-                from * (1 - resetProgress);
-
-              if (resetProgress < 1) {
-                animationFrameRef.current = requestAnimationFrame(animateUp);
-                return;
-              }
-
-              const restartTimeout = window.setTimeout(runLoop, resetPauseMs);
-              timeoutIdsRef.current.push(restartTimeout);
-            };
-
-            animationFrameRef.current = requestAnimationFrame(animateUp);
-          }, endPauseMs);
-
-          timeoutIdsRef.current.push(endTimeout);
-        };
-
-        animationFrameRef.current = requestAnimationFrame(animateDown);
-      }, introPauseMs);
-
-      timeoutIdsRef.current.push(startTimeout);
+      animationFrameRef.current = requestAnimationFrame(animate);
     };
 
-    runLoop();
+    animationFrameRef.current = requestAnimationFrame(animate);
 
     return clearPlaybackTimers;
   }, [isPaused, loading, orderedLines, playbackCycle, scrollSeconds, showFinancial]);
@@ -531,6 +595,10 @@ export default function EscalaTVScreen() {
     setPlaybackCycle((current) => current + 1);
   };
 
+  const registerManualScroll = () => {
+    manualScrollUntilRef.current = performance.now() + 900;
+  };
+
   const contentHeightClass = isFullscreen
     ? "h-screen"
     : "h-screen";
@@ -545,14 +613,14 @@ export default function EscalaTVScreen() {
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#F59E0B]">
-                Modo TV
+                {publicMode ? "Reprodução pública" : "Modo TV"}
               </p>
               <h1 className="mt-2 flex items-center gap-3 text-3xl font-black">
                 <Tv className="h-8 w-8 text-[#9CC4F2]" />
                 Planejamento de Escala
               </h1>
               <p className="mt-2 text-lg font-semibold text-white/75">
-                Semana {weekNumber} • {formatDate(dateStart)} a {formatDate(dateEnd)}
+                Semana {weekNumber} • {dateStart ? formatDate(dateStart) : "--"} a {dateEnd ? formatDate(dateEnd) : "--"}
               </p>
             </div>
 
@@ -561,7 +629,7 @@ export default function EscalaTVScreen() {
                 {numberFormat.format(totalAnimals)} animais
               </span>
               <span className="rounded-full border border-white/15 bg-white/5 px-4 py-2">
-                Rolagem em {scrollSeconds}s
+                Rolagem em {formatPlaybackDuration(scrollSeconds)}
               </span>
               <span className="rounded-full border border-white/15 bg-white/5 px-4 py-2">
                 {showFinancial ? "Financeiro visível" : "Financeiro oculto"}
@@ -615,8 +683,14 @@ export default function EscalaTVScreen() {
                 size="icon"
                 variant="ghost"
                 className="text-white hover:bg-white/10 hover:text-white"
-                onClick={() => navigate("/escala")}
-                title="Sair do Modo TV"
+                onClick={() => {
+                  if (publicMode) {
+                    window.close();
+                    return;
+                  }
+                  navigate("/escala");
+                }}
+                title={publicMode ? "Fechar reprodução" : "Sair do Modo TV"}
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -625,12 +699,29 @@ export default function EscalaTVScreen() {
 
           <div
             ref={scrollContainerRef}
-            className={`${contentHeightClass} overflow-y-auto px-6 py-6 pb-12`}
+            className={`${contentHeightClass} overflow-y-auto px-6 pb-12 pt-0`}
             style={{ height: `calc(100vh - ${Math.ceil(headerHeight)}px)` }}
+            tabIndex={0}
+            onWheel={registerManualScroll}
+            onTouchStart={registerManualScroll}
+            onPointerDown={registerManualScroll}
+            onKeyDown={registerManualScroll}
           >
             {loading ? (
               <div className="flex h-full items-center justify-center text-lg font-bold text-white/80">
                 Carregando escala...
+              </div>
+            ) : loadError ? (
+              <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center text-white/80">
+                <Tv className="h-12 w-12 text-white/50" />
+                <p className="max-w-2xl text-xl font-black">{loadError}</p>
+                <Button
+                  className="gap-2 bg-white text-[#173D6E] hover:bg-white/90"
+                  onClick={() => window.location.reload()}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Tentar novamente
+                </Button>
               </div>
             ) : visibleDays.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-4 text-center text-white/80">
@@ -640,10 +731,16 @@ export default function EscalaTVScreen() {
                 </p>
                 <Button
                   className="gap-2 bg-white text-[#173D6E] hover:bg-white/90"
-                  onClick={() => navigate("/escala")}
+                  onClick={() =>
+                    publicMode ? window.location.reload() : navigate("/escala")
+                  }
                 >
-                  <ArrowLeft className="h-4 w-4" />
-                  Voltar ao Planejamento
+                  {publicMode ? (
+                    <RotateCcw className="h-4 w-4" />
+                  ) : (
+                    <ArrowLeft className="h-4 w-4" />
+                  )}
+                  {publicMode ? "Atualizar" : "Voltar ao Planejamento"}
                 </Button>
               </div>
             ) : (
@@ -667,37 +764,38 @@ export default function EscalaTVScreen() {
                   return (
                     <section
                       key={day}
-                      className="overflow-hidden rounded-[28px] border border-white/10 bg-white/95 text-[#173D6E] shadow-[0_20px_55px_rgba(0,0,0,0.22)]"
+                      className="rounded-b-[28px] border border-white/10 bg-white/95 text-[#173D6E] shadow-[0_20px_55px_rgba(0,0,0,0.22)]"
                     >
-                      <div className="border-b border-[#D8E3EE] bg-[#F4F8FC] px-6 py-5">
-                        <div className="flex flex-wrap items-center justify-between gap-4">
-                          <div>
-                            <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#1B58A0]">
-                              Dia de abate
-                            </p>
-                            <div className="mt-1 flex flex-wrap items-center gap-3">
-                              <h2 className="text-2xl font-black">
-                                {formatDayTitle(day)}
-                              </h2>
-                              <span className="inline-flex items-center rounded-2xl bg-[#173D6E] px-4 py-2 text-2xl font-black text-white shadow-[0_10px_24px_rgba(23,61,110,0.18)]">
-                                {numberFormat.format(dayAnimals)} animais
+                      <div className="relative">
+                        <div className="sticky top-0 z-20 border-b border-[#D8E3EE] bg-[#F4F8FC] px-6 py-5 text-[#173D6E] shadow-[0_8px_18px_rgba(23,61,110,0.14)]">
+                          <div className="flex flex-wrap items-center justify-between gap-4">
+                            <div>
+                              <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#1B58A0]">
+                                Dia de abate
+                              </p>
+                              <div className="mt-1 flex flex-wrap items-center gap-3">
+                                <h2 className="text-2xl font-black">
+                                  {formatDayTitle(day)}
+                                </h2>
+                                <span className="inline-flex items-center rounded-2xl bg-[#173D6E] px-4 py-2 text-2xl font-black text-white shadow-[0_10px_24px_rgba(23,61,110,0.18)]">
+                                  {numberFormat.format(dayAnimals)} animais
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-3 text-sm font-bold">
+                              <span className="rounded-full border border-[#F6D7AB] bg-[#FFF8EA] px-4 py-2 text-[#A45D00]">
+                                {numberFormat.format(dayChina)} China
+                              </span>
+                              <span className="rounded-full border border-[#CBE9D4] bg-[#F0FFF4] px-4 py-2 text-[#167A59]">
+                                {numberFormat.format(dayAgrotools)} Agrotools
                               </span>
                             </div>
                           </div>
-
-                          <div className="flex flex-wrap gap-3 text-sm font-bold">
-                            <span className="rounded-full border border-[#F6D7AB] bg-[#FFF8EA] px-4 py-2 text-[#A45D00]">
-                              {numberFormat.format(dayChina)} China
-                            </span>
-                            <span className="rounded-full border border-[#CBE9D4] bg-[#F0FFF4] px-4 py-2 text-[#167A59]">
-                              {numberFormat.format(dayAgrotools)} Agrotools
-                            </span>
-                          </div>
                         </div>
-                      </div>
 
-                      <div className="overflow-hidden">
-                        <table className="w-full min-w-[1500px] table-fixed border-collapse">
+                        <div className="overflow-hidden">
+                          <table className="w-full min-w-[1500px] table-fixed border-collapse">
                           <thead>
                             <tr className="bg-[#EAF1F7] text-[#173D6E]">
                               <th className="border-b border-r border-[#D7E2EC] px-3 py-4 text-left text-[11px] font-extrabold uppercase tracking-[0.05em]">
@@ -803,6 +901,14 @@ export default function EscalaTVScreen() {
                                 </tr>
                               );
                             })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="relative z-30 overflow-hidden rounded-b-[27px]">
+                      <table className="w-full min-w-[1500px] table-fixed border-collapse">
+                        <tbody>
                             <tr className="border-t-2 border-[#BFD1E2] bg-[#F4F8FC]">
                               <td
                                 colSpan={3}
@@ -838,9 +944,9 @@ export default function EscalaTVScreen() {
                                 Total consolidado do dia
                               </td>
                             </tr>
-                          </tbody>
-                        </table>
-                      </div>
+                        </tbody>
+                      </table>
+                    </div>
                     </section>
                   );
                 })}
