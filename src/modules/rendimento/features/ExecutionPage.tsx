@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { TestInputDataCard } from "../components/TestInputDataCard";
+import { TraceableExecutionPage } from "./TraceableExecutionPage";
 import { Button, Field, Modal } from "../components/ui";
 import { testService } from "../services/testService";
 import { useRendimentoData } from "../context/RendimentoDataContext";
@@ -393,6 +394,8 @@ export function ExecutionPage({
     setDiscardWeightModalId(null);
   };
 
+  if (test?.executionMode === "traceable")
+    return <TraceableExecutionPage testId={testId} onNavigate={onNavigate} />;
   if (!test || !flow || !step)
     return (
       <div className="empty-state">

@@ -7,6 +7,7 @@ export type ProductType = "ENTRADA" | "PRODUTO";
 export type TestStatus =
   "RASCUNHO" | "ABERTO" | "EM_EXECUCAO" | "FINALIZADO" | "CANCELADO";
 export type FlowStatus = "PENDENTE" | "EM_EXECUCAO" | "FINALIZADO";
+export type ExecutionMode = "consolidated" | "traceable";
 export type AuditAction =
   | "INSERT"
   | "UPDATE"
@@ -54,6 +55,15 @@ export interface TestDiscard {
   manual: boolean;
 }
 
+export interface TraceableStepItem {
+  inputPieceId: string;
+  inputPieceOrder: number;
+  initialWeightKg: number;
+  discards: TestDiscard[];
+  cleanWeightKg: number;
+  confirmed: boolean;
+}
+
 export interface TestStep {
   id: string;
   productId: string;
@@ -65,6 +75,13 @@ export interface TestStep {
   inputYieldPercent: number;
   outputInputYieldPercent: number;
   confirmed: boolean;
+  traceItems?: TraceableStepItem[];
+}
+
+export interface TestInputPiece {
+  id: string;
+  order: number;
+  weightKg: number;
 }
 
 export interface TestFlow {
@@ -89,6 +106,8 @@ export interface YieldTest extends AuditFields {
   inputTotalWeightKg: number;
   inputWeightMode: "total" | "pieces";
   inputPieceWeightsKg?: number[];
+  inputPieces?: TestInputPiece[];
+  executionMode?: ExecutionMode;
   averageWeightKg: number;
   groupProductId: string;
   status: TestStatus;
@@ -138,6 +157,7 @@ export interface TestSetupInput {
   inputTotalWeightKg: number;
   inputWeightMode: "total" | "pieces";
   inputPieceWeightsKg?: number[];
+  executionMode?: ExecutionMode;
   flows: TestFlowSetupInput[];
   status: "RASCUNHO" | "ABERTO" | "EM_EXECUCAO";
 }

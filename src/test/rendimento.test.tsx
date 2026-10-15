@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import RendimentoModule from "@/modules/rendimento/RendimentoModule";
 import { catalogService } from "@/modules/rendimento/services/catalogService";
 import { testService } from "@/modules/rendimento/services/testService";
+import { mapYieldTest } from "@/modules/rendimento/services/rendimentoApi";
 import {
   InputWeightFields,
   type WeightEntryMode,
@@ -601,6 +602,38 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     expect(sanitizeWeightInput("5,2579")).toBe("5,257");
     expect(parseDecimal("5,257")).toBe(5.257);
     expect(formatPercent(47.916)).toBe("47,92%");
+  });
+
+  it("mantém pesos e descartes vinculados à peça de entrada rastreável", () => {
+    const test = mapYieldTest({
+      ID_TESTE: 90,
+      MODO_EXECUCAO: "RASTREAVEL",
+      MODO_PESO_ENTRADA: "PECAS",
+      PESOS_ENTRADA: [{ ID_TESTE_PESO_ITEM: 501, ORDEM: 1, PESO: 12.5 }],
+      FLUXOS: [{
+        ID_FLUXO: 10,
+        ID_PRODUTO_RAIZ: 10,
+        STATUS: "EM_EXECUCAO",
+        ETAPAS: [{
+          ID_ETAPA: 20,
+          ID_PRODUTO: 10,
+          PESO_INICIAL: 12.5,
+          PESOS: [{ ID_TESTE_PESO_ITEM: 501, ORDEM: 1, ORDEM_PECA: 1, PESO: 12.5, CONFIRMADA: "S" }],
+          DESCARTES: [{ ID_ETAPA_DESCARTE: 30, ID_TESTE_PESO_ITEM: 501, ID_TIPO_DESCARTE: 20, NOME_DESCARTE_SNAPSHOT: "SEBO", PESO: 0.5, MANUAL: "N" }],
+        }],
+      }],
+    });
+
+    expect(test.executionMode).toBe("traceable");
+    expect(test.inputPieces?.[0]).toMatchObject({ id: "501", order: 1, weightKg: 12.5 });
+    expect(test.flows[0].steps[0].traceItems?.[0]).toMatchObject({
+      inputPieceId: "501",
+      inputPieceOrder: 1,
+      initialWeightKg: 12.5,
+      cleanWeightKg: 12,
+      confirmed: true,
+    });
+    expect(test.flows[0].steps[0].traceItems?.[0].discards[0].name).toBe("SEBO");
   });
 
   it("confirma a troca de modo e preserva os dois conjuntos de pesos", () => {

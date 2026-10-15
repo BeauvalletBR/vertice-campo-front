@@ -6,6 +6,7 @@ import type {
   TestFlowSetupInput,
   TestSetupInput,
   TestStep,
+  TraceableStepItem,
   YieldTest,
 } from "../types/domain";
 import {
@@ -138,6 +139,25 @@ function syncLegacy(test: YieldTest): YieldTest {
   };
 }
 
+function aggregateTraceStep(step: TestStep, inputWeightKg: number, pieceOrders: number[]): TestStep {
+  const items = step.traceItems || [];
+  const initialWeightKg = items.reduce((sum, item) => sum + item.initialWeightKg, 0);
+  const cleanWeightKg = items.reduce((sum, item) => sum + item.cleanWeightKg, 0);
+  return {
+    ...step,
+    initialWeightKg,
+    pieceWeightsKg: items.map((item) => item.initialWeightKg),
+    discards: items.flatMap((item) => item.discards),
+    cleanWeightKg,
+    yieldPercent: calculateYield(cleanWeightKg, initialWeightKg),
+    inputYieldPercent: calculateInputYield(initialWeightKg, inputWeightKg),
+    outputInputYieldPercent: calculateInputYield(cleanWeightKg, inputWeightKg),
+    confirmed: pieceOrders.length > 0 && pieceOrders.every((order) =>
+      items.some((item) => item.inputPieceOrder === order && item.confirmed),
+    ),
+  };
+}
+
 export const testService = {
   list: () => rendimentoApi.listTests(),
   get: (id: string) => rendimentoApi.getTest(id),
@@ -179,6 +199,7 @@ export const testService = {
       inputTotalWeightKg: input.inputTotalWeightKg,
       inputWeightMode: input.inputWeightMode,
       inputPieceWeightsKg: input.inputPieceWeightsKg || [],
+      executionMode: input.executionMode || before?.executionMode || "consolidated",
       averageWeightKg: calculateAverageWeight(
         input.inputWeightKg,
         input.inputQuantity,
@@ -356,6 +377,79 @@ export const testService = {
       }),
       false,
     );
+    return allFinished ? rendimentoApi.changeStatus(saved, "FINALIZAR") : saved;
+  },
+
+  async saveTracePiece(
+    id: string,
+    flowId: string,
+    stepIndex: number,
+    inputPieceOrder: number,
+    input: { initialWeightKg: number; discards: TestDiscard[] },
+    confirm = false,
+  ) {
+    const before = await rendimentoApi.getTest(id);
+    const targetFlow = before.flows.find((flow) => flow.id === flowId);
+    const inputPiece = before.inputPieces?.find((piece) => piece.order === inputPieceOrder);
+    if (!targetFlow || !inputPiece || before.executionMode !== "traceable") return before;
+    const terminalIndex = targetFlow.steps.length - 1;
+    if (stepIndex < 0 || stepIndex >= terminalIndex) return before;
+
+    const cleanWeightKg = calculateCleanWeight(input.initialWeightKg, input.discards);
+    const traceItem: TraceableStepItem = {
+      inputPieceId: inputPiece.id,
+      inputPieceOrder,
+      initialWeightKg: input.initialWeightKg,
+      discards: input.discards,
+      cleanWeightKg,
+      confirmed: confirm,
+    };
+    const steps = targetFlow.steps.map((step) => ({
+      ...step,
+      traceItems: [...(step.traceItems || []).filter((item) => item.inputPieceOrder !== inputPieceOrder)],
+    }));
+    steps[stepIndex].traceItems = [...(steps[stepIndex].traceItems || []), traceItem]
+      .sort((a, b) => a.inputPieceOrder - b.inputPieceOrder);
+
+    if (confirm && steps[stepIndex + 1]) {
+      const nextIsFinal = stepIndex + 1 === terminalIndex;
+      const nextItem: TraceableStepItem = {
+        inputPieceId: inputPiece.id,
+        inputPieceOrder,
+        initialWeightKg: cleanWeightKg,
+        discards: [],
+        cleanWeightKg,
+        confirmed: nextIsFinal,
+      };
+      steps[stepIndex + 1].traceItems = [
+        ...(steps[stepIndex + 1].traceItems || []).filter((item) => item.inputPieceOrder !== inputPieceOrder),
+        nextItem,
+      ].sort((a, b) => a.inputPieceOrder - b.inputPieceOrder);
+    }
+
+    const pieceOrders = before.inputPieces?.map((piece) => piece.order) || [];
+    const aggregatedSteps = steps.map((step) => aggregateTraceStep(step, before.inputWeightKg, pieceOrders));
+    const flowFinished = pieceOrders.length > 0 && pieceOrders.every((order) =>
+      aggregatedSteps.slice(0, terminalIndex).every((item) =>
+        item.traceItems?.some((trace) => trace.inputPieceOrder === order && trace.confirmed),
+      ),
+    );
+    const firstPendingStep = aggregatedSteps.slice(0, terminalIndex).findIndex((item) => !item.confirmed);
+    const now = new Date().toISOString();
+    const flows = before.flows.map((flow) => flow.id === flowId ? {
+      ...flow,
+      steps: aggregatedSteps,
+      currentStepIndex: firstPendingStep < 0 ? terminalIndex : firstPendingStep,
+      status: flowFinished ? "FINALIZADO" as const : "EM_EXECUCAO" as const,
+      updatedAt: now,
+    } : flow);
+    const allFinished = flows.length > 0 && flows.every((flow) => flow.status === "FINALIZADO");
+    const saved = await rendimentoApi.saveTest(syncLegacy({
+      ...before,
+      status: "EM_EXECUCAO",
+      flows,
+      updatedAt: now,
+    }), false);
     return allFinished ? rendimentoApi.changeStatus(saved, "FINALIZAR") : saved;
   },
 

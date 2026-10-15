@@ -5,6 +5,7 @@ import type {
   TestDiscard,
   TestFlow,
   TestStep,
+  TraceableStepItem,
   YieldTest,
 } from "../types/domain";
 
@@ -134,22 +135,40 @@ const mapTestDiscards = (rows: ApiRow[]): TestDiscard[] => {
   return [...grouped.values()];
 };
 
-const mapTestStep = (row: ApiRow): TestStep => ({
-  id: asString(row.ID_ETAPA),
-  productId: asString(row.ID_PRODUTO),
-  initialWeightKg: asNumber(row.PESO_INICIAL),
-  pieceWeightsKg: Array.isArray(row.PESOS)
-    ? (row.PESOS as ApiRow[]).map((item) => asNumber(item.PESO))
-    : [],
-  discards: Array.isArray(row.DESCARTES)
-    ? mapTestDiscards(row.DESCARTES as ApiRow[])
-    : [],
-  cleanWeightKg: asNumber(row.PESO_LIQUIDO_SAIDA),
-  yieldPercent: asNumber(row.RENDIMENTO_ETAPA),
-  inputYieldPercent: asNumber(row.RENDIMENTO_ENTRADA_BRUTO),
-  outputInputYieldPercent: asNumber(row.RENDIMENTO_ENTRADA_LIQUIDO),
-  confirmed: asBoolean(row.CONFIRMADA),
-});
+const mapTestStep = (row: ApiRow): TestStep => {
+  const weightRows = Array.isArray(row.PESOS) ? row.PESOS as ApiRow[] : [];
+  const discardRows = Array.isArray(row.DESCARTES) ? row.DESCARTES as ApiRow[] : [];
+  const traceItems: TraceableStepItem[] = weightRows
+    .filter((item) => item.ID_TESTE_PESO_ITEM != null)
+    .map((item) => {
+      const inputPieceId = asString(item.ID_TESTE_PESO_ITEM);
+      const discards = mapTestDiscards(discardRows.filter(
+        (discard) => asString(discard.ID_TESTE_PESO_ITEM) === inputPieceId,
+      ));
+      const initialWeightKg = asNumber(item.PESO);
+      return {
+        inputPieceId,
+        inputPieceOrder: asNumber(item.ORDEM_PECA || item.ORDEM),
+        initialWeightKg,
+        discards,
+        cleanWeightKg: Math.max(0, initialWeightKg - discards.reduce((sum, discard) => sum + discard.weightKg, 0)),
+        confirmed: asBoolean(item.CONFIRMADA),
+      };
+    });
+  return {
+    id: asString(row.ID_ETAPA),
+    productId: asString(row.ID_PRODUTO),
+    initialWeightKg: asNumber(row.PESO_INICIAL),
+    pieceWeightsKg: weightRows.map((item) => asNumber(item.PESO)),
+    discards: mapTestDiscards(discardRows),
+    cleanWeightKg: asNumber(row.PESO_LIQUIDO_SAIDA),
+    yieldPercent: asNumber(row.RENDIMENTO_ETAPA),
+    inputYieldPercent: asNumber(row.RENDIMENTO_ENTRADA_BRUTO),
+    outputInputYieldPercent: asNumber(row.RENDIMENTO_ENTRADA_LIQUIDO),
+    confirmed: asBoolean(row.CONFIRMADA),
+    traceItems,
+  };
+};
 
 const mapTestFlow = (row: ApiRow): TestFlow => {
   const steps = Array.isArray(row.ETAPAS)
@@ -187,6 +206,15 @@ export const mapYieldTest = (row: ApiRow): YieldTest => {
     inputPieceWeightsKg: Array.isArray(row.PESOS_ENTRADA)
       ? (row.PESOS_ENTRADA as ApiRow[]).map((item) => asNumber(item.PESO))
       : [],
+    inputPieces: Array.isArray(row.PESOS_ENTRADA)
+      ? (row.PESOS_ENTRADA as ApiRow[]).map((item) => ({
+          id: asString(item.ID_TESTE_PESO_ITEM),
+          order: asNumber(item.ORDEM),
+          weightKg: asNumber(item.PESO),
+        }))
+      : [],
+    executionMode:
+      asString(row.MODO_EXECUCAO) === "RASTREAVEL" ? "traceable" : "consolidated",
     averageWeightKg: asNumber(row.PESO_MEDIO_ENTRADA),
     groupProductId: first?.rootProductId || "",
     status: asString(row.STATUS) as YieldTest["status"],
@@ -220,6 +248,7 @@ const testPayload = (test: YieldTest) => ({
   qtd_entrada: test.inputQuantity,
   peso_entrada: test.inputWeightKg,
   modo_peso_entrada: test.inputWeightMode === "pieces" ? "PECAS" : "TOTAL",
+  modo_execucao: test.executionMode === "traceable" ? "RASTREAVEL" : "CONSOLIDADO",
   peso_total_cache: test.inputTotalWeightKg,
   status: test.status,
   versao: test.version || undefined,
@@ -241,11 +270,22 @@ const testPayload = (test: YieldTest) => ({
           : "PROCESSAMENTO",
       peso_inicial: step.initialWeightKg,
       confirmada: step.confirmed,
-      pesos: (step.pieceWeightsKg || []).map((peso, index) => ({
-        ordem: index + 1,
-        peso,
-      })),
-      descartes: step.discards.flatMap((discard) =>
+      pesos: test.executionMode === "traceable"
+        ? (step.traceItems || []).map((item) => ({
+            ordem: item.inputPieceOrder,
+            ordem_peca: item.inputPieceOrder,
+            peso: item.initialWeightKg,
+            confirmada: item.confirmed,
+          }))
+        : (step.pieceWeightsKg || []).map((peso, index) => ({
+            ordem: index + 1,
+            peso,
+          })),
+      descartes: (test.executionMode === "traceable"
+        ? (step.traceItems || []).flatMap((item) =>
+            item.discards.map((discard) => ({ item, discard })),
+          )
+        : step.discards.map((discard) => ({ item: undefined, discard }))).flatMap(({ item, discard }) =>
         (discard.pieceWeightsKg?.length
           ? discard.pieceWeightsKg
           : [discard.weightKg]
@@ -257,6 +297,7 @@ const testPayload = (test: YieldTest) => ({
           manual: discard.manual,
           descricao_manual: discard.manual ? discard.name : null,
           peso,
+          ordem_peca: item?.inputPieceOrder,
         })),
       ),
     })),

@@ -54,6 +54,7 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
   const [weight, setWeight] = useState(existing?.inputTotalWeightKg ? toInputDecimal(existing.inputTotalWeightKg) : existing?.inputWeightKg ? toInputDecimal(existing.inputWeightKg) : "");
   const [pieceWeights, setPieceWeights] = useState<string[]>(() => (existing?.inputPieceWeightsKg || []).map((value) => toInputDecimal(value)));
   const [weightMode, setWeightMode] = useState<WeightEntryMode>(existing?.inputWeightMode || "total");
+  const [executionMode, setExecutionMode] = useState(existing?.executionMode || "consolidated");
   const [flows, setFlows] = useState<FlowDraft[]>(() => existing?.flows.length ? existing.flows.map((flow) => ({ id: flow.id, rootProductId: flow.rootProductId, productIds: flow.productIds, firstWeight: toInputDecimal(flow.steps[0]?.initialWeightKg || 0) })) : [{ id: "draft-0", rootProductId: "", productIds: [], firstWeight: "" }]);
   const [draggedProduct, setDraggedProduct] = useState<{ flowId: string; productId: string } | null>(null);
   const [pendingRootChange, setPendingRootChange] = useState<{ flowId: string; rootProductId: string } | null>(null);
@@ -75,6 +76,7 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
     inputTotalWeightKg: parseDecimal(weight),
     inputWeightMode: weightMode,
     inputPieceWeightsKg: pieceWeights.map(parseDecimal).slice(0, Number(quantity) || 0),
+    executionMode,
     flows: draftFlows.filter((flow) => flow.rootProductId && flow.productIds.length).map((flow) => ({ id: flow.id.startsWith("draft-") ? undefined : flow.id, rootProductId: flow.rootProductId, productIds: flow.productIds, firstStepWeightKg: parseDecimal(flow.firstWeight) })),
     status,
   });
@@ -167,11 +169,19 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
       <section className="form-card optional-input-card">
         <header><span><FileText size={19} /></span><div><h2>Dados de entrada <i>Opcional na criação</i></h2><p>Você pode montar o teste agora e completar quantidade e peso antes da execução.</p></div></header>
         <div className="optional-data-note"><CheckCircle2 size={16} /><span>Use o peso total diretamente ou informe o peso individual de cada peça para somar automaticamente.</span></div>
+        <div className="execution-mode-picker">
+          <span>Forma de execução</span>
+          <div>
+            <button type="button" className={executionMode === "consolidated" ? "active" : ""} onClick={() => setExecutionMode("consolidated")}><strong>Consolidada</strong><small>Mantém o preenchimento total atual</small></button>
+            <button type="button" className={executionMode === "traceable" ? "active" : ""} onClick={() => { setExecutionMode("traceable"); setWeightMode("pieces"); }}><strong>Rastreável por peça</strong><small>Acompanha cada entrada até o produto final</small></button>
+          </div>
+          {executionMode === "traceable" && <p><Check size={14} /> Os pesos de entrada serão identificados como peça 1, 2, 3 e assim por diante.</p>}
+        </div>
         <div className="form-grid form-grid--3">
           <div className="form-grid__wide"><Field label="Nome do teste" hint="editável"><input value={name} maxLength={150} placeholder="Ex.: Contra Filé — lote manhã" onChange={(event) => setName(event.target.value)} onBlur={() => currentTestId && autoSave(flows)} /></Field></div>
           <Field label="Data" hint="opcional"><input type="date" value={date} onChange={(event) => setDate(event.target.value)} onBlur={() => currentTestId && autoSave(flows)} /></Field>
           <Field label="Matéria-prima" hint="opcional"><select value={inputProductId} onChange={(event) => setInputProductId(event.target.value)} onBlur={() => currentTestId && autoSave(flows)}><option value="">Não informada</option>{inputEntries.length > 0 && <optgroup label="Matérias-primas cadastradas">{inputEntries.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}{inputCuts.length > 0 && <optgroup label="Produtos / cortes (inclusive cortes pai)">{inputCuts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}</select></Field>
-          <InputWeightFields quantity={quantity} weight={weight} pieceWeights={pieceWeights} mode={weightMode} onQuantityChange={setQuantity} onWeightChange={setWeight} onPieceWeightsChange={setPieceWeights} onModeChange={setWeightMode} onBlur={() => currentTestId && autoSave(flows)} />
+          <InputWeightFields quantity={quantity} weight={weight} pieceWeights={pieceWeights} mode={weightMode} onQuantityChange={setQuantity} onWeightChange={setWeight} onPieceWeightsChange={setPieceWeights} onModeChange={(mode) => { setWeightMode(mode); if (mode === "total") setExecutionMode("consolidated"); }} onBlur={() => currentTestId && autoSave(flows)} />
           <Field label="Peso médio" hint="calculado" calculated><div className="calculated-value"><Weight size={16} />{formatWeight(average)}</div></Field>
         </div>
       </section>
