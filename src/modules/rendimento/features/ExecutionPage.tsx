@@ -61,8 +61,10 @@ export function ExecutionPage({
   const [pieceWeights, setPieceWeights] = useState<number[]>([]);
   const [weightModalOpen, setWeightModalOpen] = useState(false);
   const [pieceWeightInput, setPieceWeightInput] = useState("");
+  const pieceWeightInputRef = useRef<HTMLInputElement>(null);
   const [discardWeightModalId, setDiscardWeightModalId] = useState<string | null>(null);
   const [discardPieceWeightInput, setDiscardPieceWeightInput] = useState("");
+  const discardPieceWeightInputRef = useRef<HTMLInputElement>(null);
   const [draftDiscards, setDraftDiscards] = useState<TestDiscard[]>([]);
   const [discardInputs, setDiscardInputs] = useState<Record<string, string>>(
     {},
@@ -317,7 +319,7 @@ export function ExecutionPage({
       ),
     );
     setPieceWeightInput("");
-    setWeightModalOpen(false);
+    window.requestAnimationFrame(() => pieceWeightInputRef.current?.focus());
   };
   const removePieceWeight = (index: number) => {
     const next = pieceWeights.filter((_, itemIndex) => itemIndex !== index);
@@ -370,7 +372,7 @@ export function ExecutionPage({
     if (newDiscardPieceWeight <= 0) return;
     setDiscardPieces([...discardPieceWeights, newDiscardPieceWeight]);
     setDiscardPieceWeightInput("");
-    setDiscardWeightModalId(null);
+    window.requestAnimationFrame(() => discardPieceWeightInputRef.current?.focus());
   };
   const removeDiscardPieceWeight = (index: number) => {
     setDiscardPieces(
@@ -691,9 +693,9 @@ export function ExecutionPage({
               <small>Peso inicial menos todos os descartes</small>
             </div>
             <div>
-              <span>Rendimento do peso limpo</span>
-              <strong>{formatPercent(stageYield)}</strong>
-              <small>Peso líquido sobre a entrada desta transformação</small>
+              <span>Rendimento sobre a entrada</span>
+              <strong>{formatPercent(outputInputYield)}</strong>
+              <small>Peso líquido do item ÷ peso total da entrada</small>
             </div>
           </div>
           {message && (
@@ -754,7 +756,7 @@ export function ExecutionPage({
           </div>
           <div className="yield-grid">
             <div>
-              <span>Rendimento da etapa</span>
+              <span>Aproveitamento da transformação</span>
               <strong>{formatPercent(stageYield)}</strong>
               <small>Peso líquido ÷ peso do item</small>
             </div>
@@ -765,10 +767,10 @@ export function ExecutionPage({
             </div>
           </div>
           <div className="yield-after-discards">
-            <span>Sobre a entrada após descartes</span>
+            <span>Rendimento sobre a entrada</span>
             <strong>{formatPercent(outputInputYield)}</strong>
             <small>
-              Este percentual e o peso líquido seguem para a próxima etapa.
+              Peso líquido do item ÷ peso total da entrada.
             </small>
           </div>
           <div className="next-pattern">
@@ -876,10 +878,10 @@ export function ExecutionPage({
                 setPieceWeightInput("");
               }}
             >
-              Cancelar
+              Concluir
             </Button>
             <Button disabled={newPieceWeight <= 0} onClick={addPieceWeight}>
-              <Plus size={16} /> Adicionar à soma
+              <Plus size={16} /> Adicionar e continuar
             </Button>
           </>
         }
@@ -897,6 +899,7 @@ export function ExecutionPage({
         </div>
         <Field label="Nova pesagem" hint="kg">
           <input
+            ref={pieceWeightInputRef}
             autoFocus
             value={pieceWeightInput}
             inputMode="decimal"
@@ -970,13 +973,13 @@ export function ExecutionPage({
                 setDiscardPieceWeightInput("");
               }}
             >
-              Cancelar
+              Concluir
             </Button>
             <Button
               disabled={newDiscardPieceWeight <= 0}
               onClick={addDiscardPieceWeight}
             >
-              <Plus size={16} /> Adicionar à soma
+              <Plus size={16} /> Adicionar e continuar
             </Button>
           </>
         }
@@ -994,6 +997,7 @@ export function ExecutionPage({
         </div>
         <Field label="Novo peso de descarte" hint="kg">
           <input
+            ref={discardPieceWeightInputRef}
             autoFocus
             value={discardPieceWeightInput}
             inputMode="decimal"

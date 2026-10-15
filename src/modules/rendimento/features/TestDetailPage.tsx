@@ -224,7 +224,7 @@ export function TestDetailPage({
                   <span>Produto / descarte</span>
                   <span>Peso</span>
                   <span>Sobre a entrada</span>
-                  <span>Rendimento do processo</span>
+                  <span>Aproveitamento no fluxo</span>
                 </div>
 
                 <div className="yield-process-body">

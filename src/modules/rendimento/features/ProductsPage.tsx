@@ -65,8 +65,31 @@ export function ProductsPage() {
     if (id) visit(id);
     return result;
   };
-  const selectedOriginLevel = products.find((item) => item.id === form.originProductIds[0])?.level;
   const originCandidates = products.filter((item) => item.id !== form.id && item.type === "PRODUTO" && item.active && !descendantIds(form.id).has(item.id));
+  const rootGroupsFor = (productId: string, visited = new Set<string>()): Set<string> => {
+    if (visited.has(productId)) return new Set();
+    const product = products.find((item) => item.id === productId);
+    if (!product) return new Set();
+    const nextVisited = new Set(visited).add(productId);
+    const parentIds = product.originProductIds.length
+      ? product.originProductIds
+      : product.parentId
+        ? [product.parentId]
+        : [];
+    if (!parentIds.length) return new Set([product.id]);
+    return parentIds.reduce((groups, parentId) => {
+      rootGroupsFor(parentId, nextVisited).forEach((id) => groups.add(id));
+      return groups;
+    }, new Set<string>());
+  };
+  const selectedRootGroups = form.originProductIds.reduce<Set<string> | null>(
+    (commonGroups, originId) => {
+      const originGroups = rootGroupsFor(originId);
+      if (commonGroups === null) return originGroups;
+      return new Set([...commonGroups].filter((id) => originGroups.has(id)));
+    },
+    null,
+  );
 
   const renderNode = (product: Product) => {
     const children = products.filter((item) => item.parentId === product.id);
@@ -88,9 +111,9 @@ export function ProductsPage() {
     <PageHeader eyebrow="Cadastros" title="Produtos / Cortes" description="Organize os produtos, suas possíveis origens e os descartes aplicáveis." actions={<Button onClick={() => openEdit()}><CirclePlus size={17} /> Novo produto</Button>} />
     {error && <div className="inline-message">{error}</div>}
     <section className="tree-panel"><header><div><span>Hierarquia de produtos</span><small>{products.length} itens cadastrados · matérias-primas primeiro · produtos irmãos podem ocupar o mesmo nível</small></div><div className="tree-tools"><div className="catalog-type-filters" aria-label="Filtrar cadastro por tipo"><button className={typeFilter === "TODOS" ? "active" : ""} onClick={() => setTypeFilter("TODOS")}>Todos <span>{products.length}</span></button><button className={typeFilter === "ENTRADA" ? "active" : ""} onClick={() => setTypeFilter("ENTRADA")}>Matérias-primas <span>{products.filter((item) => item.type === "ENTRADA").length}</span></button><button className={typeFilter === "PRODUTO" ? "active" : ""} onClick={() => setTypeFilter("PRODUTO")}>Produtos / Cortes <span>{products.filter((item) => item.type === "PRODUTO").length}</span></button></div><div className="tree-legend"><span><i className="active" /> Ativo</span><span><i /> Inativo</span></div></div></header><div className="product-tree">{products.filter((item) => item.parentId === null && (typeFilter === "TODOS" || item.type === typeFilter)).map(renderNode)}</div></section>
-    <Modal open={modalOpen} title={form.id ? "Editar produto / corte" : "Novo produto / corte"} subtitle="Defina uma ou mais origens do mesmo nível e os descartes mais comuns." onClose={() => !saving && setModalOpen(false)} footer={<><Button variant="ghost" onClick={() => setModalOpen(false)}>Cancelar</Button><Button onClick={() => void save()}>{saving ? "Salvando..." : "Salvar produto"}</Button></>}>
+    <Modal open={modalOpen} title={form.id ? "Editar produto / corte" : "Novo produto / corte"} subtitle="Defina uma ou mais origens do mesmo grupo principal e os descartes mais comuns." onClose={() => !saving && setModalOpen(false)} footer={<><Button variant="ghost" onClick={() => setModalOpen(false)}>Cancelar</Button><Button onClick={() => void save()}>{saving ? "Salvando..." : "Salvar produto"}</Button></>}>
       <div className="form-grid form-grid--2"><Field label="Nome"><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="CONTRA FILÉ MI" /></Field><Field label="Tipo"><select value={form.type} onChange={(event) => { const type = event.target.value as ProductType; setForm({ ...form, type, originProductIds: type === "ENTRADA" ? [] : form.originProductIds }); }}><option value="PRODUTO">Produto / Corte</option><option value="ENTRADA">Matéria-prima</option></select></Field></div>
-      {form.type === "PRODUTO" && <div className="checkbox-section product-origins"><span>Pode sair de <small>Marque uma ou mais origens do mesmo nível. Sem marcação, será um produto raiz.</small></span><div className="checkbox-grid">{originCandidates.map((item) => { const incompatibleLevel = selectedOriginLevel !== undefined && item.level !== selectedOriginLevel && !form.originProductIds.includes(item.id); return <label className={incompatibleLevel ? "disabled" : ""} key={item.id}><input aria-label={`Origem ${item.name}`} type="checkbox" disabled={incompatibleLevel} checked={form.originProductIds.includes(item.id)} onChange={() => toggleOrigin(item.id)} /><span><strong>{item.name}</strong><small>Nível {item.level} · ID {item.id}</small></span></label>; })}</div></div>}
+      {form.type === "PRODUTO" && <div className="checkbox-section product-origins"><span>Pode sair de <small>Marque quantas origens quiser dentro do mesmo grupo principal. Sem marcação, será um produto raiz.</small></span><div className="checkbox-grid">{originCandidates.map((item) => { const itemRootGroups = rootGroupsFor(item.id); const incompatibleGroup = Boolean(form.originProductIds.length && !form.originProductIds.includes(item.id) && selectedRootGroups && ![...selectedRootGroups].some((id) => itemRootGroups.has(id))); return <label className={incompatibleGroup ? "disabled" : ""} key={item.id}><input aria-label={`Origem ${item.name}`} type="checkbox" disabled={incompatibleGroup} checked={form.originProductIds.includes(item.id)} onChange={() => toggleOrigin(item.id)} /><span><strong>{item.name}</strong><small>Grupo principal · nível {item.level} · ID {item.id}</small></span></label>; })}</div></div>}
       <div className="checkbox-section"><span>Descartes aplicáveis</span><div className="checkbox-grid">{discardTypes.map((item) => <label key={item.id}><input aria-label={`Aplicar ${item.name}`} type="checkbox" checked={form.applicableDiscardIds.includes(item.id)} onChange={() => toggleDiscard(item.id)} /><span><strong>{item.name}</strong><small>ID {item.id}</small></span></label>)}</div></div>
       <label className="switch-field"><input aria-label="Produto ativo" type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} /><span /><div><strong>Produto ativo</strong><small>Disponível para novos testes</small></div></label>
     </Modal>

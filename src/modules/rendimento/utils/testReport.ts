@@ -86,7 +86,7 @@ export function buildFinalizedTestReport(
       return `<section class="product-group">
       <div class="group-heading">
         <div><span>Grupo de produto ${flowIndex + 1}</span><h2>${escapeHtml(productName(flow.rootProductId))}</h2><p>${flow.productIds.map(productName).map(escapeHtml).join(" → ")}</p></div>
-        <div class="group-yield"><span>Rendimento final do grupo · peso final ÷ peso inicial</span><strong>${formatPercent(groupYield)}</strong></div>
+        <div class="group-yield"><span>Aproveitamento do grupo · peso final ÷ peso inicial</span><strong>${formatPercent(groupYield)}</strong></div>
       </div>
       <div class="group-metrics">
         <div><span>Produto final</span><strong>${escapeHtml(productName(lastStep?.productId))}</strong></div>
@@ -95,7 +95,7 @@ export function buildFinalizedTestReport(
         <div><span>Peso final do grupo</span><strong>${formatWeight(lastStep?.cleanWeightKg || 0)}</strong></div>
         <div><span>Peso final sobre a entrada</span><strong>${formatPercent(inputShare)}</strong></div>
       </div>
-      <table><thead><tr><th>Etapa</th><th>Produto processado</th><th>Produto gerado</th><th>Peso inicial</th><th>Descartes</th><th>Total retirado</th><th>Peso gerado</th><th>Rend. etapa</th><th>Sobre entrada</th></tr></thead><tbody>${rows}</tbody></table>
+      <table><thead><tr><th>Etapa</th><th>Produto processado</th><th>Produto gerado</th><th>Peso inicial</th><th>Descartes</th><th>Total retirado</th><th>Peso gerado</th><th>Aprov. etapa</th><th>Rendimento sobre entrada</th></tr></thead><tbody>${rows}</tbody></table>
     </section>`;
     })
     .join("");
@@ -521,7 +521,7 @@ export async function exportFinalizedTestReport(
     doc.text("PRODUTO / DESCARTE", productX, cursorY);
     doc.text("PESO", weightX, cursorY, { align: "right" });
     doc.text("SOBRE ENTRADA", inputYieldX, cursorY, { align: "right" });
-    doc.text("REND. PROCESSO", processYieldX, cursorY, { align: "right" });
+    doc.text("APROV. FLUXO", processYieldX, cursorY, { align: "right" });
     cursorY += 4;
 
     operationSteps.forEach((step, stepIndex) => {

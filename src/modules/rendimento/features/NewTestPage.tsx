@@ -81,12 +81,23 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
     if (!currentTestIdRef.current) return;
     const payload = setupPayload(draftFlows, editingStatus);
     if (!payload.flows.length) return;
+    const submittedDraftIds = new Set(
+      draftFlows
+        .filter((flow) => flow.id.startsWith("draft-") && flow.rootProductId && flow.productIds.length)
+        .map((flow) => flow.id),
+    );
     setAutoSaveState("saving");
     saveQueue.current = saveQueue.current.then(async () => {
       const saved = await testService.saveSetup({ ...payload, id: currentTestIdRef.current || undefined });
       currentTestIdRef.current = saved.id;
       setCurrentTestId(saved.id);
-      setFlows(saved.flows.map((flow) => ({ id: flow.id, rootProductId: flow.rootProductId, productIds: flow.productIds, firstWeight: toInputDecimal(flow.steps[0]?.initialWeightKg || 0) })));
+      setFlows((current) => {
+        const savedFlows = saved.flows.map((flow) => ({ id: flow.id, rootProductId: flow.rootProductId, productIds: flow.productIds, firstWeight: toInputDecimal(flow.steps[0]?.initialWeightKg || 0) }));
+        const pendingDrafts = current.filter(
+          (flow) => flow.id.startsWith("draft-") && !submittedDraftIds.has(flow.id),
+        );
+        return [...savedFlows, ...pendingDrafts];
+      });
       await refreshTests();
       setError(""); setAutoSaveState("saved");
     }).catch((saveError) => {
@@ -129,7 +140,7 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
   };
   const removeFlow = (flowId: string) => { const next = flows.filter((flow) => flow.id !== flowId); setFlows(next); autoSave(next); };
   const addFlow = () => {
-    const next = [...flows, newFlow()]; setFlows(next); autoSave(next);
+    setFlows((current) => [...current, newFlow()]);
   };
   const persist = async () => {
     const numericWeight = activeWeight;
