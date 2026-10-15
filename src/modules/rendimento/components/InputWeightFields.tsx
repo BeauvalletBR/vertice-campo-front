@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Scale } from "lucide-react";
-import { handleWeightInputKeyDown, parseDecimal, sanitizeWeightInput, toInputDecimal } from "../utils/format";
+import { parseDecimal, sanitizeWeightInput, toInputDecimal } from "../utils/format";
 import { Field } from "./ui";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -110,11 +110,11 @@ export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuan
       <label className={`weight-mode-switch ${!count ? "disabled" : ""}`}><input type="checkbox" role="switch" aria-label="Informar peso por peça" checked={mode === "pieces"} disabled={!count} onChange={(event) => requestMode(event.target.checked ? "pieces" : "total")} /><i><span /></i><div><strong>Peso por peça</strong><small>{mode === "pieces" ? "Ligado · informe cada peça abaixo" : "Desligado · informe o peso total"}</small></div></label>
     </div>
     <Field label="Peso de entrada" hint={mode === "pieces" ? "soma automática · kg" : "necessário somente na execução · kg"} calculated={mode === "pieces"}>
-      {mode === "pieces" ? <div className="calculated-value"><Scale size={16} />{toInputDecimal(totalPieces)} kg</div> : <input inputMode="decimal" placeholder="0,000" value={weight} onFocus={(event) => event.currentTarget.select()} onKeyDown={(event) => handleWeightInputKeyDown(event, weight || "0,000", onWeightChange)} onChange={(event) => onWeightChange(sanitizeWeightInput(event.target.value))} onBlur={onBlur} />}
+      {mode === "pieces" ? <div className="calculated-value"><Scale size={16} />{toInputDecimal(totalPieces, true)} kg</div> : <input inputMode="decimal" placeholder="0,000" value={weight} onChange={(event) => onWeightChange(sanitizeWeightInput(event.target.value))} onBlur={onBlur} />}
     </Field>
     {mode === "pieces" && count > 0 && <div className="piece-weights-panel form-grid__full">
       <header><div><strong>Pesos individuais</strong><span>{count} {count === 1 ? "peça" : "peças"} · soma automática</span></div><button type="button" onClick={() => setExpanded((value) => !value)}>{expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}{expanded ? "Recolher" : `Exibir ${count} pesos`}</button></header>
-      {expanded && <div className="piece-weight-grid">{Array.from({ length: count }, (_, index) => <label key={index}><span>Peça {index + 1}</span><div><input aria-label={`Peça ${index + 1}`} inputMode="decimal" placeholder="0,000" value={pieceWeights[index] || ""} onFocus={(event) => event.currentTarget.select()} onKeyDown={(event) => handleWeightInputKeyDown(event, pieceWeights[index] || "0,000", (value) => changePiece(index, value))} onChange={(event) => changePiece(index, event.target.value)} onBlur={onBlur} /><small>kg</small></div></label>)}</div>}
+      {expanded && <div className="piece-weight-grid">{Array.from({ length: count }, (_, index) => <label key={index}><span>Peça {index + 1}</span><div><input aria-label={`Peça ${index + 1}`} inputMode="decimal" placeholder="0,000" value={pieceWeights[index] || ""} onChange={(event) => changePiece(index, event.target.value)} onBlur={onBlur} /><small>kg</small></div></label>)}</div>}
     </div>}
     <ConfirmDialog open={pendingMode !== null} title="Alterar forma de informar o peso?" description={pendingMode === "pieces" ? "O peso total digitado será mantido. Ao voltar para peso total, ele reaparecerá." : "Os pesos informados por peça serão mantidos. Ao ligar novamente, todos reaparecerão."} confirmLabel="Alterar forma" onCancel={() => setPendingMode(null)} onConfirm={() => { if (pendingMode) applyMode(pendingMode); setPendingMode(null); }} />
     <ConfirmDialog

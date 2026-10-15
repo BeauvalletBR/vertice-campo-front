@@ -16,7 +16,11 @@ import {
   calculateYield,
   consolidateDiscards,
 } from "@/modules/rendimento/utils/calculations";
-import { shiftWeightInput } from "@/modules/rendimento/utils/format";
+import {
+  formatPercent,
+  parseDecimal,
+  sanitizeWeightInput,
+} from "@/modules/rendimento/utils/format";
 
 const catalogResponse = {
   PRODUTOS: [
@@ -322,10 +326,11 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
       </MemoryRouter>,
     );
 
-    const productSelect = await screen.findByRole("combobox", {
+    const productSelect = await screen.findByRole("button", {
       name: "Produto principal 1",
     });
-    fireEvent.change(productSelect, { target: { value: "10" } });
+    fireEvent.click(productSelect);
+    fireEvent.click(screen.getByRole("button", { name: /^CONTRA FILÉ$/i }));
     expect(
       screen.getByRole("button", { name: /CONTRA FILÉ MI/i }),
     ).toBeInTheDocument();
@@ -483,8 +488,11 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     });
     expect(within(dialog).getByText("2 valores somados")).toBeInTheDocument();
     fireEvent.click(
-      within(dialog).getByRole("button", { name: /Adicionar à soma/i }),
+      within(dialog).getByRole("button", { name: /Adicionar e continuar/i }),
     );
+
+    expect(within(dialog).getByText("2 valores somados")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Concluir" }));
 
     expect(screen.getByLabelText("Peso inicial do produto")).toHaveValue(
       "125,000",
@@ -554,7 +562,7 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
       await screen.findByRole("heading", { name: "Fluxo de rendimento" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Produto / descarte")).toBeInTheDocument();
-    expect(screen.getByText("Rendimento do processo")).toBeInTheDocument();
+    expect(screen.getByText("Aproveitamento no fluxo")).toBeInTheDocument();
     expect(screen.getAllByText("MEMBRANA")).toHaveLength(2);
     expect(screen.getByText("Total retirado")).toBeInTheDocument();
     expect(screen.queryByText("Transformação 1")).not.toBeInTheDocument();
@@ -586,14 +594,13 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     expect(consolidated.find((item) => item.name === "Recorte")?.weightKg).toBe(0.05);
   });
 
-  it("digita pesos sequencialmente mantendo três casas decimais", () => {
-    const first = shiftWeightInput("0,000", "5");
-    const second = shiftWeightInput(first || "", "0");
-    const third = shiftWeightInput(second || "", "0");
-    expect(first).toBe("0,005");
-    expect(second).toBe("0,050");
-    expect(third).toBe("0,500");
-    expect(shiftWeightInput(third || "", "Backspace")).toBe("0,050");
+  it("aceita pesos com digitação decimal livre e percentuais com duas casas", () => {
+    expect(sanitizeWeightInput("5")).toBe("5");
+    expect(sanitizeWeightInput("5,")).toBe("5,");
+    expect(sanitizeWeightInput("5,25")).toBe("5,25");
+    expect(sanitizeWeightInput("5,2579")).toBe("5,257");
+    expect(parseDecimal("5,257")).toBe(5.257);
+    expect(formatPercent(47.916)).toBe("47,92%");
   });
 
   it("confirma a troca de modo e preserva os dois conjuntos de pesos", () => {

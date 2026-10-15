@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, FileText, GripVertical, PackagePlus, SquarePen, Trash2, Weight, X } from "lucide-react";
 import { InputWeightFields, type WeightEntryMode } from "../components/InputWeightFields";
+import { ProductHierarchySelect } from "../components/ProductHierarchySelect";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PageHeader } from "../components/PageHeader";
 import { Button, Field } from "../components/ui";
@@ -10,7 +11,7 @@ import { testService } from "../services/testService";
 import { useRendimentoData } from "../context/RendimentoDataContext";
 import type { NavigationTarget } from "../types/navigation";
 import { calculateAverageWeight } from "../utils/calculations";
-import { formatWeight, handleWeightInputKeyDown, parseDecimal, sanitizeWeightInput, toInputDecimal } from "../utils/format";
+import { formatWeight, parseDecimal, sanitizeWeightInput, toInputDecimal } from "../utils/format";
 
 interface FlowDraft { id: string; rootProductId: string; productIds: string[]; firstWeight: string }
 
@@ -182,8 +183,8 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
           return <article className="flow-editor" key={flow.id}>
             <header><div><span>Produto {flowIndex + 1}</span><strong>{products.find((item) => item.id === flow.rootProductId)?.name || "Selecione o produto principal"}</strong></div>{flows.length > 1 && <button className="icon-button icon-button--danger" onClick={() => removeFlow(flow.id)} aria-label="Remover produto"><Trash2 size={16} /></button>}</header>
             <div className="route-settings-row">
-              <Field label="Produto principal" hint="define o tipo desta rota"><select aria-label={`Produto principal ${flowIndex + 1}`} value={flow.rootProductId} onChange={(event) => requestRootChange(flow.id, event.target.value)}><option value="">Selecione um produto</option>{startProducts.map((item) => <option key={item.id} value={item.id} disabled={flows.some((other) => other.id !== flow.id && other.rootProductId === item.id)}>{"— ".repeat(Math.min(item.level, 3))}{item.name}</option>)}</select></Field>
-              <Field label="Peso inicial deste produto" hint="opcional agora"><input inputMode="decimal" placeholder="Pode preencher na execução" value={flow.firstWeight} onFocus={(event) => event.currentTarget.select()} onKeyDown={(event) => handleWeightInputKeyDown(event, flow.firstWeight || "0,000", (value) => setFlows((current) => current.map((item) => item.id === flow.id ? { ...item, firstWeight: value } : item)))} onChange={(event) => setFlows((current) => current.map((item) => item.id === flow.id ? { ...item, firstWeight: sanitizeWeightInput(event.target.value) } : item))} onBlur={() => autoSave(flows)} /></Field>
+              <Field label="Produto principal" hint="define o tipo desta rota"><ProductHierarchySelect products={startProducts} value={flow.rootProductId} ariaLabel={`Produto principal ${flowIndex + 1}`} disabledIds={new Set(flows.filter((other) => other.id !== flow.id).map((other) => other.rootProductId).filter(Boolean))} onChange={(productId) => requestRootChange(flow.id, productId)} /></Field>
+              <Field label="Peso inicial deste produto" hint="opcional agora"><input inputMode="decimal" placeholder="0,000" value={flow.firstWeight} onChange={(event) => setFlows((current) => current.map((item) => item.id === flow.id ? { ...item, firstWeight: sanitizeWeightInput(event.target.value) } : item))} onBlur={() => autoSave(flows)} /></Field>
             </div>
             <div className="route-builder"><header><div><span>Sequência definida</span><small>Clique para incluir e arraste os cards selecionados para reordenar ou pular etapas.</small></div><strong>{flow.productIds.length} selecionados</strong></header>
               {flow.productIds.length ? <div className="route-track">{flow.productIds.map((productId, index) => { const item = products.find((product) => product.id === productId); return <div className={`route-node ${index === 0 ? "start locked" : ""} ${index === flow.productIds.length - 1 && index > 0 ? "finish" : ""}`} draggable={index > 0} key={productId} onDragStart={() => index > 0 && setDraggedProduct({ flowId: flow.id, productId })} onDragOver={(event) => event.preventDefault()} onDrop={() => moveProduct(flow.id, productId)}><GripVertical size={15} /><div><small>{index === 0 ? "Início fixo" : index === flow.productIds.length - 1 ? "Fim" : `Etapa ${index + 1}`}</small><strong>{item?.name}</strong><span>Nível {item?.level}</span></div>{index > 0 && <button type="button" aria-label={`Remover ${item?.name}`} onClick={() => toggleProduct(flow.id, productId)}><X size={14} /></button>}{index < flow.productIds.length - 1 && <i><ArrowRight size={15} /></i>}</div>; })}</div> : <div className="route-empty">Selecione primeiro o produto principal acima.</div>}

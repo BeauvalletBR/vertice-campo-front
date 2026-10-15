@@ -29,7 +29,6 @@ import {
 import {
   formatPercent,
   formatWeight,
-  handleWeightInputKeyDown,
   parseDecimal,
   sanitizeWeightInput,
   toInputDecimal,
@@ -92,14 +91,14 @@ export function ExecutionPage({
         pieceWeightsKg: number[];
         discards: TestDiscard[];
       };
-      setInitialWeight(toInputDecimal(draft.initialWeightKg, true));
+      setInitialWeight(toInputDecimal(draft.initialWeightKg));
       setPieceWeights(draft.pieceWeightsKg);
       setDraftDiscards(draft.discards);
       setDiscardInputs(
         Object.fromEntries(
           draft.discards.map((item) => [
             item.id,
-            toInputDecimal(item.weightKg, true),
+            toInputDecimal(item.weightKg),
           ]),
         ),
       );
@@ -581,16 +580,7 @@ export function ExecutionPage({
                       value={initialWeight}
                       readOnly={pieceWeights.length > 0}
                       aria-label="Peso inicial do produto"
-                      onFocus={(event) => event.currentTarget.select()}
-                      onKeyDown={(event) => {
-                        if (!pieceWeights.length) {
-                          handleWeightInputKeyDown(
-                            event,
-                            initialWeight || "0,000",
-                            setInitialWeight,
-                          );
-                        }
-                      }}
+                      placeholder="0,000"
                       onChange={(event) =>
                         setInitialWeight(
                           sanitizeWeightInput(event.target.value),
@@ -643,19 +633,9 @@ export function ExecutionPage({
                   <label className="discard-weight-editor">
                     <input
                       inputMode="decimal"
-                      value={discardInputs[item.id] ?? "0,000"}
+                      value={discardInputs[item.id] ?? ""}
                       readOnly={Boolean(item.pieceWeightsKg?.length)}
                       placeholder="0,000"
-                      onFocus={(event) => event.currentTarget.select()}
-                      onKeyDown={(event) => {
-                        if (!item.pieceWeightsKg?.length) {
-                          handleWeightInputKeyDown(
-                            event,
-                            discardInputs[item.id] ?? "0,000",
-                            (value) => updateWeight(item.id, value),
-                          );
-                        }
-                      }}
                       onChange={(event) =>
                         updateWeight(item.id, event.target.value)
                       }
@@ -840,14 +820,6 @@ export function ExecutionPage({
         <Field label="Peso" hint="kg">
           <input
             value={manualWeight}
-            onFocus={(event) => event.currentTarget.select()}
-            onKeyDown={(event) =>
-              handleWeightInputKeyDown(
-                event,
-                manualWeight || "0,000",
-                setManualWeight,
-              )
-            }
             onChange={(event) =>
               setManualWeight(sanitizeWeightInput(event.target.value))
             }
@@ -908,16 +880,8 @@ export function ExecutionPage({
               setPieceWeightInput(sanitizeWeightInput(event.target.value))
             }
             onKeyDown={(event) => {
-              if (
-                handleWeightInputKeyDown(
-                  event,
-                  pieceWeightInput || "0,000",
-                  setPieceWeightInput,
-                )
-              ) {
-                return;
-              }
               if (event.key === "Enter" && newPieceWeight > 0) {
+                event.preventDefault();
                 addPieceWeight();
               }
             }}
@@ -1006,16 +970,8 @@ export function ExecutionPage({
               setDiscardPieceWeightInput(sanitizeWeightInput(event.target.value))
             }
             onKeyDown={(event) => {
-              if (
-                handleWeightInputKeyDown(
-                  event,
-                  discardPieceWeightInput || "0,000",
-                  setDiscardPieceWeightInput,
-                )
-              ) {
-                return;
-              }
               if (event.key === "Enter" && newDiscardPieceWeight > 0) {
+                event.preventDefault();
                 addDiscardPieceWeight();
               }
             }}

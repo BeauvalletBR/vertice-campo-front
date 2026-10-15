@@ -576,6 +576,38 @@
 .yield-module .flow-editor > header span { color: var(--blue); font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
 .yield-module .flow-editor > header strong { color: var(--navy); font-size: 16px; }
 .yield-module .route-settings-row { display: grid; grid-template-columns: minmax(260px, 1.3fr) minmax(220px, .7fr); gap: 12px; margin-bottom: 14px; }
+.yield-module .product-hierarchy-select { position: relative; }
+.yield-module .product-hierarchy-trigger { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px 8px 13px; color: var(--ink); cursor: pointer; background: #fff; text-align: left; transition: border-color .15s ease, box-shadow .15s ease; }
+.yield-module .product-hierarchy-trigger:hover, .yield-module .product-hierarchy-trigger.open { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(27, 88, 160, .1); }
+.yield-module .product-hierarchy-trigger > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.yield-module .product-hierarchy-trigger strong { overflow: hidden; color: var(--navy); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .product-hierarchy-trigger small { color: var(--muted); font-size: 9px; }
+.yield-module .product-hierarchy-trigger > svg { flex: 0 0 auto; color: #64819a; transition: transform .15s ease; }
+.yield-module .product-hierarchy-trigger.open > svg { transform: rotate(180deg); }
+.yield-module .product-hierarchy-panel { position: absolute; z-index: 40; top: calc(100% + 7px); left: 0; width: min(520px, 92vw); max-height: 390px; overflow-y: auto; border: 1px solid #b9cad9; border-radius: 12px; padding: 10px; background: #fff; box-shadow: 0 18px 40px rgba(10, 42, 72, .2); }
+.yield-module .product-hierarchy-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 3px 4px 10px; }
+.yield-module .product-hierarchy-panel__header strong { color: var(--navy); font-size: 11px; text-transform: uppercase; }
+.yield-module .product-hierarchy-panel__header span { color: var(--muted); font-size: 9px; }
+.yield-module .product-hierarchy-groups { display: grid; gap: 7px; }
+.yield-module .product-tree-node.group { overflow: hidden; border: 1px solid #d1dde7; border-radius: 9px; background: #fbfcfe; }
+.yield-module .product-tree-node.group > .product-tree-row { background: #f2f6f9; }
+.yield-module .product-tree-children { border-top: 1px solid #e3eaf0; background: #fff; }
+.yield-module .product-tree-row { display: flex; align-items: stretch; min-height: 45px; padding-left: calc(var(--tree-depth) * 18px); border-bottom: 1px solid #edf1f5; }
+.yield-module .product-tree-node:last-child > .product-tree-row { border-bottom: 0; }
+.yield-module .product-tree-row.selected { background: #edf6fd; box-shadow: inset 3px 0 0 var(--blue); }
+.yield-module .product-tree-row.disabled { opacity: .48; background: #f2f4f6; }
+.yield-module .product-tree-expand, .yield-module .product-tree-spacer { width: 34px; min-width: 34px; display: grid; place-items: center; border: 0; color: #496b88; background: transparent; }
+.yield-module .product-tree-expand { cursor: pointer; }
+.yield-module .product-tree-expand:hover { color: var(--blue); background: #e7f1f9; }
+.yield-module .product-tree-option { min-width: 0; flex: 1; display: flex; align-items: center; gap: 9px; border: 0; padding: 7px 10px 7px 2px; color: var(--ink); cursor: pointer; background: transparent; text-align: left; }
+.yield-module .product-tree-option:disabled { cursor: not-allowed; }
+.yield-module .product-tree-option:not(:disabled):hover { background: #f5f9fc; }
+.yield-module .product-tree-option > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.yield-module .product-tree-option strong { overflow: hidden; color: var(--navy); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .product-tree-option small { color: var(--muted); font-size: 8px; }
+.yield-module .product-tree-option > svg { margin-left: auto; flex: 0 0 auto; color: var(--blue); }
+.yield-module .product-tree-icon { width: 27px; height: 27px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid #d5e2ec; border-radius: 7px; color: #2d6595; background: #fff; }
+.yield-module .product-tree-node.group > .product-tree-row .product-tree-icon { color: #fff; border-color: var(--navy); background: var(--navy); }
 .yield-module .route-builder { overflow: hidden; border: 1px solid #cddae6; border-radius: 12px; background: #fff; }
 .yield-module .route-builder > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid #e2e9ef; background: #f6f9fc; }
 .yield-module .route-builder > header > div { display: flex; flex-direction: column; gap: 3px; }
@@ -878,6 +910,8 @@
   .yield-module .route-palette > div { grid-template-columns: 1fr; }
   .yield-module .product-origins > span { align-items: flex-start; flex-direction: column; }
   .yield-module .route-settings-row { grid-template-columns: 1fr; }
+  .yield-module .product-hierarchy-panel { width: 100%; max-height: 52vh; }
+  .yield-module .product-hierarchy-panel__header { align-items: flex-start; flex-direction: column; gap: 2px; }
 }
 .yield-module {
   min-height: calc(100vh - 3rem);
