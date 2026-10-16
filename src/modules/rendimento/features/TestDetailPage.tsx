@@ -16,17 +16,20 @@ import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { TestInputDataCard } from "../components/TestInputDataCard";
 import { Button } from "../components/ui";
+import { TraceabilityMatrix } from "../components/TraceabilityMatrix";
+import { ReportExportDialog } from "../components/ReportExportDialog";
+import { ResultFlowTree } from "../components/ResultFlowTree";
 import { testService } from "../services/testService";
 import { useRendimentoData } from "../context/RendimentoDataContext";
 import type { NavigationTarget } from "../types/navigation";
 import { calculateTotalDiscard, consolidateDiscards } from "../utils/calculations";
+import { isBranchedFlow, isLeafStep, orderTreeSteps, stepChildren, stepDepth } from "../utils/flowTree";
 import {
   formatDate,
   formatDateTime,
   formatPercent,
   formatWeight,
 } from "../utils/format";
-import { exportFinalizedTestReport } from "../utils/testReport";
 
 export function TestDetailPage({
   testId,
@@ -37,6 +40,7 @@ export function TestDetailPage({
 }) {
   const [confirmReopen, setConfirmReopen] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [reportOpen, setReportOpen] = useState(false);
   const { products, tests, refreshTests } = useRendimentoData();
   const test = testId ? tests.find((item) => item.id === testId) : undefined;
   const productName = (id?: string) =>
@@ -102,11 +106,7 @@ export function TestDetailPage({
                 >
                   <SquarePen size={17} /> Reabrir e editar valores
                 </Button>
-                <Button
-                  onClick={() => exportFinalizedTestReport(test, products)}
-                >
-                  <FileDown size={17} /> Exportar relatório
-                </Button>
+                <Button onClick={() => setReportOpen(true)}><FileDown size={17} /> Exportar relatório</Button>
               </>
             ) : (
               <>
@@ -185,7 +185,13 @@ export function TestDetailPage({
       {test.status !== "FINALIZADO" && (
         <TestInputDataCard test={test} onSaved={refreshTests} />
       )}
-      <section className="yield-process-section">
+      {test.executionMode === "traceable" ? (
+        <section className="yield-process-section result-flow-section">
+          <header><div><span>Processo</span><h2>Fluxo de transformação</h2><p>Produtos, valores e descartes organizados conforme as ramificações do teste.</p></div><div className="final-yield"><span>Final sobre a entrada</span><strong>{formatPercent(finalInputYield)}</strong></div></header>
+          <div className="result-flow-list">{test.flows.map((flow, flowIndex) => <ResultFlowTree key={flow.id} flow={flow} flowIndex={flowIndex} products={products} />)}</div>
+          <details className="trace-matrix-details"><summary>Ver detalhamento por peça</summary><TraceabilityMatrix test={test} products={products} /></details>
+        </section>
+      ) : <section className="yield-process-section">
         <header>
           <div>
             <span>Processo</span>
@@ -201,9 +207,10 @@ export function TestDetailPage({
         </header>
         <div className="yield-processes">
           {test.flows.map((flow, flowIndex) => {
-            const visibleSteps = flow.steps;
-            const operationSteps = visibleSteps.slice(0, -1);
-            const finalStep = visibleSteps.at(-1);
+            const visibleSteps = orderTreeSteps(flow.steps);
+            const branched = isBranchedFlow(flow.steps);
+            const operationSteps = branched ? visibleSteps : visibleSteps.slice(0, -1);
+            const finalStep = branched ? undefined : visibleSteps.at(-1);
             const firstWeight = operationSteps[0]?.initialWeightKg || 0;
             const finalDiscards = consolidateDiscards(
               operationSteps.flatMap((step) => step.discards),
@@ -236,8 +243,8 @@ export function TestDetailPage({
                       ? (step.initialWeightKg / firstWeight) * 100
                       : 0;
                     return (
-                      <div className="yield-process-stage" key={step.id}>
-                        <div className="yield-product-row">
+                      <div className={`yield-process-stage ${branched ? "yield-process-stage--branch" : ""}`} style={branched ? { marginLeft: `${stepDepth(flow.steps, step) * 30}px` } : undefined} key={step.id}>
+                        <div className={`yield-product-row ${branched && isLeafStep(flow.steps, step.id) ? "yield-product-row--final" : ""}`}>
                           <span className="yield-product-marker">
                             {stepIndex + 1}
                           </span>
@@ -267,12 +274,12 @@ export function TestDetailPage({
                           </div>
                         )}
 
-                        <div
+                        {stepChildren(flow.steps, step.id).length > 0 && <div
                           className="yield-product-connector"
                           aria-hidden="true"
                         >
                           <ArrowDown size={18} />
-                        </div>
+                        </div>}
                       </div>
                     );
                   })}
@@ -315,7 +322,7 @@ export function TestDetailPage({
             );
           })}
         </div>
-      </section>
+      </section>}
       <ConfirmDialog
         open={confirmReopen}
         title={`Reabrir teste ${test.number}?`}
@@ -327,6 +334,7 @@ export function TestDetailPage({
           await reopen();
         }}
       />
+      <ReportExportDialog open={reportOpen} test={test} products={products} onClose={() => setReportOpen(false)} />
     </>
   );
 }

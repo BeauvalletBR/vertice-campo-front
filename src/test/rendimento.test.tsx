@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import RendimentoModule from "@/modules/rendimento/RendimentoModule";
 import { catalogService } from "@/modules/rendimento/services/catalogService";
 import { testService } from "@/modules/rendimento/services/testService";
-import { mapYieldTest } from "@/modules/rendimento/services/rendimentoApi";
+import { mapYieldTest, rendimentoApi } from "@/modules/rendimento/services/rendimentoApi";
 import {
   InputWeightFields,
   type WeightEntryMode,
@@ -16,12 +16,14 @@ import {
   calculateTotalDiscard,
   calculateYield,
   consolidateDiscards,
+  resolveTraceInitialWeight,
 } from "@/modules/rendimento/utils/calculations";
 import {
   formatPercent,
   parseDecimal,
   sanitizeWeightInput,
 } from "@/modules/rendimento/utils/format";
+import { buildTraceabilityMatrices } from "@/modules/rendimento/utils/traceabilityReport";
 
 const catalogResponse = {
   PRODUTOS: [
@@ -310,7 +312,7 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("define um produto principal e limita os cards à mesma ramificação", async () => {
+  it("define um produto principal e monta suas saídas como árvore", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
@@ -332,13 +334,12 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     });
     fireEvent.click(productSelect);
     fireEvent.click(screen.getByRole("button", { name: /^CONTRA FILÉ$/i }));
-    expect(
-      screen.getByRole("button", { name: /CONTRA FILÉ MI/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /FILÉ MIGNON/i }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText("Início fixo")).toBeInTheDocument();
+    const outputSelect = screen.getByRole("combobox", { name: /Adicionar saída de CONTRA FILÉ/i });
+    expect(within(outputSelect).getByRole("option", { name: /CONTRA FILÉ MI/i })).toBeInTheDocument();
+    expect(within(outputSelect).queryByRole("option", { name: /^FILÉ MIGNON$/i })).not.toBeInTheDocument();
+    fireEvent.change(outputSelect, { target: { value: "11" } });
+    expect(screen.getByText("Produto inicial")).toBeInTheDocument();
+    expect(screen.getByText("Produto final")).toBeInTheDocument();
   });
 
   it("oferece edição completa e dados de entrada diretamente editáveis no teste aberto", async () => {
@@ -420,6 +421,39 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
       confirmada: true,
       peso_inicial: 115,
     });
+  });
+
+  it("deixa aberto um teste ramificado sem perder a referência dos produtos", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(catalogResponse)));
+    const save = vi.spyOn(rendimentoApi, "saveTest").mockImplementation(async (value) => value);
+
+    const saved = await testService.saveSetup({
+      name: "TESTE DIANTEIRO RAMIFICADO",
+      date: "2026-10-15",
+      inputProductId: "10",
+      inputQuantity: 0,
+      inputWeightKg: 0,
+      inputTotalWeightKg: 0,
+      inputWeightMode: "total",
+      flows: [{
+        rootProductId: "21",
+        productIds: ["21", "22", "24"],
+        nodes: [
+          { id: "root", productId: "21", parentNodeId: null, branchOrder: 1 },
+          { id: "child-a", productId: "22", parentNodeId: "root", branchOrder: 1 },
+          { id: "child-b", productId: "24", parentNodeId: "root", branchOrder: 2 },
+        ],
+        firstStepWeightKg: 0,
+      }],
+      status: "ABERTO",
+    });
+
+    expect(save).toHaveBeenCalledOnce();
+    expect(saved.flows[0].steps.map((step) => [step.productId, step.parentStepId])).toEqual([
+      ["21", null],
+      ["22", "root"],
+      ["24", "root"],
+    ]);
   });
 
   it("permite voltar a um produto finalizado e corrigir seus dados", async () => {
@@ -584,6 +618,21 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     expect(calculateYield(59.5, 60)).toBe(99.167);
   });
 
+  it("recupera uma etapa antiga vazia pelo peso seguinte mais seus descartes", () => {
+    expect(resolveTraceInitialWeight({
+      currentWeight: 0,
+      previousCleanWeight: 0,
+      nextWeight: 7,
+      currentDiscards: [{ id: "1", discardTypeId: null, name: "Recorte", weightKg: 0.5, manual: true }],
+    })).toBe(7.5);
+    expect(resolveTraceInitialWeight({
+      currentWeight: 0,
+      previousCleanWeight: 0,
+      nextWeight: 0,
+      currentDiscards: [],
+    })).toBe(0);
+  });
+
   it("consolida os descartes de todas as etapas por nome", () => {
     const consolidated = consolidateDiscards([
       { id: "1", discardTypeId: "20", name: "Sebo", weightKg: 0.1, manual: false },
@@ -634,6 +683,134 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
       confirmed: true,
     });
     expect(test.flows[0].steps[0].traceItems?.[0].discards[0].name).toBe("SEBO");
+  });
+
+  it("salva a peça pelo produto raiz quando o backend recria o id do fluxo", async () => {
+    const test = mapYieldTest({
+      ID_TESTE: 92,
+      VERSAO: 4,
+      STATUS: "EM_EXECUCAO",
+      MODO_EXECUCAO: "RASTREAVEL",
+      MODO_PESO_ENTRADA: "PECAS",
+      PESO_ENTRADA: 10,
+      PESOS_ENTRADA: [{ ID_TESTE_PESO_ITEM: 501, ORDEM: 1, PESO: 10 }],
+      FLUXOS: [{
+        ID_FLUXO: 999,
+        ID_PRODUTO_RAIZ: 10,
+        ORDEM: 1,
+        STATUS: "EM_EXECUCAO",
+        ETAPAS: [
+          { ID_ETAPA: 20, ID_PRODUTO: 10, SEQUENCIA: 1, PESO_INICIAL: 0, PESOS: [], DESCARTES: [] },
+          { ID_ETAPA: 21, ID_PRODUTO: 11, SEQUENCIA: 2, PESO_INICIAL: 0, PESOS: [], DESCARTES: [] },
+        ],
+      }],
+    });
+    vi.spyOn(rendimentoApi, "getTest").mockResolvedValue(test);
+    const save = vi.spyOn(rendimentoApi, "saveTest").mockImplementation(async (value) => value);
+
+    await testService.saveTracePiece("92", "id-antigo", "10", 0, 1, {
+      initialWeightKg: 8.5,
+      discards: [],
+    }, false);
+
+    const savedTest = save.mock.calls[0][0];
+    expect(savedTest.flows[0].steps[0].traceItems?.[0]).toMatchObject({
+      inputPieceOrder: 1,
+      initialWeightKg: 8.5,
+      confirmed: false,
+    });
+  });
+
+  it("preserva a etapa anterior ao confirmar a etapa seguinte da mesma peça", async () => {
+    const test = mapYieldTest({
+      ID_TESTE: 93,
+      VERSAO: 5,
+      STATUS: "EM_EXECUCAO",
+      MODO_EXECUCAO: "RASTREAVEL",
+      MODO_PESO_ENTRADA: "PECAS",
+      PESO_ENTRADA: 10,
+      PESOS_ENTRADA: [{ ID_TESTE_PESO_ITEM: 501, ORDEM: 1, PESO: 10 }],
+      FLUXOS: [{
+        ID_FLUXO: 999,
+        ID_PRODUTO_RAIZ: 10,
+        ORDEM: 1,
+        STATUS: "EM_EXECUCAO",
+        ETAPAS: [
+          { ID_ETAPA: 20, ID_PRODUTO: 10, SEQUENCIA: 1, PESOS: [{ ID_TESTE_PESO_ITEM: 501, ORDEM_PECA: 1, PESO: 9, CONFIRMADA: "S" }], DESCARTES: [] },
+          { ID_ETAPA: 21, ID_PRODUTO: 11, SEQUENCIA: 2, PESOS: [{ ID_TESTE_PESO_ITEM: 501, ORDEM_PECA: 1, PESO: 8, CONFIRMADA: "N" }], DESCARTES: [] },
+          { ID_ETAPA: 22, ID_PRODUTO: 12, SEQUENCIA: 3, PESOS: [], DESCARTES: [] },
+        ],
+      }],
+    });
+    vi.spyOn(rendimentoApi, "getTest").mockResolvedValue(test);
+    const save = vi.spyOn(rendimentoApi, "saveTest").mockImplementation(async (value) => value);
+    vi.spyOn(rendimentoApi, "changeStatus").mockImplementation(async (value) => ({ ...value, status: "FINALIZADO" }));
+
+    await testService.saveTracePiece("93", "999", "10", 1, 1, {
+      initialWeightKg: 8,
+      discards: [],
+    }, true);
+
+    const savedFlow = save.mock.calls[0][0].flows[0];
+    expect(savedFlow.steps[0].traceItems?.[0]).toMatchObject({
+      inputPieceOrder: 1,
+      initialWeightKg: 9,
+      confirmed: true,
+    });
+    expect(savedFlow.steps[1].traceItems?.[0].confirmed).toBe(true);
+    expect(savedFlow.steps[2].traceItems?.[0].confirmed).toBe(true);
+  });
+
+  it("separa entrada, produtos e descartes no relatório rastreável por peça", () => {
+    const test = mapYieldTest({
+      ID_TESTE: 91,
+      MODO_EXECUCAO: "RASTREAVEL",
+      MODO_PESO_ENTRADA: "PECAS",
+      PESOS_ENTRADA: [
+        { ID_TESTE_PESO_ITEM: 501, ORDEM: 1, PESO: 10 },
+        { ID_TESTE_PESO_ITEM: 502, ORDEM: 2, PESO: 20 },
+      ],
+      FLUXOS: [{
+        ID_FLUXO: 10,
+        ID_PRODUTO_RAIZ: 10,
+        STATUS: "FINALIZADO",
+        ETAPAS: [
+          {
+            ID_ETAPA: 20,
+            ID_PRODUTO: 10,
+            PESO_INICIAL: 27,
+            PESOS: [
+              { ID_TESTE_PESO_ITEM: 501, ORDEM_PECA: 1, PESO: 9, CONFIRMADA: "S" },
+              { ID_TESTE_PESO_ITEM: 502, ORDEM_PECA: 2, PESO: 18, CONFIRMADA: "S" },
+            ],
+            DESCARTES: [
+              { ID_ETAPA_DESCARTE: 30, ID_TESTE_PESO_ITEM: 501, ID_TIPO_DESCARTE: 20, NOME_DESCARTE_SNAPSHOT: "SEBO", PESO: 1, MANUAL: "N" },
+              { ID_ETAPA_DESCARTE: 31, ID_TESTE_PESO_ITEM: 502, ID_TIPO_DESCARTE: 20, NOME_DESCARTE_SNAPSHOT: "SEBO", PESO: 2, MANUAL: "N" },
+            ],
+          },
+          {
+            ID_ETAPA: 21,
+            ID_PRODUTO: 11,
+            PESO_INICIAL: 24,
+            PESOS: [
+              { ID_TESTE_PESO_ITEM: 501, ORDEM_PECA: 1, PESO: 8, CONFIRMADA: "S" },
+              { ID_TESTE_PESO_ITEM: 502, ORDEM_PECA: 2, PESO: 16, CONFIRMADA: "S" },
+            ],
+            DESCARTES: [],
+          },
+        ],
+      }],
+    });
+    const matrix = buildTraceabilityMatrices(test, [
+      { id: "10", name: "ACÉM COMPLETO", code: "10", type: "PRODUTO", parentId: null, originProductIds: [], level: 0, applicableDiscardIds: [], active: true, version: 1, createdBy: "T", createdAt: "", updatedBy: "T", updatedAt: "" },
+      { id: "11", name: "ACÉM MI", code: "11", type: "PRODUTO", parentId: "10", originProductIds: ["10"], level: 1, applicableDiscardIds: [], active: true, version: 1, createdBy: "T", createdAt: "", updatedBy: "T", updatedAt: "" },
+    ])[0];
+
+    expect(matrix.rows.map((row) => row.kind)).toEqual(["input", "product", "discard", "final"]);
+    expect(matrix.rows[0]).toMatchObject({ values: [10, 20], total: 30 });
+    expect(matrix.rows[1]).toMatchObject({ values: [9, 18], total: 27, yieldPercent: 90 });
+    expect(matrix.rows[2]).toMatchObject({ label: "SEBO", values: [1, 2], total: 3 });
+    expect(matrix.rows[3]).toMatchObject({ values: [8, 16], total: 24, yieldPercent: 80 });
   });
 
   it("confirma a troca de modo e preserva os dois conjuntos de pesos", () => {

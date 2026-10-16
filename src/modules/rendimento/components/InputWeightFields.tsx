@@ -18,9 +18,10 @@ interface InputWeightFieldsProps {
   onPieceWeightsChange: (values: string[]) => void;
   onModeChange: (mode: WeightEntryMode) => void;
   onBlur?: () => void;
+  lockPieceMode?: boolean;
 }
 
-export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuantityChange, onWeightChange, onPieceWeightsChange, onModeChange, onBlur }: InputWeightFieldsProps) {
+export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuantityChange, onWeightChange, onPieceWeightsChange, onModeChange, onBlur, lockPieceMode = false }: InputWeightFieldsProps) {
   const [expanded, setExpanded] = useState(true);
   const [pendingMode, setPendingMode] = useState<WeightEntryMode | null>(null);
   const [quantityDraft, setQuantityDraft] = useState(quantity);
@@ -105,10 +106,10 @@ export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuan
 
   return <>
     <Field label="Quantidade" hint="necessária somente na execução"><input type="number" min="0" max="200" placeholder="Ex.: 10" value={quantityDraft} onChange={(event) => changeQuantity(event.target.value)} onBlur={() => { if (quantityDraft === "") setQuantityDraft(quantity); onBlur?.(); }} /></Field>
-    <div className="weight-entry-field">
+    {!lockPieceMode && <div className="weight-entry-field">
       <span>Forma de informar o peso</span>
       <label className={`weight-mode-switch ${!count ? "disabled" : ""}`}><input type="checkbox" role="switch" aria-label="Informar peso por peça" checked={mode === "pieces"} disabled={!count} onChange={(event) => requestMode(event.target.checked ? "pieces" : "total")} /><i><span /></i><div><strong>Peso por peça</strong><small>{mode === "pieces" ? "Ligado · informe cada peça abaixo" : "Desligado · informe o peso total"}</small></div></label>
-    </div>
+    </div>}
     <Field label="Peso de entrada" hint={mode === "pieces" ? "soma automática · kg" : "necessário somente na execução · kg"} calculated={mode === "pieces"}>
       {mode === "pieces" ? <div className="calculated-value"><Scale size={16} />{toInputDecimal(totalPieces, true)} kg</div> : <input inputMode="decimal" placeholder="0,000" value={weight} onChange={(event) => onWeightChange(sanitizeWeightInput(event.target.value))} onBlur={onBlur} />}
     </Field>

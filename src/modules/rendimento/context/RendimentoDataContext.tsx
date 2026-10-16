@@ -12,6 +12,7 @@ interface RendimentoDataValue {
   refreshCatalogs: () => Promise<void>;
   refreshTests: () => Promise<void>;
   refreshAll: () => Promise<void>;
+  updateTest: (test: YieldTest) => void;
 }
 
 const RendimentoDataContext = createContext<RendimentoDataValue | null>(null);
@@ -33,6 +34,12 @@ export function RendimentoDataProvider({ children }: { children: ReactNode }) {
 
   const refreshTests = async () => {
     setTests(await rendimentoApi.listTests());
+  };
+
+  const updateTest = (test: YieldTest) => {
+    setTests((current) => current.some((item) => item.id === test.id)
+      ? current.map((item) => item.id === test.id ? test : item)
+      : [test, ...current]);
   };
 
   const refreshAll = async () => {
@@ -64,7 +71,7 @@ export function RendimentoDataProvider({ children }: { children: ReactNode }) {
     return () => { active = false; };
   }, []);
 
-  return <RendimentoDataContext.Provider value={{ products, discardTypes, tests, loading, error, refreshCatalogs, refreshTests, refreshAll }}>
+  return <RendimentoDataContext.Provider value={{ products, discardTypes, tests, loading, error, refreshCatalogs, refreshTests, refreshAll, updateTest }}>
     {children}
   </RendimentoDataContext.Provider>;
 }

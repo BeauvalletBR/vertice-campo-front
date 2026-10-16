@@ -34,6 +34,7 @@ import {
   sanitizeWeightInput,
   toInputDecimal,
 } from "../utils/format";
+import { isBranchedFlow, isLeafStep, stepChildren, stepDepth } from "../utils/flowTree";
 
 export function ExecutionPage({
   testId,
@@ -122,9 +123,11 @@ export function ExecutionPage({
   const outputInputYield = calculateInputYield(clean, test?.inputWeightKg || 0);
   const productName = (id?: string) =>
     products.find((item) => item.id === id)?.name || "—";
-  const operationCount = Math.max(0, (flow?.steps.length || 0) - 1);
-  const isLastOperation = Boolean(flow && stepIndex === flow.steps.length - 2);
-  const nextStep = flow?.steps[stepIndex + 1];
+  const branched = Boolean(flow && isBranchedFlow(flow.steps));
+  const operationCount = Math.max(0, (flow?.steps.length || 0) - (branched ? 0 : 1));
+  const children = flow && step ? stepChildren(flow.steps, step.id) : [];
+  const isLastOperation = Boolean(flow && step && (branched ? isLeafStep(flow.steps, step.id) : stepIndex === flow.steps.length - 2));
+  const nextStep = children.length === 1 ? children[0] : undefined;
   const availableTypes = discardTypes.filter(
     (type) => !draftDiscards.some((item) => item.discardTypeId === type.id),
   );
@@ -146,7 +149,7 @@ export function ExecutionPage({
   const selectFlow = (nextFlowId: string) => {
     const nextFlow = test?.flows.find((item) => item.id === nextFlowId);
     if (!nextFlow) return;
-    const lastOperationIndex = Math.max(0, nextFlow.steps.length - 2);
+    const lastOperationIndex = Math.max(0, nextFlow.steps.length - (isBranchedFlow(nextFlow.steps) ? 1 : 2));
     const nextStepIndex =
       nextFlow.status === "FINALIZADO"
         ? lastOperationIndex
@@ -520,11 +523,12 @@ export function ExecutionPage({
       )}
       <div className="step-progress">
         {flow.steps.map((item, index) => {
-          const finalProduct = index === flow.steps.length - 1;
+          const finalProduct = !branched && index === flow.steps.length - 1;
           return (
             <button
               key={item.id}
               className={`${index === stepIndex && !finalProduct ? "active" : ""} ${item.confirmed ? "complete" : ""} ${finalProduct ? "terminal" : ""}`}
+              style={branched ? { marginLeft: `${stepDepth(flow.steps, item) * 12}px` } : undefined}
               disabled={finalProduct || index > flow.currentStepIndex}
               onClick={() =>
                 !finalProduct &&
@@ -563,8 +567,7 @@ export function ExecutionPage({
                 {stepIndex + 1} de {operationCount}
               </span>
               <h2>
-                {productName(step.productId)} →{" "}
-                {productName(nextStep?.productId)}
+                {productName(step.productId)}{children.length ? ` → ${children.map((child) => productName(child.productId)).join(" + ")}` : " · produto final"}
               </h2>
             </div>
             <div className="step-weight">
@@ -758,11 +761,13 @@ export function ExecutionPage({
           </div>
           <div className="next-pattern">
             <span>
-              {isLastOperation ? "Produto final gerado" : "Próximo padrão"}
+              {children.length > 1 ? "Saídas deste produto" : isLastOperation ? "Produto final" : "Próximo padrão"}
             </span>
-            <strong>{productName(nextStep?.productId)}</strong>
+            <strong>{children.length > 1 ? children.map((child) => productName(child.productId)).join(" + ") : productName(nextStep?.productId || step?.productId)}</strong>
             <p>
-              {isLastOperation
+              {children.length > 1
+                ? `${formatWeight(clean)} disponível para as saídas acima`
+                : isLastOperation
                 ? `${formatWeight(clean)} · resultado final, sem nova etapa de descartes`
                 : `${formatWeight(clean)} · segue para a próxima transformação`}
             </p>

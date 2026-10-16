@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, FileText, GripVertical, PackagePlus, SquarePen, Trash2, Weight, X } from "lucide-react";
+import type { ReactNode } from "react";
+import { ArrowLeft, Check, CheckCircle2, FileText, GitBranch, PackagePlus, Plus, SquarePen, Trash2, Weight, X } from "lucide-react";
 import { InputWeightFields, type WeightEntryMode } from "../components/InputWeightFields";
 import { ProductHierarchySelect } from "../components/ProductHierarchySelect";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -13,7 +14,17 @@ import type { NavigationTarget } from "../types/navigation";
 import { calculateAverageWeight } from "../utils/calculations";
 import { formatWeight, parseDecimal, sanitizeWeightInput, toInputDecimal } from "../utils/format";
 
-interface FlowDraft { id: string; rootProductId: string; productIds: string[]; firstWeight: string }
+interface FlowNodeDraft { id: string; productId: string; parentNodeId: string | null; branchOrder: number }
+interface FlowDraft { id: string; rootProductId: string; productIds: string[]; nodes: FlowNodeDraft[]; firstWeight: string }
+
+const newNodeId = () => `node-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const nodesFromFlow = (flow: { steps: Array<{ id: string; productId: string; parentStepId: string | null; branchOrder: number }> }) =>
+  flow.steps.map((step, index) => ({
+    id: step.id,
+    productId: step.productId,
+    parentNodeId: step.parentStepId ?? (index > 0 ? flow.steps[index - 1].id : null),
+    branchOrder: step.branchOrder || 1,
+  }));
 
 export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigate: (target: NavigationTarget) => void }) {
   const { products, tests, refreshTests } = useRendimentoData();
@@ -25,26 +36,9 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
   const inputEntries = inputProducts.filter((item) => item.type === "ENTRADA");
   const inputCuts = inputProducts.filter((item) => item.type === "PRODUTO");
   const startProducts = products.filter((item) => item.type === "PRODUTO" && item.active).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, "pt-BR"));
-  const choicesFor = (rootId: string) => {
-    const result: Array<{ product: (typeof products)[number]; depth: number }> = [];
-    const visited = new Set<string>();
-    const walk = (id: string, depth: number) => {
-      if (visited.has(id)) return;
-      const product = products.find((item) => item.id === id && item.type === "PRODUTO" && item.active);
-      if (!product) return;
-      visited.add(id);
-      result.push({ product, depth });
-      products
-        .filter((item) => item.type === "PRODUTO" && item.active && (item.originProductIds.includes(id) || item.parentId === id))
-        .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, "pt-BR"))
-        .forEach((child) => walk(child.id, depth + 1));
-    };
-    if (rootId) walk(rootId, 0);
-    return result;
-  };
   const draftCounter = useRef(0);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
-  const newFlow = (): FlowDraft => ({ id: `draft-${++draftCounter.current}`, rootProductId: "", productIds: [], firstWeight: "" });
+  const newFlow = (): FlowDraft => ({ id: `draft-${++draftCounter.current}`, rootProductId: "", productIds: [], nodes: [], firstWeight: "" });
   const [currentTestId, setCurrentTestId] = useState(existing?.id || "");
   const currentTestIdRef = useRef(existing?.id || "");
   const [name, setName] = useState(existing?.name || "");
@@ -53,10 +47,9 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
   const [quantity, setQuantity] = useState(String(existing?.inputQuantity || ""));
   const [weight, setWeight] = useState(existing?.inputTotalWeightKg ? toInputDecimal(existing.inputTotalWeightKg) : existing?.inputWeightKg ? toInputDecimal(existing.inputWeightKg) : "");
   const [pieceWeights, setPieceWeights] = useState<string[]>(() => (existing?.inputPieceWeightsKg || []).map((value) => toInputDecimal(value)));
-  const [weightMode, setWeightMode] = useState<WeightEntryMode>(existing?.inputWeightMode || "total");
-  const [executionMode, setExecutionMode] = useState(existing?.executionMode || "consolidated");
-  const [flows, setFlows] = useState<FlowDraft[]>(() => existing?.flows.length ? existing.flows.map((flow) => ({ id: flow.id, rootProductId: flow.rootProductId, productIds: flow.productIds, firstWeight: toInputDecimal(flow.steps[0]?.initialWeightKg || 0) })) : [{ id: "draft-0", rootProductId: "", productIds: [], firstWeight: "" }]);
-  const [draggedProduct, setDraggedProduct] = useState<{ flowId: string; productId: string } | null>(null);
+  const [weightMode] = useState<WeightEntryMode>("pieces");
+  const executionMode = "traceable" as const;
+  const [flows, setFlows] = useState<FlowDraft[]>(() => existing?.flows.length ? existing.flows.map((flow) => ({ id: flow.id, rootProductId: flow.rootProductId, productIds: flow.productIds, nodes: nodesFromFlow(flow), firstWeight: toInputDecimal(flow.steps[0]?.initialWeightKg || 0) })) : [{ id: "draft-0", rootProductId: "", productIds: [], nodes: [], firstWeight: "" }]);
   const [pendingRootChange, setPendingRootChange] = useState<{ flowId: string; rootProductId: string } | null>(null);
   const [error, setError] = useState("");
   const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved">("idle");
@@ -77,7 +70,7 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
     inputWeightMode: weightMode,
     inputPieceWeightsKg: pieceWeights.map(parseDecimal).slice(0, Number(quantity) || 0),
     executionMode,
-    flows: draftFlows.filter((flow) => flow.rootProductId && flow.productIds.length).map((flow) => ({ id: flow.id.startsWith("draft-") ? undefined : flow.id, rootProductId: flow.rootProductId, productIds: flow.productIds, firstStepWeightKg: parseDecimal(flow.firstWeight) })),
+    flows: draftFlows.filter((flow) => flow.rootProductId && flow.nodes.length).map((flow) => ({ id: flow.id.startsWith("draft-") ? undefined : flow.id, rootProductId: flow.rootProductId, productIds: flow.nodes.map((node) => node.productId), nodes: flow.nodes, firstStepWeightKg: parseDecimal(flow.firstWeight) })),
     status,
   });
   const autoSave = (draftFlows: FlowDraft[]) => {
@@ -95,7 +88,7 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
       currentTestIdRef.current = saved.id;
       setCurrentTestId(saved.id);
       setFlows((current) => {
-        const savedFlows = saved.flows.map((flow) => ({ id: flow.id, rootProductId: flow.rootProductId, productIds: flow.productIds, firstWeight: toInputDecimal(flow.steps[0]?.initialWeightKg || 0) }));
+        const savedFlows = saved.flows.map((flow) => ({ id: flow.id, rootProductId: flow.rootProductId, productIds: flow.productIds, nodes: nodesFromFlow(flow), firstWeight: toInputDecimal(flow.steps[0]?.initialWeightKg || 0) }));
         const pendingDrafts = current.filter(
           (flow) => flow.id.startsWith("draft-") && !submittedDraftIds.has(flow.id),
         );
@@ -109,7 +102,8 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
     });
   };
   const applyRootChange = (flowId: string, rootProductId: string) => {
-    const next = flows.map((flow) => flow.id === flowId ? { ...flow, rootProductId, productIds: rootProductId ? [rootProductId] : [] } : flow);
+    const rootNode = rootProductId ? { id: newNodeId(), productId: rootProductId, parentNodeId: null, branchOrder: 1 } : null;
+    const next = flows.map((flow) => flow.id === flowId ? { ...flow, rootProductId, productIds: rootProductId ? [rootProductId] : [], nodes: rootNode ? [rootNode] : [] } : flow);
     setFlows(next); autoSave(next);
   };
   const requestRootChange = (flowId: string, rootProductId: string) => {
@@ -121,25 +115,26 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
     }
     applyRootChange(flowId, rootProductId);
   };
-  const toggleProduct = (flowId: string, productId: string) => {
+  const addBranch = (flowId: string, parentNodeId: string, productId: string) => {
+    if (!productId) return;
     const flow = flows.find((item) => item.id === flowId); if (!flow) return;
-    if (!flow.rootProductId || productId === flow.rootProductId || !choicesFor(flow.rootProductId).some((item) => item.product.id === productId)) return;
-    const productIds = flow.productIds.includes(productId) ? flow.productIds.filter((id) => id !== productId) : [...flow.productIds, productId];
-    const next = flows.map((item) => item.id === flowId ? { ...item, productIds } : item);
+    const siblings = flow.nodes.filter((node) => node.parentNodeId === parentNodeId);
+    if (siblings.some((node) => node.productId === productId)) return;
+    const nodes = [...flow.nodes, { id: newNodeId(), productId, parentNodeId, branchOrder: siblings.length + 1 }];
+    const next = flows.map((item) => item.id === flowId ? { ...item, nodes, productIds: nodes.map((node) => node.productId) } : item);
     setFlows(next); autoSave(next);
   };
-  const moveProduct = (flowId: string, targetProductId: string) => {
-    if (!draggedProduct || draggedProduct.flowId !== flowId || draggedProduct.productId === targetProductId) return;
+  const removeBranch = (flowId: string, nodeId: string) => {
     const flow = flows.find((item) => item.id === flowId); if (!flow) return;
-    if (draggedProduct.productId === flow.rootProductId || targetProductId === flow.rootProductId) return;
-    const productIds = [...flow.productIds];
-    const from = productIds.indexOf(draggedProduct.productId);
-    const to = productIds.indexOf(targetProductId);
-    if (from < 0 || to < 0) return;
-    const [moved] = productIds.splice(from, 1);
-    productIds.splice(to, 0, moved);
-    const next = flows.map((item) => item.id === flowId ? { ...item, productIds } : item);
-    setFlows(next); setDraggedProduct(null); autoSave(next);
+    const removed = new Set([nodeId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      flow.nodes.forEach((node) => { if (node.parentNodeId && removed.has(node.parentNodeId) && !removed.has(node.id)) { removed.add(node.id); changed = true; } });
+    }
+    const nodes = flow.nodes.filter((node) => !removed.has(node.id));
+    const next = flows.map((item) => item.id === flowId ? { ...item, nodes, productIds: nodes.map((node) => node.productId) } : item);
+    setFlows(next); autoSave(next);
   };
   const removeFlow = (flowId: string) => { const next = flows.filter((flow) => flow.id !== flowId); setFlows(next); autoSave(next); };
   const addFlow = () => {
@@ -148,7 +143,7 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
   const persist = async () => {
     const numericWeight = activeWeight;
     if (!flows.some((flow) => flow.rootProductId && flow.productIds.length)) { setError("Adicione ao menos um produto e selecione sua sequência."); return; }
-    if (flows.some((flow) => flow.productIds.length < 2)) { setError("Cada fluxo precisa ter um produto inicial e um produto final antes de deixar o teste aberto."); return; }
+    if (flows.some((flow) => flow.nodes.length < 2)) { setError("Cada fluxo precisa ter um produto inicial e ao menos uma saída final antes de deixar o teste aberto."); return; }
     if (flows.some((flow) => numericWeight > 0 && parseDecimal(flow.firstWeight) > numericWeight)) { setError("O peso inicial de um produto não pode superar o peso de entrada informado."); return; }
     setSaving(true);
     try {
@@ -162,6 +157,28 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
     finally { setSaving(false); }
   };
 
+  const renderBranchTree = (flow: FlowDraft, parentNodeId: string | null = null): ReactNode => {
+    const siblings = flow.nodes.filter((node) => node.parentNodeId === parentNodeId).sort((a, b) => a.branchOrder - b.branchOrder);
+    if (!siblings.length) return null;
+    return <div className={`yield-tree-level ${parentNodeId ? "yield-tree-level--children" : ""}`}>{siblings.map((node) => {
+      const product = products.find((item) => item.id === node.productId);
+      const children = flow.nodes.filter((candidate) => candidate.parentNodeId === node.id);
+      const availableChildren = products
+        .filter((item) => item.active && item.type === "PRODUTO" && (item.originProductIds.includes(node.productId) || item.parentId === node.productId))
+        .filter((item) => !children.some((child) => child.productId === item.id))
+        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+      return <div className="yield-tree-branch" key={node.id}>
+        <div className={`yield-tree-node ${children.length ? "has-children" : "is-leaf"}`}>
+          <span className="yield-tree-node__icon"><GitBranch size={16} /></span>
+          <div><small>{parentNodeId ? children.length ? "Transformação" : "Produto final" : "Produto inicial"}</small><strong>{product?.name || "Produto"}</strong></div>
+          {parentNodeId && <button type="button" aria-label={`Remover ${product?.name || "produto"}`} onClick={() => removeBranch(flow.id, node.id)}><X size={14} /></button>}
+        </div>
+        {availableChildren.length > 0 && <label className="yield-tree-add"><Plus size={14} /><select aria-label={`Adicionar saída de ${product?.name || "produto"}`} value="" onChange={(event) => addBranch(flow.id, node.id, event.target.value)}><option value="">Adicionar saída...</option>{availableChildren.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+        {renderBranchTree(flow, node.id)}
+      </div>;
+    })}</div>;
+  };
+
   return <>
     <button className="back-link" onClick={() => onNavigate({ route: "tests" })}><ArrowLeft size={16} /> Voltar para testes</button>
     <PageHeader eyebrow={existing ? `Teste ${existing.number}` : "Novo registro"} title={existing ? "Editar Teste de Rendimento" : "Novo Teste de Rendimento"} description="Monte os produtos e a sequência livremente. Quantidade e peso serão exigidos somente quando o teste for executado." />
@@ -169,19 +186,15 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
       <section className="form-card optional-input-card">
         <header><span><FileText size={19} /></span><div><h2>Dados de entrada <i>Opcional na criação</i></h2><p>Você pode montar o teste agora e completar quantidade e peso antes da execução.</p></div></header>
         <div className="optional-data-note"><CheckCircle2 size={16} /><span>Use o peso total diretamente ou informe o peso individual de cada peça para somar automaticamente.</span></div>
-        <div className="execution-mode-picker">
+        <div className="execution-mode-picker execution-mode-picker--fixed">
           <span>Forma de execução</span>
-          <div>
-            <button type="button" className={executionMode === "consolidated" ? "active" : ""} onClick={() => setExecutionMode("consolidated")}><strong>Consolidada</strong><small>Mantém o preenchimento total atual</small></button>
-            <button type="button" className={executionMode === "traceable" ? "active" : ""} onClick={() => { setExecutionMode("traceable"); setWeightMode("pieces"); }}><strong>Rastreável por peça</strong><small>Acompanha cada entrada até o produto final</small></button>
-          </div>
-          {executionMode === "traceable" && <p><Check size={14} /> Os pesos de entrada serão identificados como peça 1, 2, 3 e assim por diante.</p>}
+          <p><Check size={14} /> Rastreável por peça: cada peso de entrada será acompanhado até os produtos finais.</p>
         </div>
         <div className="form-grid form-grid--3">
           <div className="form-grid__wide"><Field label="Nome do teste" hint="editável"><input value={name} maxLength={150} placeholder="Ex.: Contra Filé — lote manhã" onChange={(event) => setName(event.target.value)} onBlur={() => currentTestId && autoSave(flows)} /></Field></div>
           <Field label="Data" hint="opcional"><input type="date" value={date} onChange={(event) => setDate(event.target.value)} onBlur={() => currentTestId && autoSave(flows)} /></Field>
           <Field label="Matéria-prima" hint="opcional"><select value={inputProductId} onChange={(event) => setInputProductId(event.target.value)} onBlur={() => currentTestId && autoSave(flows)}><option value="">Não informada</option>{inputEntries.length > 0 && <optgroup label="Matérias-primas cadastradas">{inputEntries.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}{inputCuts.length > 0 && <optgroup label="Produtos / cortes (inclusive cortes pai)">{inputCuts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</optgroup>}</select></Field>
-          <InputWeightFields quantity={quantity} weight={weight} pieceWeights={pieceWeights} mode={weightMode} onQuantityChange={setQuantity} onWeightChange={setWeight} onPieceWeightsChange={setPieceWeights} onModeChange={(mode) => { setWeightMode(mode); if (mode === "total") setExecutionMode("consolidated"); }} onBlur={() => currentTestId && autoSave(flows)} />
+          <InputWeightFields quantity={quantity} weight={weight} pieceWeights={pieceWeights} mode={weightMode} onQuantityChange={setQuantity} onWeightChange={setWeight} onPieceWeightsChange={setPieceWeights} onModeChange={() => undefined} onBlur={() => currentTestId && autoSave(flows)} lockPieceMode />
           <Field label="Peso médio" hint="calculado" calculated><div className="calculated-value"><Weight size={16} />{formatWeight(average)}</div></Field>
         </div>
       </section>
@@ -189,18 +202,16 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
       <section className="form-card product-flows-card">
         <header><span><PackagePlus size={19} /></span><div><h2>Produtos vinculados</h2><p>{currentTestId ? "As alterações são salvas automaticamente." : "Monte os produtos e deixe o teste aberto para salvar."}</p></div><div className={`autosave-state ${autoSaveState}`}><CheckCircle2 size={14} />{!currentTestId ? "Ainda não salvo" : autoSaveState === "saving" ? "Salvando..." : autoSaveState === "saved" ? "Salvo automaticamente" : "Salvamento automático"}</div></header>
         <div className="flow-editor-list">{flows.map((flow, flowIndex) => {
-          const compatibleProducts = choicesFor(flow.rootProductId);
           return <article className="flow-editor" key={flow.id}>
             <header><div><span>Produto {flowIndex + 1}</span><strong>{products.find((item) => item.id === flow.rootProductId)?.name || "Selecione o produto principal"}</strong></div>{flows.length > 1 && <button className="icon-button icon-button--danger" onClick={() => removeFlow(flow.id)} aria-label="Remover produto"><Trash2 size={16} /></button>}</header>
             <div className="route-settings-row">
               <Field label="Produto principal" hint="define o tipo desta rota"><ProductHierarchySelect products={startProducts} value={flow.rootProductId} ariaLabel={`Produto principal ${flowIndex + 1}`} disabledIds={new Set(flows.filter((other) => other.id !== flow.id).map((other) => other.rootProductId).filter(Boolean))} onChange={(productId) => requestRootChange(flow.id, productId)} /></Field>
               <Field label="Peso inicial deste produto" hint="opcional agora"><input inputMode="decimal" placeholder="0,000" value={flow.firstWeight} onChange={(event) => setFlows((current) => current.map((item) => item.id === flow.id ? { ...item, firstWeight: sanitizeWeightInput(event.target.value) } : item))} onBlur={() => autoSave(flows)} /></Field>
             </div>
-            <div className="route-builder"><header><div><span>Sequência definida</span><small>Clique para incluir e arraste os cards selecionados para reordenar ou pular etapas.</small></div><strong>{flow.productIds.length} selecionados</strong></header>
-              {flow.productIds.length ? <div className="route-track">{flow.productIds.map((productId, index) => { const item = products.find((product) => product.id === productId); return <div className={`route-node ${index === 0 ? "start locked" : ""} ${index === flow.productIds.length - 1 && index > 0 ? "finish" : ""}`} draggable={index > 0} key={productId} onDragStart={() => index > 0 && setDraggedProduct({ flowId: flow.id, productId })} onDragOver={(event) => event.preventDefault()} onDrop={() => moveProduct(flow.id, productId)}><GripVertical size={15} /><div><small>{index === 0 ? "Início fixo" : index === flow.productIds.length - 1 ? "Fim" : `Etapa ${index + 1}`}</small><strong>{item?.name}</strong><span>Nível {item?.level}</span></div>{index > 0 && <button type="button" aria-label={`Remover ${item?.name}`} onClick={() => toggleProduct(flow.id, productId)}><X size={14} /></button>}{index < flow.productIds.length - 1 && <i><ArrowRight size={15} /></i>}</div>; })}</div> : <div className="route-empty">Selecione primeiro o produto principal acima.</div>}
-              {flow.rootProductId && <div className="route-palette"><span>Produtos compatíveis com {products.find((item) => item.id === flow.rootProductId)?.name}</span>{compatibleProducts.length > 1 ? <div>{compatibleProducts.slice(1).map(({ product: item, depth }) => { const selected = flow.productIds.includes(item.id); const previousId = flow.productIds.at(-1) || flow.rootProductId; const canFollow = item.originProductIds.includes(previousId) || item.parentId === previousId; return <button type="button" key={item.id} className={`${selected ? "selected" : ""} ${canFollow && !selected ? "suggested" : ""}`} onClick={() => toggleProduct(flow.id, item.id)}><i>{selected ? <Check size={13} /> : depth}</i><span><strong>{item.name}</strong><small>{selected ? "Na sequência" : canFollow ? "Próximo sugerido" : `Mesmo tipo · nível ${item.level}`}</small></span></button>; })}</div> : <p className="route-palette-empty">Nenhum produto derivado cadastrado para este tipo.</p>}</div>}
+            <div className="route-builder route-builder--tree"><header><div><span>Fluxo de transformação</span><small>Adicione uma ou mais saídas em qualquer produto. Cada caminho pode continuar ou terminar separadamente.</small></div><strong>{flow.nodes.length} produtos</strong></header>
+              {flow.nodes.length ? <div className="yield-tree-canvas">{renderBranchTree(flow)}</div> : <div className="route-empty">Selecione primeiro o produto principal acima.</div>}
             </div>
-            <div className="flow-save-row"><span>{flow.productIds.length} produtos · {Math.max(0, flow.productIds.length - 1)} {flow.productIds.length === 2 ? "etapa de transformação" : "etapas de transformação"}</span><strong><CheckCircle2 size={14} /> {currentTestId ? "Salvamento automático" : "Será salvo como aberto"}</strong></div>
+            <div className="flow-save-row"><span>{flow.nodes.length} produtos · {flow.nodes.filter((node) => !flow.nodes.some((candidate) => candidate.parentNodeId === node.id)).length} saídas finais</span><strong><CheckCircle2 size={14} /> {currentTestId ? "Salvamento automático" : "Será salvo como aberto"}</strong></div>
           </article>;
         })}</div>
         <button className="add-flow-button" onClick={addFlow}><PackagePlus size={17} /> Adicionar outro produto ao teste</button>

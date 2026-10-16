@@ -31,3 +31,20 @@ export const calculateYield = (finalWeight: number, initialWeight: number) =>
 
 export const calculateInputYield = (weight: number, inputWeight: number) =>
   inputWeight > 0 ? round3((weight / inputWeight) * 100) : 0;
+
+export const resolveTraceInitialWeight = ({
+  currentWeight,
+  previousCleanWeight,
+  nextWeight,
+  currentDiscards,
+}: {
+  currentWeight: number;
+  previousCleanWeight: number;
+  nextWeight: number;
+  currentDiscards: TestDiscard[];
+}) => {
+  if (currentWeight > 0) return currentWeight;
+  if (previousCleanWeight > 0) return previousCleanWeight;
+  if (nextWeight > 0) return round3(nextWeight + calculateTotalDiscard(currentDiscards));
+  return 0;
+};

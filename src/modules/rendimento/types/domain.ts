@@ -66,6 +66,8 @@ export interface TraceableStepItem {
 
 export interface TestStep {
   id: string;
+  parentStepId: string | null;
+  branchOrder: number;
   productId: string;
   initialWeightKg: number;
   pieceWeightsKg?: number[];
@@ -125,6 +127,12 @@ export interface TestFlowSetupInput {
   id?: string;
   rootProductId: string;
   productIds: string[];
+  nodes?: Array<{
+    id: string;
+    productId: string;
+    parentNodeId: string | null;
+    branchOrder: number;
+  }>;
   firstStepWeightKg: number;
 }
 

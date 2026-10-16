@@ -1,4 +1,5 @@
 import type { Product, YieldTest } from "../types/domain";
+import { exportTraceabilityPdf } from "./traceabilityReport";
 import { calculateTotalDiscard, consolidateDiscards } from "./calculations";
 import {
   formatDate,
@@ -6,6 +7,7 @@ import {
   formatPercent,
   formatWeight,
 } from "./format";
+import { isBranchedFlow, isLeafStep, orderTreeSteps, stepChildren, stepDepth } from "./flowTree";
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "")
@@ -23,35 +25,38 @@ export function buildFinalizedTestReport(
   const productName = (id?: string) =>
     products.find((item) => item.id === id)?.name || "Não informado";
   const confirmedSteps = test.flows.flatMap((flow) =>
-    flow.steps.slice(0, -1).filter((step) => step.confirmed),
+    flow.steps.filter((step) => step.confirmed),
   );
   const totalDiscard = confirmedSteps.reduce(
     (total, step) => total + calculateTotalDiscard(step.discards),
     0,
   );
   const finalWeight = test.flows.reduce((total, flow) => {
-    const lastStep = [...flow.steps].reverse().find((step) => step.confirmed);
-    return total + (lastStep?.cleanWeightKg || 0);
+    const leaves = flow.steps.filter((step) => step.confirmed && isLeafStep(flow.steps, step.id));
+    return total + leaves.reduce((sum, step) => sum + step.cleanWeightKg, 0);
   }, 0);
   const finalYield =
     test.inputWeightKg > 0 ? (finalWeight / test.inputWeightKg) * 100 : 0;
 
   const groups = test.flows
     .map((flow, flowIndex) => {
-      const steps = flow.steps.filter((step) => step.confirmed);
+      const steps = orderTreeSteps(flow.steps.filter((step) => step.confirmed));
+      const branched = isBranchedFlow(flow.steps);
       const firstStep = steps[0];
       const lastStep = steps.at(-1);
-      const operationSteps = steps.slice(0, -1);
+      const operationSteps = branched ? steps : steps.slice(0, -1);
+      const leaves = steps.filter((step) => isLeafStep(flow.steps, step.id));
+      const leafWeight = leaves.reduce((sum, step) => sum + step.cleanWeightKg, 0);
       const groupDiscard = operationSteps.reduce(
         (total, step) => total + calculateTotalDiscard(step.discards),
         0,
       );
       const groupYield = firstStep?.initialWeightKg
-        ? ((lastStep?.cleanWeightKg || 0) / firstStep.initialWeightKg) * 100
+        ? (leafWeight / firstStep.initialWeightKg) * 100
         : 0;
       const inputShare =
         test.inputWeightKg > 0
-          ? ((lastStep?.cleanWeightKg || 0) / test.inputWeightKg) * 100
+          ? (leafWeight / test.inputWeightKg) * 100
           : 0;
       const rows = operationSteps
         .map((step, stepIndex) => {
@@ -71,8 +76,8 @@ export function buildFinalizedTestReport(
             : "—";
           return `<tr>
         <td><strong>${stepIndex + 1}</strong></td>
-        <td><strong>${escapeHtml(productName(step.productId))}</strong></td>
-        <td><strong>${escapeHtml(productName(steps[stepIndex + 1]?.productId))}</strong></td>
+        <td style="padding-left:${10 + stepDepth(flow.steps, step) * 18}px"><strong>${stepDepth(flow.steps, step) ? "↳ " : ""}${escapeHtml(productName(step.productId))}</strong></td>
+        <td><strong>${escapeHtml(stepChildren(flow.steps, step.id).map((child) => productName(child.productId)).join(" + ") || "Produto final")}</strong></td>
         <td class="number">${formatWeight(step.initialWeightKg)}</td>
         <td>${discardText}</td>
         <td class="number negative">${formatWeight(calculateTotalDiscard(step.discards))}</td>
@@ -89,10 +94,10 @@ export function buildFinalizedTestReport(
         <div class="group-yield"><span>Aproveitamento do grupo · peso final ÷ peso inicial</span><strong>${formatPercent(groupYield)}</strong></div>
       </div>
       <div class="group-metrics">
-        <div><span>Produto final</span><strong>${escapeHtml(productName(lastStep?.productId))}</strong></div>
+        <div><span>Produtos finais</span><strong>${escapeHtml(leaves.map((step) => productName(step.productId)).join(" + "))}</strong></div>
         <div><span>Peso inicial do grupo</span><strong>${formatWeight(firstStep?.initialWeightKg || 0)}</strong></div>
         <div><span>Total de descartes</span><strong>${formatWeight(groupDiscard)}</strong></div>
-        <div><span>Peso final do grupo</span><strong>${formatWeight(lastStep?.cleanWeightKg || 0)}</strong></div>
+        <div><span>Peso final do grupo</span><strong>${formatWeight(leafWeight)}</strong></div>
         <div><span>Peso final sobre a entrada</span><strong>${formatPercent(inputShare)}</strong></div>
       </div>
       <table><thead><tr><th>Etapa</th><th>Produto processado</th><th>Produto gerado</th><th>Peso inicial</th><th>Descartes</th><th>Total retirado</th><th>Peso gerado</th><th>Aprov. etapa</th><th>Rendimento sobre entrada</th></tr></thead><tbody>${rows}</tbody></table>
@@ -395,6 +400,7 @@ export async function exportFinalizedTestReport(
   products: Product[],
 ) {
   if (test.status !== "FINALIZADO") return false;
+  if (test.executionMode === "traceable") return exportTraceabilityPdf(test, products);
 
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -495,9 +501,10 @@ export async function exportFinalizedTestReport(
 
   test.flows.forEach((flow, flowIndex) => {
     const confirmedSteps = flow.steps.filter((step) => step.confirmed);
-    const steps = confirmedSteps.length ? confirmedSteps : flow.steps;
-    const operationSteps = steps.slice(0, -1);
-    const finalStep = steps.at(-1);
+    const steps = orderTreeSteps(confirmedSteps.length ? confirmedSteps : flow.steps);
+    const branched = isBranchedFlow(flow.steps);
+    const operationSteps = branched ? steps : steps.slice(0, -1);
+    const finalStep = branched ? undefined : steps.at(-1);
     const firstWeight = operationSteps[0]?.initialWeightKg || 0;
     const finalDiscards = consolidateDiscards(
       operationSteps.flatMap((step) => step.discards),
@@ -526,6 +533,7 @@ export async function exportFinalizedTestReport(
 
     operationSteps.forEach((step, stepIndex) => {
       const discards = step.discards.filter((discard) => discard.weightKg > 0);
+      const depth = stepDepth(flow.steps, step);
       ensureSpace(19 + discards.length * 6);
 
       doc.setFillColor(255, 255, 255);
@@ -543,7 +551,7 @@ export async function exportFinalizedTestReport(
       doc.setFontSize(9.5);
       doc.text(
         doc.splitTextToSize(productName(step.productId), 76)[0] || "—",
-        productX,
+        productX + depth * 5,
         cursorY + 7.4,
       );
       doc.setTextColor(38, 52, 67);

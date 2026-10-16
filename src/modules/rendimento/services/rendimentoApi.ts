@@ -8,6 +8,7 @@ import type {
   TraceableStepItem,
   YieldTest,
 } from "../types/domain";
+import { orderTreeSteps } from "../utils/flowTree";
 
 type ApiRow = Record<string, unknown>;
 
@@ -157,6 +158,8 @@ const mapTestStep = (row: ApiRow): TestStep => {
     });
   return {
     id: asString(row.ID_ETAPA),
+    parentStepId: row.ID_ETAPA_PAI == null ? null : asString(row.ID_ETAPA_PAI),
+    branchOrder: asNumber(row.ORDEM_RAMO) || 1,
     productId: asString(row.ID_PRODUTO),
     initialWeightKg: asNumber(row.PESO_INICIAL),
     pieceWeightsKg: weightRows.map((item) => asNumber(item.PESO)),
@@ -171,9 +174,16 @@ const mapTestStep = (row: ApiRow): TestStep => {
 };
 
 const mapTestFlow = (row: ApiRow): TestFlow => {
-  const steps = Array.isArray(row.ETAPAS)
+  let steps = Array.isArray(row.ETAPAS)
     ? (row.ETAPAS as ApiRow[]).map(mapTestStep)
     : [];
+  if (steps.length > 1 && steps.every((step) => step.parentStepId === null)) {
+    steps = steps.map((step, index) => ({
+      ...step,
+      parentStepId: index > 0 ? steps[index - 1].id : null,
+      branchOrder: 1,
+    }));
+  }
   return {
     id: asString(row.ID_FLUXO),
     rootProductId: asString(row.ID_PRODUTO_RAIZ),
@@ -261,11 +271,16 @@ const testPayload = (test: YieldTest) => ({
     ordem: flowIndex + 1,
     status: flow.status,
     etapa_atual: flow.currentStepIndex,
-    etapas: flow.steps.map((step, stepIndex) => ({
+    etapas: orderTreeSteps(flow.steps).map((step, stepIndex) => {
+      const hasChildren = flow.steps.some((candidate) => candidate.parentStepId === step.id);
+      return ({
+      ref: step.id,
+      ref_etapa_pai: step.parentStepId,
+      ordem_ramo: step.branchOrder || 1,
       sequencia: stepIndex + 1,
       id_produto: Number(step.productId),
       tipo_etapa:
-        stepIndex === flow.steps.length - 1
+        !hasChildren
           ? "RESULTADO_FINAL"
           : "PROCESSAMENTO",
       peso_inicial: step.initialWeightKg,
@@ -300,7 +315,7 @@ const testPayload = (test: YieldTest) => ({
           ordem_peca: item?.inputPieceOrder,
         })),
       ),
-    })),
+    });}),
   })),
 });
 
