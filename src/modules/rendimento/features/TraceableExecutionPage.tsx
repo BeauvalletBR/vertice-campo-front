@@ -77,6 +77,7 @@ export function TraceableExecutionPage({ testId, onNavigate }: { testId?: string
   const persistedDrafts = useRef<Record<string, string>>({});
   const queuedDrafts = useRef<Record<string, string>>({});
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const pageTopRef = useRef<HTMLButtonElement | null>(null);
   const weightInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const discardInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const branched = Boolean(flow && isBranchedFlow(flow.steps));
@@ -392,7 +393,12 @@ export function TraceableExecutionPage({ testId, onNavigate }: { testId?: string
       updateTest(saved);
       if (saved.status === "FINALIZADO") { onNavigate({ route: "detail", id: test.id }); return; }
       const nextPiece = pieces.find((piece) => piece.order > pieceOrder && pieceStatus(piece.order) !== "complete");
-      if (nextPiece) setPieceOrder(nextPiece.order);
+      if (nextPiece) {
+        setPieceOrder(nextPiece.order);
+        window.requestAnimationFrame(() => {
+          pageTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
       setMessage(`Peça ${pieceOrder} concluída.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível concluir a peça.");
@@ -420,7 +426,7 @@ export function TraceableExecutionPage({ testId, onNavigate }: { testId?: string
   const isLastVisiblePiece = pieceOrder === pieces.at(-1)?.order;
 
   return <>
-    <button className="back-link" onClick={() => onNavigate({ route: "tests" })}><ArrowLeft size={16} /> Voltar para testes</button>
+    <button ref={pageTopRef} className="back-link" onClick={() => onNavigate({ route: "tests" })}><ArrowLeft size={16} /> Voltar para testes</button>
     <PageHeader eyebrow={`Teste ${test.number} · Rastreável por peça`} title={test.name || "Execução do Teste"} description="Acompanhe cada entrada individualmente até o produto final." actions={<Button variant="secondary" onClick={() => onNavigate({ route: "new-test", id: test.id })}>Editar teste inteiro</Button>} />
     <TestInputDataCard test={test} onSaved={refreshTests} />
 
@@ -457,7 +463,7 @@ export function TraceableExecutionPage({ testId, onNavigate }: { testId?: string
           <article className={`trace-stage-card ${trace?.confirmed ? "confirmed" : ""}`}>
             <header><div><span>Etapa {index + 1}</span><h2>{productName(step.productId)}</h2></div>{trace?.confirmed && <b><Check size={13} /> Confirmada</b>}</header>
             <div className="trace-stage-weight"><label>Peso inicial deste produto{draft.recoveredFromNext ? <small>Recuperado pela etapa seguinte e salvo automaticamente</small> : draft.autoWeight && <small>Calculado pelo produto anterior</small>}<input data-trace-entry="true" ref={(node) => { weightInputRefs.current[step.id] = node; }} inputMode="decimal" placeholder="0,000" value={draft.weight} onChange={(event) => updateWeight(step.id, event.target.value)} /></label><div><span>Peso líquido</span><strong>{formatWeight(clean)}</strong><small>{formatPercent(calculateYield(clean, weight))} de aproveitamento</small></div></div>
-            {children.length > 1 && Math.abs(balanceDifference) > 0.005 && <div className={`trace-balance-warning ${balanceDifference < 0 ? "danger" : ""}`}><AlertTriangle size={16} /><div><strong>{balanceDifference > 0 ? `Precisa retirar ${formatWeight(balanceDifference)}` : `As saídas excedem ${formatWeight(Math.abs(balanceDifference))}`}</strong><span>{balanceDifference > 0 ? "Inclua essa diferença em um descarte para fechar o rendimento." : "Revise o peso inicial ou reduza os pesos das saídas."}</span></div></div>}
+            {children.length > 1 && Math.abs(balanceDifference) > 0.005 && <div className={`trace-balance-warning ${balanceDifference < 0 ? "danger" : ""}`}><AlertTriangle size={16} /><div><strong>{distributed <= 0.005 ? `Distribua ${formatWeight(clean)} entre as ${children.length} saídas` : balanceDifference > 0 ? `Faltam distribuir ${formatWeight(balanceDifference)}` : `As saídas excedem ${formatWeight(Math.abs(balanceDifference))}`}</strong><span>{distributed <= 0.005 ? "Informe abaixo o peso de cada produto resultante. Esse valor não é um descarte." : balanceDifference > 0 ? "Revise os produtos resultantes. Se a diferença for perda real, registre-a em um descarte." : "Revise o peso inicial ou reduza os pesos das saídas."}</span></div></div>}
             <div className="trace-stage-discards"><span>Descartes da peça {pieceOrder}</span>{draft.discards.map((discard) => <div key={discard.id}><div><Trash2 size={14} /><strong>{discard.name}</strong></div><label><input data-trace-entry="true" ref={(node) => { discardInputRefs.current[discard.id] = node; }} inputMode="decimal" placeholder="0,000" value={discard.input} onChange={(event) => updateDiscard(step.id, discard.id, event.target.value)} /><span>kg</span></label><button type="button" aria-label={`Remover ${discard.name}`} onClick={() => removeDiscard(step.id, discard.id)}>×</button></div>)}</div>
             {available.length > 0 && <select className="trace-add-discard" defaultValue="" onChange={(event) => { addDiscard(step.id, event.target.value); event.currentTarget.value = ""; }}><option value="">+ Adicionar outro descarte</option>{available.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select>}
             <footer><div><span>Total retirado</span><strong>− {formatWeight(total)}</strong></div><small>{draft.autoWeight ? "Peso recebido automaticamente da etapa anterior" : "Salvamento automático ativo"}</small></footer>
