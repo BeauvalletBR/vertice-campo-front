@@ -60,6 +60,13 @@ const propagateAutomaticWeights = (
   return next;
 };
 
+const cloneTraceDrafts = (drafts: Record<string, TraceDraft>) => Object.fromEntries(
+  Object.entries(drafts).map(([stepId, draft]) => [stepId, {
+    ...draft,
+    discards: draft.discards.map((discard) => ({ ...discard })),
+  }]),
+);
+
 export function TraceableExecutionPage({ testId, onNavigate }: { testId?: string; onNavigate: (target: NavigationTarget) => void }) {
   const { products, discardTypes, tests, refreshTests, updateTest } = useRendimentoData();
   const test = tests.find((item) => item.id === testId);
@@ -77,6 +84,8 @@ export function TraceableExecutionPage({ testId, onNavigate }: { testId?: string
   const persistedDrafts = useRef<Record<string, string>>({});
   const queuedDrafts = useRef<Record<string, string>>({});
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const draftCacheRef = useRef<Record<string, Record<string, TraceDraft>>>({});
+  const draftSelectionRef = useRef("");
   const pageTopRef = useRef<HTMLButtonElement | null>(null);
   const weightInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const discardInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -131,6 +140,7 @@ export function TraceableExecutionPage({ testId, onNavigate }: { testId?: string
 
   useEffect(() => {
     if (!flow) return;
+    const selectionKey = `${flow.id}:${pieceOrder}`;
     const next: Record<string, TraceDraft> = {};
     operationSteps.forEach((step, index) => {
       const trace = step.traceItems?.find((item) => item.inputPieceOrder === pieceOrder);
@@ -169,11 +179,26 @@ export function TraceableExecutionPage({ testId, onNavigate }: { testId?: string
         discards: existingDiscards.map((discard) => [discard.discardTypeId, discard.name, discard.weightKg]),
       });
     });
-    setDrafts(next);
+    // The selection changes one render before its drafts do. Keep autosave paused
+    // until this piece's draft state has replaced the previous piece's values.
+    draftSelectionRef.current = "";
+    const cached = draftCacheRef.current[selectionKey];
+    setDrafts(cached
+      ? Object.fromEntries(operationSteps.map((step) => [
+          step.id,
+          cached[step.id] ? cloneTraceDrafts({ [step.id]: cached[step.id] })[step.id] : next[step.id],
+        ]))
+      : next);
   }, [draftSnapshot]);
 
   useEffect(() => {
     if (!flow) return;
+    const selectionKey = `${flow.id}:${pieceOrder}`;
+    if (draftSelectionRef.current !== selectionKey) {
+      draftSelectionRef.current = selectionKey;
+      return;
+    }
+    draftCacheRef.current[selectionKey] = cloneTraceDrafts(drafts);
     operationSteps.forEach((step) => {
       const draft = drafts[step.id];
       if (!draft) return;
