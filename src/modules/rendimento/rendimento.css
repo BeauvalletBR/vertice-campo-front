@@ -40,58 +40,79 @@
 .yield-tree-node > button:hover { background: #fff0f1; }
 .yield-tree-add { display: flex; align-items: center; gap: 5px; margin: 8px auto 0; color: #1764a5; font-size: 11px; font-weight: 800; }
 .yield-tree-add select { max-width: 180px; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
-.yield-module .result-flow-list { display: grid; gap: 16px; padding: 16px; }
-.yield-module .result-flow-tree { overflow: hidden; border: 1px solid #cbd9e6; border-radius: 13px; background: #fff; }
-.yield-module .result-flow-tree > header { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid #e0e8ef; padding: 12px 14px; background: #f5f8fb; }
-.yield-module .result-flow-tree > header > div { display: flex; flex-direction: column; gap: 2px; }
-.yield-module .result-flow-tree > header span { color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
-.yield-module .result-flow-tree > header h3 { margin: 0; color: var(--navy); font-size: 14px; }
-.yield-module .result-flow-tree > header > strong { border-radius: 99px; padding: 5px 9px; color: var(--blue); background: var(--blue-soft); font-size: 9px; text-transform: uppercase; }
+.yield-module .result-flow-section { overflow: hidden; background: linear-gradient(180deg, #fff 0%, #f9fbfe 100%); }
+.yield-module .result-flow-section > header { border-bottom: 1px solid #dce6f0; padding: 2px 4px 18px; }
+.yield-module .result-flow-section > header h2 { color: #0b2447; font-size: clamp(22px, 2.2vw, 31px); font-weight: 900; letter-spacing: -.035em; }
+.yield-module .result-flow-section > header p { color: #536d91; font-size: 13px; }
+.yield-module .result-flow-section .final-yield { min-width: 220px; border: 1px solid #cdebdc; border-radius: 12px; padding: 12px 16px; background: linear-gradient(135deg, #effbf6, #e9f8f2); text-align: left; box-shadow: 0 8px 24px rgba(11, 112, 78, .07); }
+.yield-module .result-flow-section .final-yield span { color: #385b72; font-size: 10px; font-weight: 750; }
+.yield-module .result-flow-section .final-yield strong { color: #087653; font-size: 28px; font-weight: 900; letter-spacing: -.025em; }
+.yield-module .result-flow-list { display: grid; gap: 18px; padding: 18px 0 0; }
+.yield-module .result-flow-tree { overflow: hidden; border: 1px solid #d5e1ed; border-radius: 15px; background: rgba(255, 255, 255, .9); box-shadow: 0 10px 30px rgba(18, 55, 94, .07); }
+.yield-module .result-flow-tree > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #dce6f0; padding: 15px 18px; background: #fbfdff; }
+.yield-module .result-flow-tree > header > div { display: flex; align-items: center; gap: 14px; }
+.yield-module .result-flow-tree > header span { border-radius: 8px; padding: 7px 10px; color: #0759bd; background: #e8f2ff; font-size: 10px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+.yield-module .result-flow-tree > header h3 { margin: 0; color: #0b2d61; font-size: 16px; font-weight: 900; }
+.yield-module .result-flow-tree > header > strong { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 8px 12px; color: #174d91; background: #eff5fc; font-size: 10px; font-weight: 850; white-space: nowrap; }
 .yield-module .result-tree-scroll { overflow-x: auto; }
-.yield-module .result-tree-canvas { min-width: 820px; padding: 20px 14px 18px; }
-.yield-module .result-tree-level { position: relative; display: flex; align-items: flex-start; justify-content: center; gap: 18px; }
-.yield-module .result-tree-level--children { margin-top: 24px; padding-top: 18px; }
-.yield-module .result-tree-level--children::before { content: ""; position: absolute; top: 0; left: 50%; width: 1px; height: 18px; background: #9db6cf; }
-.yield-module .result-tree-branch { position: relative; min-width: 250px; display: flex; flex: 1 1 0; flex-direction: column; align-items: stretch; }
-.yield-module .result-tree-level--children > .result-tree-branch::before { content: ""; position: absolute; top: -18px; left: 50%; right: 50%; height: 1px; background: #9db6cf; }
+.yield-module .result-tree-canvas { min-width: 1040px; padding: 18px 18px 24px; }
+.yield-module .result-tree-level { position: relative; display: flex; align-items: flex-start; justify-content: center; gap: 26px; }
+.yield-module .result-tree-level--children { margin-top: 29px; padding-top: 22px; }
+.yield-module .result-tree-level--children::before { content: ""; position: absolute; top: 0; left: 50%; width: 2px; height: 22px; background: #7697bd; }
+.yield-module .result-tree-level--children::after { content: ""; position: absolute; top: -3px; left: calc(50% - 4px); width: 8px; height: 8px; border: 2px solid #7697bd; border-radius: 50%; background: #fff; }
+.yield-module .result-tree-branch { position: relative; min-width: 430px; display: flex; flex: 1 1 0; flex-direction: column; align-items: stretch; }
+.yield-module .result-tree-level--children > .result-tree-branch::before { content: ""; position: absolute; top: -22px; left: 50%; right: 50%; height: 2px; background: #7697bd; }
 .yield-module .result-tree-level--children > .result-tree-branch:not(:only-child)::before { left: 0; right: 0; }
 .yield-module .result-tree-level--children > .result-tree-branch:first-child:not(:only-child)::before { left: 50%; }
 .yield-module .result-tree-level--children > .result-tree-branch:last-child:not(:only-child)::before { right: 50%; }
-.yield-module .result-tree-node { overflow: hidden; border: 1px solid #b8cbe0; border-radius: 12px; background: #fff; box-shadow: 0 5px 14px rgba(13, 53, 94, .07); }
-.yield-module .result-tree-node.is-leaf { border-color: #79c5a4; background: #f1faf6; }
-.yield-module .result-tree-node > header { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 9px; padding: 10px 12px; }
-.yield-module .result-tree-node__icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; color: #1764a5; background: #eaf3fb; }
-.yield-module .result-tree-node.is-leaf .result-tree-node__icon { color: #087c52; background: #dff4e9; }
-.yield-module .result-tree-node > header > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.yield-module .result-tree-node > header small { color: #70859d; font-size: 8px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
-.yield-module .result-tree-node > header strong { overflow: hidden; color: var(--navy); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.yield-module .result-tree-node.is-leaf > header strong { color: #116a4e; }
-.yield-module .result-tree-metrics { display: grid; grid-template-columns: repeat(4, minmax(85px, 1fr)); border-top: 1px solid #e2e9ef; background: rgba(248, 250, 252, .78); }
-.yield-module .result-tree-metrics > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; border-right: 1px solid #e2e9ef; padding: 8px 10px; }
-.yield-module .result-tree-metrics > div:last-child { border-right: 0; }
-.yield-module .result-tree-metrics span { color: #73869a; font-size: 7px; font-weight: 850; text-transform: uppercase; }
-.yield-module .result-tree-metrics strong { color: var(--navy); font-size: 10px; white-space: nowrap; }
-.yield-module .result-tree-discards { display: flex; flex-wrap: wrap; gap: 5px; border-top: 1px solid #e4eaf0; padding: 8px 10px; background: #fffafb; }
-.yield-module .result-tree-discards span { display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; padding: 4px 6px; color: #8b3640; background: #fff0f1; font-size: 8px; }
-.yield-module .result-tree-discards b { color: #c52d35; }
-.yield-module .result-tree-discards .total { margin-left: auto; color: #7e2831; background: #ffe4e6; font-weight: 850; }
-.yield-module .trace-matrix-details { margin: 0 16px 16px; border: 1px solid #d2dee8; border-radius: 10px; background: #fff; }
-.yield-module .trace-matrix-details > summary { padding: 12px 14px; color: var(--navy); cursor: pointer; font-size: 10px; font-weight: 850; }
-.yield-module .trace-matrix-details[open] > summary { border-bottom: 1px solid #e2e9ef; }
-.yield-module .trace-matrix-details .trace-report-list { padding: 14px; }
+.yield-module .result-tree-node { overflow: hidden; border: 1px solid #a9c9ee; border-left: 4px solid #1682f3; border-radius: 12px; background: #fff; box-shadow: 0 7px 20px rgba(20, 72, 132, .08); }
+.yield-module .result-tree-node.is-leaf { border-color: #8ad8b8; border-left-color: #0bb978; background: linear-gradient(110deg, #f0fcf7, #fff 55%); }
+.yield-module .result-tree-node__main { display: grid; grid-template-columns: minmax(260px, .9fr) minmax(600px, 2fr); align-items: stretch; }
+.yield-module .result-tree-node__main > header { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 12px; padding: 17px 18px; background: linear-gradient(90deg, #f7fbff, #fff); }
+.yield-module .result-tree-node__icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 12px; color: #0869d5; background: #e5f0ff; }
+.yield-module .result-tree-node.is-leaf .result-tree-node__icon { color: #07855e; background: #dcf7eb; }
+.yield-module .result-tree-node__main > header > div { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.yield-module .result-tree-node__main > header small { color: #0871db; font-size: 9px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.yield-module .result-tree-node__main > header strong { overflow: hidden; color: #0a2e63; font-size: 15px; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .result-tree-node.is-leaf .result-tree-node__main > header small, .yield-module .result-tree-node.is-leaf .result-tree-node__main > header strong { color: #087756; }
+.yield-module .result-tree-metrics { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); align-items: center; padding: 12px 0; }
+.yield-module .result-tree-metrics > div { min-width: 0; display: flex; align-items: center; gap: 10px; border-left: 1px solid #d9e5f0; padding: 8px 18px; color: #174b8b; }
+.yield-module .result-tree-metrics p { min-width: 0; display: flex; flex-direction: column; gap: 3px; margin: 0; }
+.yield-module .result-tree-metrics span { color: #536f95; font-size: 10px; font-weight: 650; }
+.yield-module .result-tree-metrics strong { color: #0a2b5c; font-size: 15px; font-weight: 900; white-space: nowrap; }
+.yield-module .result-tree-discards { min-height: 48px; display: flex; align-items: center; gap: 11px; margin: 0 14px 13px 362px; border-radius: 10px; padding: 8px 10px; color: #e12634; background: #fff1f3; }
+.yield-module .result-tree-discards > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.yield-module .result-tree-discards span { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #ffd5d9; border-radius: 9px; padding: 7px 10px; color: #7e3440; background: #fff7f8; font-size: 10px; }
+.yield-module .result-tree-discards b { color: #bd1f2c; font-size: 11px; font-weight: 900; }
+.yield-module .result-tree-discards .total { margin-left: auto; border-color: #ffc9ce; color: #8b2630; background: #ffe4e7; font-weight: 850; white-space: nowrap; }
+.yield-module .result-view-title { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.yield-module .result-view-toggle { display: inline-flex; gap: 3px; border: 1px solid #cad8e5; border-radius: 9px; padding: 3px; background: #eef3f7; }
+.yield-module .result-view-toggle button { min-height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 6px; padding: 0 11px; color: #587087; background: transparent; font-size: 10px; font-weight: 850; cursor: pointer; transition: background .16s ease, color .16s ease, box-shadow .16s ease; }
+.yield-module .result-view-toggle button:hover { color: var(--navy); background: rgba(255, 255, 255, .7); }
+.yield-module .result-view-toggle button.active { color: #fff; background: var(--navy); box-shadow: 0 3px 9px rgba(16, 47, 87, .2); }
+.yield-module .result-table-view { padding: 0 16px 16px; }
 @media (max-width: 720px) {
   .yield-tree-canvas { min-width: 580px; }
   .yield-tree-level { gap: 10px; }
   .yield-tree-branch { min-width: 180px; }
   .yield-module .result-flow-list { padding: 10px; }
   .yield-module .result-flow-tree > header { align-items: flex-start; flex-direction: column; }
-  .yield-module .result-tree-canvas { min-width: 760px; padding-inline: 10px; }
+  .yield-module .result-tree-canvas { min-width: 760px; padding: 14px 10px 20px; }
   .yield-module .result-tree-level { gap: 10px; }
-  .yield-module .result-tree-branch { min-width: 225px; }
-  .yield-module .trace-matrix-details { margin: 0 10px 10px; }
+  .yield-module .result-tree-branch { min-width: 330px; }
+  .yield-module .result-tree-node__main { grid-template-columns: minmax(210px, .8fr) minmax(520px, 2fr); }
+  .yield-module .result-tree-node__main > header { grid-template-columns: 40px minmax(0, 1fr); padding: 13px 12px; }
+  .yield-module .result-tree-node__icon { width: 40px; height: 40px; border-radius: 10px; }
+  .yield-module .result-tree-node__main > header strong { font-size: 13px; }
+  .yield-module .result-tree-metrics { grid-template-columns: repeat(4, minmax(120px, 1fr)); padding: 8px 0; }
+  .yield-module .result-tree-metrics > div { gap: 7px; padding: 7px 11px; }
+  .yield-module .result-tree-metrics strong { font-size: 13px; }
+  .yield-module .result-tree-discards { margin: 0 10px 10px 232px; }
+  .yield-module .result-table-view { padding: 0 10px 10px; }
+  .yield-module .result-view-title { align-items: flex-start; flex-direction: column; gap: 9px; }
 }
 
-.trace-stage-wrap--branch { position: relative; }
+.trace-stage-wrap--branch { position: relative; margin-left: calc(var(--trace-depth, 0) * 34px); }
 .trace-stage-wrap--branch::before,
 .yield-process-stage--branch::before { content: ""; position: absolute; left: -18px; top: 0; width: 14px; height: 30px; border-left: 1px solid #9db6cf; border-bottom: 1px solid #9db6cf; }
 .trace-final-products { margin-top: 16px; padding: 14px; border: 1px solid #9fd4ba; border-radius: 12px; background: #f1faf6; }
@@ -923,16 +944,20 @@
 .yield-module .yield-final-discards__total span, .yield-module .yield-final-discards__total b { color: #a91f2a; font-weight: 900; }
 .yield-module .trace-report-list { display: grid; gap: 18px; }
 .yield-module .trace-report { overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
-.yield-module .trace-report > header { padding: 13px 15px; border-bottom: 1px solid var(--line); background: #f7fafc; }
+.yield-module .trace-report > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: #f7fafc; }
 .yield-module .trace-report > header span { color: var(--blue); font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
 .yield-module .trace-report > header h3 { margin: 3px 0 0; color: var(--navy); font-size: 15px; }
+.yield-module .trace-report > header > strong { border-radius: 999px; padding: 5px 9px; color: var(--blue); background: var(--blue-soft); font-size: 9px; font-weight: 900; text-transform: uppercase; white-space: nowrap; }
 .yield-module .trace-report-scroll { overflow-x: auto; }
-.yield-module .trace-report table { width: 100%; min-width: 760px; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
+.yield-module .trace-report table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
 .yield-module .trace-report th, .yield-module .trace-report td { height: 39px; border-right: 1px solid #d9e2ea; border-bottom: 1px solid #d9e2ea; padding: 7px 10px; text-align: right; white-space: nowrap; }
-.yield-module .trace-report thead th { color: #fff; background: var(--navy); font-size: 10px; font-weight: 900; }
-.yield-module .trace-report th:first-child { min-width: 220px; position: sticky; left: 0; z-index: 1; text-align: left; }
+.yield-module .trace-report thead th { min-width: 92px; position: sticky; top: 0; z-index: 2; color: #fff; background: var(--navy); font-size: 10px; font-weight: 900; }
+.yield-module .trace-report thead th small { display: block; margin-bottom: 1px; color: #b9cbe0; font-size: 7px; letter-spacing: .08em; text-transform: uppercase; }
+.yield-module .trace-report th:first-child { min-width: 255px; position: sticky; left: 0; z-index: 3; text-align: left; }
 .yield-module .trace-report tbody th { color: var(--navy); background: #fff; font-size: 12px; }
 .yield-module .trace-report tbody td { color: var(--ink); font-size: 12px; }
+.yield-module .trace-report .trace-total-column { min-width: 112px; border-left: 2px solid #b7c8d8; color: var(--navy); background: #f3f7fa; font-weight: 900; }
+.yield-module .trace-report .trace-yield-column { min-width: 118px; color: #0d6548; background: #f1f8f5; font-weight: 900; }
 .yield-module .trace-report-row--input th, .yield-module .trace-report-row--input td { background: #ebf3fa !important; font-weight: 900; }
 .yield-module .trace-report-row--product th, .yield-module .trace-report-row--product td { font-weight: 850; }
 .yield-module .trace-report-row--discard th, .yield-module .trace-report-row--discard td { color: #c3222e !important; }
@@ -942,6 +967,8 @@
 .yield-module .trace-discard-branch::after { width: 15px; height: 1px; position: absolute; top: 50%; left: 14px; background: #d5a8ad; content: ""; }
 .yield-module .trace-discard-branch.last::before { bottom: 50%; }
 .yield-module .trace-report-row--final th, .yield-module .trace-report-row--final td { color: #0d6548 !important; background: #e8f7ef !important; font-weight: 900; }
+.yield-module .trace-product-branch { min-height: 39px; display: flex; align-items: center; position: relative; padding-left: 24px; }
+.yield-module .trace-product-branch::before { width: 12px; height: 18px; position: absolute; top: 0; left: 3px; border-bottom: 1px solid #9db6cf; border-left: 1px solid #9db6cf; content: ""; }
 
 @media (max-width: 680px) {
   .yield-module .flow-save-row, .yield-module .attached-products > header, .yield-module .flow-timeline > header { align-items: flex-start; flex-direction: column; }
@@ -1114,10 +1141,20 @@
   .yield-module .trace-piece-navigation > header, .yield-module .trace-selected-piece, .yield-module .trace-stage-card > footer { align-items: flex-start; flex-direction: column; }
   .yield-module .trace-selected-piece > div:first-child { align-items: flex-start; flex-direction: column; gap: 2px; }
   .yield-module .trace-input-reference { width: 100%; min-width: 0; }
-  .yield-module .trace-stage-weight { grid-template-columns: 1fr; }
+  .yield-module .trace-stage-weight { grid-template-columns: 1fr; padding: 12px 10px; }
   .yield-module .trace-balance-dialog { grid-template-columns: 1fr; }
   .yield-module .trace-balance-dialog > section { grid-column: auto; }
-  .yield-module .trace-stage-discards > div { grid-template-columns: minmax(0, 1fr) minmax(115px, .75fr) 24px; }
+  .yield-module .trace-stage-wrap--branch { margin-left: calc(var(--trace-depth, 0) * 12px); }
+  .yield-module .trace-stage-wrap--branch::before { left: -8px; width: 6px; }
+  .yield-module .trace-stage-card > header { padding: 11px 10px; }
+  .yield-module .trace-stage-card h2 { overflow-wrap: anywhere; font-size: 13px; }
+  .yield-module .trace-stage-discards { padding: 11px 10px 5px; }
+  .yield-module .trace-stage-discards > div { grid-template-columns: minmax(0, 1fr) 24px; gap: 6px; padding: 8px 0; }
+  .yield-module .trace-stage-discards > div > div { min-width: 0; grid-column: 1 / -1; }
+  .yield-module .trace-stage-discards strong { overflow-wrap: anywhere; font-size: 11px; line-height: 1.3; }
+  .yield-module .trace-stage-discards label { grid-column: 1; }
+  .yield-module .trace-stage-discards > div > button { grid-column: 2; grid-row: 2; }
+  .yield-module .trace-add-discard { width: calc(100% - 20px); margin: 5px 10px 12px; }
   .yield-module .trace-piece-footer .button { flex: 1; }
   .yield-module .trace-piece-footer { flex-wrap: wrap; }
   .yield-module .trace-piece-footer .trace-complete-piece { order: -1; flex-basis: 100%; }

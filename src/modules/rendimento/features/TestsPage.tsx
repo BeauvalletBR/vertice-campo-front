@@ -45,7 +45,7 @@ export function TestsPage({ onNavigate }: { onNavigate: (target: NavigationTarge
     } catch (actionError) { setError(actionError instanceof Error ? actionError.message : "Não foi possível abrir o teste."); }
   };
   const deletePending = (id: string, number: number) => {
-    setConfirmation({ title: `Apagar teste ${number}?`, description: "O teste aberto e todos os seus produtos vinculados serão removidos definitivamente.", label: "Apagar teste", danger: true, action: async () => {
+    setConfirmation({ title: `Apagar teste ${number}?`, description: "O teste pendente, seus pesos, etapas, descartes e produtos vinculados serão removidos definitivamente.", label: "Apagar teste", danger: true, action: async () => {
       try { if (await testService.remove(id)) await refreshTests(); }
       catch (actionError) { setError(actionError instanceof Error ? actionError.message : "Não foi possível excluir o teste."); }
     } });

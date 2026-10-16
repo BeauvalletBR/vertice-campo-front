@@ -901,4 +901,30 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     expect(screen.queryByLabelText("Peça 4")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Peça 3")).toHaveValue("12,000");
   });
+
+  it("avança pelos pesos de entrada ao pressionar Enter", () => {
+    render(
+      <InputWeightFields
+        quantity="3"
+        weight=""
+        pieceWeights={["10,000", "11,000", "12,000"]}
+        mode="pieces"
+        onQuantityChange={() => undefined}
+        onWeightChange={() => undefined}
+        onPieceWeightsChange={() => undefined}
+        onModeChange={() => undefined}
+      />,
+    );
+
+    const first = screen.getByLabelText("Peça 1");
+    const second = screen.getByLabelText("Peça 2");
+    const third = screen.getByLabelText("Peça 3");
+    first.focus();
+    fireEvent.keyDown(first, { key: "Enter" });
+    expect(second).toHaveFocus();
+    fireEvent.keyDown(second, { key: "Enter" });
+    expect(third).toHaveFocus();
+    fireEvent.keyDown(third, { key: "Enter" });
+    expect(third).not.toHaveFocus();
+  });
 });

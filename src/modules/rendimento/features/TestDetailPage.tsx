@@ -6,9 +6,11 @@ import {
   ArrowLeft,
   CalendarDays,
   FileDown,
+  GitBranch,
   PackageCheck,
   Scale,
   SquarePen,
+  Table2,
   UserRound,
 } from "lucide-react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -41,6 +43,7 @@ export function TestDetailPage({
   const [confirmReopen, setConfirmReopen] = useState(false);
   const [actionError, setActionError] = useState("");
   const [reportOpen, setReportOpen] = useState(false);
+  const [resultView, setResultView] = useState<"flow" | "table">("flow");
   const { products, tests, refreshTests } = useRendimentoData();
   const test = testId ? tests.find((item) => item.id === testId) : undefined;
   const productName = (id?: string) =>
@@ -187,9 +190,23 @@ export function TestDetailPage({
       )}
       {test.executionMode === "traceable" ? (
         <section className="yield-process-section result-flow-section">
-          <header><div><span>Processo</span><h2>Fluxo de transformação</h2><p>Produtos, valores e descartes organizados conforme as ramificações do teste.</p></div><div className="final-yield"><span>Final sobre a entrada</span><strong>{formatPercent(finalInputYield)}</strong></div></header>
-          <div className="result-flow-list">{test.flows.map((flow, flowIndex) => <ResultFlowTree key={flow.id} flow={flow} flowIndex={flowIndex} products={products} />)}</div>
-          <details className="trace-matrix-details"><summary>Ver detalhamento por peça</summary><TraceabilityMatrix test={test} products={products} /></details>
+          <header>
+            <div>
+              <span>Processo</span>
+              <div className="result-view-title">
+                <h2>Fluxo de transformação</h2>
+                <div className="result-view-toggle" role="group" aria-label="Visualização do resultado">
+                  <button type="button" className={resultView === "flow" ? "active" : ""} aria-pressed={resultView === "flow"} onClick={() => setResultView("flow")}><GitBranch size={15} /> Fluxo</button>
+                  <button type="button" className={resultView === "table" ? "active" : ""} aria-pressed={resultView === "table"} onClick={() => setResultView("table")}><Table2 size={15} /> Tabela</button>
+                </div>
+              </div>
+              <p>{resultView === "flow" ? "Produtos, valores e descartes organizados conforme as ramificações do teste." : "Pesos, descartes e rendimentos de cada peça comparados lado a lado."}</p>
+            </div>
+            <div className="final-yield"><span>Final sobre a entrada</span><strong>{formatPercent(finalInputYield)}</strong></div>
+          </header>
+          {resultView === "flow"
+            ? <div className="result-flow-list">{test.flows.map((flow, flowIndex) => <ResultFlowTree key={flow.id} flow={flow} flowIndex={flowIndex} products={products} />)}</div>
+            : <div className="result-table-view"><TraceabilityMatrix test={test} products={products} /></div>}
         </section>
       ) : <section className="yield-process-section">
         <header>

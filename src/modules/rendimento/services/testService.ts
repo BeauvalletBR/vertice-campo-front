@@ -707,7 +707,9 @@ export const testService = {
 
   async remove(id: string) {
     const test = await rendimentoApi.getTest(id);
-    if (!["RASCUNHO", "ABERTO"].includes(test.status)) return false;
+    if (!["RASCUNHO", "ABERTO", "EM_EXECUCAO"].includes(test.status)) {
+      throw new Error("Somente testes pendentes podem ser apagados.");
+    }
     await rendimentoApi.deleteTest(test);
     return true;
   },

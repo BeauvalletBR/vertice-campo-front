@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import { AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, Check, PackageCheck, Save, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { TestInputDataCard } from "../components/TestInputDataCard";
@@ -106,7 +106,7 @@ export function TraceableExecutionPage({ testId, onNavigate }: { testId?: string
     ).filter((input) => input.offsetParent !== null);
     const next = entries[entries.indexOf(current) + 1];
     if (next) {
-      next.scrollIntoView({ behavior: "smooth", block: "center" });
+      next.scrollIntoView?.({ behavior: "smooth", block: "center" });
       next.focus({ preventScroll: true });
       next.select();
       return;
@@ -453,7 +453,7 @@ export function TraceableExecutionPage({ testId, onNavigate }: { testId?: string
         const children = stepChildren(flow.steps, step.id);
         const distributed = children.reduce((sum, child) => sum + parseDecimal(drafts[child.id]?.weight || "0"), 0);
         const balanceDifference = clean - distributed;
-        return <div className={`trace-stage-wrap ${branched ? "trace-stage-wrap--branch" : ""}`} style={branched ? { marginLeft: `${stepDepth(flow.steps, step) * 34}px` } : undefined} key={step.id}>
+        return <div className={`trace-stage-wrap ${branched ? "trace-stage-wrap--branch" : ""}`} style={branched ? { "--trace-depth": stepDepth(flow.steps, step) } as CSSProperties : undefined} key={step.id}>
           <article className={`trace-stage-card ${trace?.confirmed ? "confirmed" : ""}`}>
             <header><div><span>Etapa {index + 1}</span><h2>{productName(step.productId)}</h2></div>{trace?.confirmed && <b><Check size={13} /> Confirmada</b>}</header>
             <div className="trace-stage-weight"><label>Peso inicial deste produto{draft.recoveredFromNext ? <small>Recuperado pela etapa seguinte e salvo automaticamente</small> : draft.autoWeight && <small>Calculado pelo produto anterior</small>}<input data-trace-entry="true" ref={(node) => { weightInputRefs.current[step.id] = node; }} inputMode="decimal" placeholder="0,000" value={draft.weight} onChange={(event) => updateWeight(step.id, event.target.value)} /></label><div><span>Peso líquido</span><strong>{formatWeight(clean)}</strong><small>{formatPercent(calculateYield(clean, weight))} de aproveitamento</small></div></div>

@@ -1,7 +1,7 @@
-import { GitBranch } from "lucide-react";
+import { Box, Layers3, Package, Percent, Settings2, Target, Trash2, Weight } from "lucide-react";
 import type { ReactNode } from "react";
 
-import type { Product, TestFlow, TestStep } from "../types/domain";
+import type { Product, TestFlow } from "../types/domain";
 import { calculateTotalDiscard } from "../utils/calculations";
 import { formatPercent, formatWeight } from "../utils/format";
 
@@ -33,25 +33,29 @@ export function ResultFlowTree({ flow, flowIndex, products }: ResultFlowTreeProp
       {siblings.map((step) => {
         const children = childrenOf(step.id);
         const finalProduct = children.length === 0;
+        const initialProduct = !step.parentStepId;
         const discards = step.discards.filter((discard) => discard.weightKg > 0);
         const totalDiscard = calculateTotalDiscard(discards);
         return <div className="result-tree-branch" key={step.id}>
           <article className={`result-tree-node ${finalProduct ? "is-leaf" : ""}`}>
-            <header>
-              <span className="result-tree-node__icon"><GitBranch size={16} /></span>
-              <div>
-                <small>{step.parentStepId ? finalProduct ? "Produto final" : "Transformação" : "Produto inicial"}</small>
-                <strong>{productName(step.productId)}</strong>
+            <div className="result-tree-node__main">
+              <header>
+                <span className="result-tree-node__icon">{finalProduct ? <Box size={22} /> : initialProduct ? <Package size={22} /> : <Settings2 size={22} />}</span>
+                <div>
+                  <small>{initialProduct ? "Produto inicial" : finalProduct ? "Produto final" : "Transformação"}</small>
+                  <strong>{productName(step.productId)}</strong>
+                </div>
+              </header>
+              <div className="result-tree-metrics">
+                <div><Weight size={18} /><p><span>Peso inicial</span><strong>{formatWeight(step.initialWeightKg)}</strong></p></div>
+                <div><Weight size={18} /><p><span>Peso líquido</span><strong>{formatWeight(step.cleanWeightKg)}</strong></p></div>
+                <div><Percent size={18} /><p><span>Rend. etapa</span><strong>{formatPercent(step.yieldPercent)}</strong></p></div>
+                <div><Target size={18} /><p><span>Sobre entrada</span><strong>{formatPercent(step.outputInputYieldPercent)}</strong></p></div>
               </div>
-            </header>
-            <div className="result-tree-metrics">
-              <div><span>Peso inicial</span><strong>{formatWeight(step.initialWeightKg)}</strong></div>
-              <div><span>Peso líquido</span><strong>{formatWeight(step.cleanWeightKg)}</strong></div>
-              <div><span>Rend. etapa</span><strong>{formatPercent(step.yieldPercent)}</strong></div>
-              <div><span>Sobre entrada</span><strong>{formatPercent(step.outputInputYieldPercent)}</strong></div>
             </div>
             {discards.length > 0 && <div className="result-tree-discards">
-              {discards.map((discard) => <span key={discard.id}>{discard.name}<b>− {formatWeight(discard.weightKg)}</b></span>)}
+              <Trash2 size={17} />
+              <div>{discards.map((discard) => <span key={discard.id}>{discard.name}<b>− {formatWeight(discard.weightKg)}</b></span>)}</div>
               <span className="total">Total retirado<b>− {formatWeight(totalDiscard)}</b></span>
             </div>}
           </article>
@@ -64,7 +68,7 @@ export function ResultFlowTree({ flow, flowIndex, products }: ResultFlowTreeProp
   return <article className="result-flow-tree">
     <header>
       <div><span>Fluxo {flowIndex + 1}</span><h3>{productName(flow.rootProductId)}</h3></div>
-      <strong>{steps.length} produtos · {leaves} {leaves === 1 ? "saída final" : "saídas finais"}</strong>
+      <strong><Layers3 size={15} />{steps.length} produtos · {leaves} {leaves === 1 ? "saída final" : "saídas finais"}</strong>
     </header>
     <div className="result-tree-scroll"><div className="result-tree-canvas">{renderLevel(null)}</div></div>
   </article>;
