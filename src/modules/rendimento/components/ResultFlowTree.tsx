@@ -2,16 +2,17 @@ import { Box, Layers3, Package, Percent, Settings2, Target, Trash2, Weight } fro
 import type { ReactNode } from "react";
 
 import type { Product, TestFlow } from "../types/domain";
-import { calculateTotalDiscard } from "../utils/calculations";
+import { calculateFlowReferenceWeight, calculateInputYield, calculateTotalDiscard } from "../utils/calculations";
 import { formatPercent, formatWeight } from "../utils/format";
 
 interface ResultFlowTreeProps {
   flow: TestFlow;
   flowIndex: number;
   products: Product[];
+  inputWeightKg: number;
 }
 
-export function ResultFlowTree({ flow, flowIndex, products }: ResultFlowTreeProps) {
+export function ResultFlowTree({ flow, flowIndex, products, inputWeightKg }: ResultFlowTreeProps) {
   const productName = (id?: string) =>
     products.find((product) => product.id === id)?.name || "Produto";
   const hasTreeRelations = flow.steps.some((step) => Boolean(step.parentStepId));
@@ -25,6 +26,7 @@ export function ResultFlowTree({ flow, flowIndex, products }: ResultFlowTreeProp
     .filter((step) => step.parentStepId === parentId)
     .sort((a, b) => a.branchOrder - b.branchOrder);
   const leaves = steps.filter((step) => childrenOf(step.id).length === 0).length;
+  const referenceWeight = calculateFlowReferenceWeight(flow, inputWeightKg);
 
   const renderLevel = (parentId: string | null): ReactNode => {
     const siblings = childrenOf(parentId);
@@ -50,7 +52,7 @@ export function ResultFlowTree({ flow, flowIndex, products }: ResultFlowTreeProp
                 <div><Weight size={18} /><p><span>Peso inicial</span><strong>{formatWeight(step.initialWeightKg)}</strong></p></div>
                 <div><Weight size={18} /><p><span>Peso líquido</span><strong>{formatWeight(step.cleanWeightKg)}</strong></p></div>
                 <div><Percent size={18} /><p><span>Rend. etapa</span><strong>{formatPercent(step.yieldPercent)}</strong></p></div>
-                <div><Target size={18} /><p><span>Sobre entrada</span><strong>{formatPercent(step.outputInputYieldPercent)}</strong></p></div>
+                <div><Target size={18} /><p><span>{inputWeightKg > 0 ? "Sobre entrada" : "Sobre produto inicial"}</span><strong>{formatPercent(calculateInputYield(step.cleanWeightKg, referenceWeight))}</strong></p></div>
               </div>
             </div>
             {discards.length > 0 && <div className="result-tree-discards">

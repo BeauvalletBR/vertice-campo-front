@@ -124,6 +124,26 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
     const next = flows.map((item) => item.id === flowId ? { ...item, nodes, productIds: nodes.map((node) => node.productId) } : item);
     setFlows(next); autoSave(next);
   };
+  const addAllBranches = (flowId: string, parentNodeId: string, productIds: string[]) => {
+    const flow = flows.find((item) => item.id === flowId); if (!flow) return;
+    const siblings = flow.nodes.filter((node) => node.parentNodeId === parentNodeId);
+    const existingIds = new Set(siblings.map((node) => node.productId));
+    const additions = productIds.filter((productId) => productId && !existingIds.has(productId));
+    if (!additions.length) return;
+    const nodes = [
+      ...flow.nodes,
+      ...additions.map((productId, index) => ({
+        id: newNodeId(),
+        productId,
+        parentNodeId,
+        branchOrder: siblings.length + index + 1,
+      })),
+    ];
+    const next = flows.map((item) => item.id === flowId
+      ? { ...item, nodes, productIds: nodes.map((node) => node.productId) }
+      : item);
+    setFlows(next); autoSave(next);
+  };
   const removeBranch = (flowId: string, nodeId: string) => {
     const flow = flows.find((item) => item.id === flowId); if (!flow) return;
     const removed = new Set([nodeId]);
@@ -173,7 +193,7 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
           <div><small>{parentNodeId ? children.length ? "Transformação" : "Produto final" : "Produto inicial"}</small><strong>{product?.name || "Produto"}</strong></div>
           {parentNodeId && <button type="button" aria-label={`Remover ${product?.name || "produto"}`} onClick={() => removeBranch(flow.id, node.id)}><X size={14} /></button>}
         </div>
-        {availableChildren.length > 0 && <label className="yield-tree-add"><Plus size={14} /><select aria-label={`Adicionar saída de ${product?.name || "produto"}`} value="" onChange={(event) => addBranch(flow.id, node.id, event.target.value)}><option value="">Adicionar saída...</option>{availableChildren.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+        {availableChildren.length > 0 && <div className="yield-tree-add-actions"><label className="yield-tree-add"><Plus size={14} /><select aria-label={`Adicionar saída de ${product?.name || "produto"}`} value="" onChange={(event) => addBranch(flow.id, node.id, event.target.value)}><option value="">Adicionar saída...</option>{availableChildren.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>{availableChildren.length > 1 && <button type="button" className="yield-tree-add-all" onClick={() => addAllBranches(flow.id, node.id, availableChildren.map((item) => item.id))}><GitBranch size={14} /> Adicionar todas as {availableChildren.length} saídas</button>}</div>}
         {renderBranchTree(flow, node.id)}
       </div>;
     })}</div>;
@@ -205,7 +225,7 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
           return <article className="flow-editor" key={flow.id}>
             <header><div><span>Produto {flowIndex + 1}</span><strong>{products.find((item) => item.id === flow.rootProductId)?.name || "Selecione o produto principal"}</strong></div>{flows.length > 1 && <button className="icon-button icon-button--danger" onClick={() => removeFlow(flow.id)} aria-label="Remover produto"><Trash2 size={16} /></button>}</header>
             <div className="route-settings-row">
-              <Field label="Produto principal" hint="define o tipo desta rota"><ProductHierarchySelect products={startProducts} value={flow.rootProductId} ariaLabel={`Produto principal ${flowIndex + 1}`} disabledIds={new Set(flows.filter((other) => other.id !== flow.id).map((other) => other.rootProductId).filter(Boolean))} onChange={(productId) => requestRootChange(flow.id, productId)} /></Field>
+              <Field label="Produto inicial / grupo" hint="pode iniciar com várias ramificações"><ProductHierarchySelect products={startProducts} value={flow.rootProductId} ariaLabel={`Produto principal ${flowIndex + 1}`} disabledIds={new Set(flows.filter((other) => other.id !== flow.id).map((other) => other.rootProductId).filter(Boolean))} onChange={(productId) => requestRootChange(flow.id, productId)} /></Field>
               <Field label="Peso inicial deste produto" hint="opcional agora"><input inputMode="decimal" placeholder="0,000" value={flow.firstWeight} onChange={(event) => setFlows((current) => current.map((item) => item.id === flow.id ? { ...item, firstWeight: sanitizeWeightInput(event.target.value) } : item))} onBlur={() => autoSave(flows)} /></Field>
             </div>
             <div className="route-builder route-builder--tree"><header><div><span>Fluxo de transformação</span><small>Adicione uma ou mais saídas em qualquer produto. Cada caminho pode continuar ou terminar separadamente.</small></div><strong>{flow.nodes.length} produtos</strong></header>

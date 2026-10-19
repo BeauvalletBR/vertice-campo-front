@@ -1,6 +1,7 @@
 import type { Product, TestFlow, YieldTest } from "../types/domain";
 import { formatDate } from "./format";
 import { isBranchedFlow, isLeafStep, orderTreeSteps, stepDepth } from "./flowTree";
+import { calculateFlowReferenceWeight } from "./calculations";
 
 export type TraceabilityMatrixRowKind = "input" | "product" | "discard" | "final";
 
@@ -44,6 +45,7 @@ export function buildTraceabilityMatrices(test: YieldTest, products: Product[]):
   const inputTotal = sum(inputValues);
 
   return test.flows.map((flow, flowIndex) => {
+    const referenceWeight = calculateFlowReferenceWeight(flow, inputTotal);
     const rows: TraceabilityMatrixRow[] = [{
       id: `${flow.id}-input`,
       label: "PESO DA ENTRADA",
@@ -67,7 +69,7 @@ export function buildTraceabilityMatrices(test: YieldTest, products: Product[]):
         depth: stepDepth(flow.steps, step),
         values,
         total,
-        yieldPercent: inputTotal > 0 ? (total / inputTotal) * 100 : null,
+        yieldPercent: referenceWeight > 0 ? (total / referenceWeight) * 100 : null,
       });
 
       const discardNames = new Map<string, string>();
@@ -107,7 +109,7 @@ export function buildTraceabilityMatrices(test: YieldTest, products: Product[]):
         depth: stepDepth(flow.steps, finalStep),
         values,
         total,
-        yieldPercent: inputTotal > 0 ? (total / inputTotal) * 100 : null,
+        yieldPercent: referenceWeight > 0 ? (total / referenceWeight) * 100 : null,
       });
     }
 

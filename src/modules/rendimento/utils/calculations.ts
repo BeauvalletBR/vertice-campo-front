@@ -1,4 +1,4 @@
-import type { TestDiscard } from "../types/domain";
+import type { TestDiscard, TestFlow, TestStep } from "../types/domain";
 
 export const round3 = (value: number) => Math.round((value + Number.EPSILON) * 1000) / 1000;
 
@@ -31,6 +31,36 @@ export const calculateYield = (finalWeight: number, initialWeight: number) =>
 
 export const calculateInputYield = (weight: number, inputWeight: number) =>
   inputWeight > 0 ? round3((weight / inputWeight) * 100) : 0;
+
+const traceInitialTotal = (step?: TestStep) => {
+  if (!step) return 0;
+  if (step.traceItems?.length) {
+    return round3(step.traceItems.reduce((total, item) => total + Math.max(0, item.initialWeightKg || 0), 0));
+  }
+  return Math.max(0, step.initialWeightKg || 0);
+};
+
+const traceCleanTotal = (step?: TestStep) => {
+  if (!step) return 0;
+  if (step.traceItems?.length) {
+    return round3(step.traceItems.reduce((total, item) => total + Math.max(0, item.cleanWeightKg || 0), 0));
+  }
+  return Math.max(0, step.cleanWeightKg || 0);
+};
+
+export const calculateFlowReferenceWeight = (flow: TestFlow, inputWeight: number) => {
+  if (inputWeight > 0) return inputWeight;
+  const firstStep = flow.steps.find((step) => !step.parentStepId) || flow.steps[0];
+  return traceInitialTotal(firstStep);
+};
+
+export const calculateFlowFinalWeight = (flow: TestFlow) => {
+  const hasTreeRelations = flow.steps.some((step) => Boolean(step.parentStepId));
+  if (!hasTreeRelations) return traceCleanTotal(flow.steps.at(-1));
+  return round3(flow.steps
+    .filter((step) => !flow.steps.some((candidate) => candidate.parentStepId === step.id))
+    .reduce((total, step) => total + traceCleanTotal(step), 0));
+};
 
 export const resolveTraceInitialWeight = ({
   currentWeight,

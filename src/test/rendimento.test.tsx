@@ -342,6 +342,51 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     expect(screen.getByText("Produto final")).toBeInTheDocument();
   });
 
+  it("permite iniciar o fluxo com todas as ramificações irmãs do grupo", async () => {
+    const branchedCatalog = {
+      ...catalogResponse,
+      PRODUTOS: [
+        ...catalogResponse.PRODUTOS,
+        {
+          ID_PRODUTO: 13,
+          VERSAO: 1,
+          CODIGO: "CFA",
+          NOME: "CONTRA FILÉ A",
+          TIPO: "PRODUTO",
+          ID_PRODUTO_PAI: 10,
+          IDS_PRODUTOS_ORIGEM: [10],
+          NIVEL: 1,
+          IDS_TIPOS_DESCARTE: [],
+          ATIVO: "S",
+          CRIADO_POR_NOME: "TESTE",
+          CRIADO_EM: "2026-10-09T10:00:00",
+        },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/rendimento/catalogos")) return jsonResponse(branchedCatalog);
+        return jsonResponse({ TESTES: [] });
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/rendimento/testes/novo"]}>
+        <RendimentoModule />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Produto principal 1" }));
+    fireEvent.click(screen.getByRole("button", { name: /^CONTRA FILÉ$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Adicionar todas as 2 saídas/i }));
+
+    expect(screen.getAllByText("CONTRA FILÉ MI").some((element) => element.tagName === "STRONG")).toBe(true);
+    expect(screen.getAllByText("CONTRA FILÉ A").some((element) => element.tagName === "STRONG")).toBe(true);
+    expect(screen.getAllByText("Produto final")).toHaveLength(2);
+  });
+
   it("oferece edição completa e dados de entrada diretamente editáveis no teste aberto", async () => {
     vi.stubGlobal(
       "fetch",
@@ -864,6 +909,55 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     expect(matrix.rows[1]).toMatchObject({ values: [9, 18], total: 27, yieldPercent: 90 });
     expect(matrix.rows[2]).toMatchObject({ label: "SEBO", values: [1, 2], total: 3 });
     expect(matrix.rows[3]).toMatchObject({ values: [8, 16], total: 24, yieldPercent: 80 });
+  });
+
+  it("usa o primeiro produto como base do rendimento quando a entrada não foi informada", () => {
+    const test = mapYieldTest({
+      ID_TESTE: 1023,
+      MODO_EXECUCAO: "RASTREAVEL",
+      MODO_PESO_ENTRADA: "PECAS",
+      QTD_ENTRADA: 2,
+      PESO_ENTRADA: 0,
+      PESOS_ENTRADA: [
+        { ID_TESTE_PESO_ITEM: 601, ORDEM: 1, PESO: 0 },
+        { ID_TESTE_PESO_ITEM: 602, ORDEM: 2, PESO: 0 },
+      ],
+      FLUXOS: [{
+        ID_FLUXO: 20,
+        ID_PRODUTO_RAIZ: 10,
+        STATUS: "FINALIZADO",
+        ETAPAS: [
+          {
+            ID_ETAPA: 30,
+            ID_PRODUTO: 10,
+            PESO_INICIAL: 30,
+            PESOS: [
+              { ID_TESTE_PESO_ITEM: 601, ORDEM_PECA: 1, PESO: 10, CONFIRMADA: "S" },
+              { ID_TESTE_PESO_ITEM: 602, ORDEM_PECA: 2, PESO: 20, CONFIRMADA: "S" },
+            ],
+            DESCARTES: [],
+          },
+          {
+            ID_ETAPA: 31,
+            ID_PRODUTO: 11,
+            PESO_INICIAL: 12,
+            PESOS: [
+              { ID_TESTE_PESO_ITEM: 601, ORDEM_PECA: 1, PESO: 4, CONFIRMADA: "S" },
+              { ID_TESTE_PESO_ITEM: 602, ORDEM_PECA: 2, PESO: 8, CONFIRMADA: "S" },
+            ],
+            DESCARTES: [],
+          },
+        ],
+      }],
+    });
+    const matrix = buildTraceabilityMatrices(test, [
+      { id: "10", name: "MÚSCULO", code: "10", type: "PRODUTO", parentId: null, originProductIds: [], level: 0, applicableDiscardIds: [], active: true, version: 1, createdBy: "T", createdAt: "", updatedBy: "T", updatedAt: "" },
+      { id: "11", name: "MÚSCULO A", code: "11", type: "PRODUTO", parentId: "10", originProductIds: ["10"], level: 1, applicableDiscardIds: [], active: true, version: 1, createdBy: "T", createdAt: "", updatedBy: "T", updatedAt: "" },
+    ])[0];
+
+    expect(matrix.rows[0]).toMatchObject({ values: [0, 0], total: 0, yieldPercent: null });
+    expect(matrix.rows[1]).toMatchObject({ total: 30, yieldPercent: 100 });
+    expect(matrix.rows[2]).toMatchObject({ total: 12, yieldPercent: 40 });
   });
 
   it("confirma a troca de modo e preserva os dois conjuntos de pesos", () => {

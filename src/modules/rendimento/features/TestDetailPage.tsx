@@ -24,7 +24,7 @@ import { ResultFlowTree } from "../components/ResultFlowTree";
 import { testService } from "../services/testService";
 import { useRendimentoData } from "../context/RendimentoDataContext";
 import type { NavigationTarget } from "../types/navigation";
-import { calculateTotalDiscard, consolidateDiscards } from "../utils/calculations";
+import { calculateFlowFinalWeight, calculateFlowReferenceWeight, calculateTotalDiscard, consolidateDiscards } from "../utils/calculations";
 import { isBranchedFlow, isLeafStep, orderTreeSteps, stepChildren, stepDepth } from "../utils/flowTree";
 import {
   formatDate,
@@ -58,15 +58,11 @@ export function TestDetailPage({
   const productNames = test.flows
     .map((flow) => productName(flow.rootProductId))
     .join(" + ");
-  const finalWeight = test.flows.reduce(
-    (sum, flow) =>
-      sum +
-      ([...flow.steps].reverse().find((step) => step.confirmed)
-        ?.cleanWeightKg || 0),
-    0,
-  );
-  const finalInputYield =
-    test.inputWeightKg > 0 ? (finalWeight / test.inputWeightKg) * 100 : 0;
+  const finalWeight = test.flows.reduce((sum, flow) => sum + calculateFlowFinalWeight(flow), 0);
+  const yieldReferenceWeight = test.inputWeightKg > 0
+    ? test.inputWeightKg
+    : test.flows.reduce((sum, flow) => sum + calculateFlowReferenceWeight(flow, 0), 0);
+  const finalInputYield = yieldReferenceWeight > 0 ? (finalWeight / yieldReferenceWeight) * 100 : 0;
   const reopen = async () => {
     setActionError("");
     try {
@@ -202,10 +198,10 @@ export function TestDetailPage({
               </div>
               <p>{resultView === "flow" ? "Produtos, valores e descartes organizados conforme as ramificações do teste." : "Pesos, descartes e rendimentos de cada peça comparados lado a lado."}</p>
             </div>
-            <div className="final-yield"><span>Final sobre a entrada</span><strong>{formatPercent(finalInputYield)}</strong></div>
+            <div className="final-yield"><span>{test.inputWeightKg > 0 ? "Final sobre a entrada" : "Final sobre o produto inicial"}</span><strong>{formatPercent(finalInputYield)}</strong></div>
           </header>
           {resultView === "flow"
-            ? <div className="result-flow-list">{test.flows.map((flow, flowIndex) => <ResultFlowTree key={flow.id} flow={flow} flowIndex={flowIndex} products={products} />)}</div>
+            ? <div className="result-flow-list">{test.flows.map((flow, flowIndex) => <ResultFlowTree key={flow.id} flow={flow} flowIndex={flowIndex} products={products} inputWeightKg={test.inputWeightKg} />)}</div>
             : <div className="result-table-view"><TraceabilityMatrix test={test} products={products} /></div>}
         </section>
       ) : <section className="yield-process-section">
@@ -218,7 +214,7 @@ export function TestDetailPage({
             </p>
           </div>
           <div className="final-yield">
-            <span>Final sobre a entrada</span>
+            <span>{test.inputWeightKg > 0 ? "Final sobre a entrada" : "Final sobre o produto inicial"}</span>
             <strong>{formatPercent(finalInputYield)}</strong>
           </div>
         </header>

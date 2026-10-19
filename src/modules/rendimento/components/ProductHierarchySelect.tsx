@@ -143,7 +143,7 @@ export function ProductHierarchySelect({
         <div className="product-hierarchy-panel" role="tree" aria-label="Grupos de produtos">
           <div className="product-hierarchy-panel__header">
             <strong>Grupos de produtos</strong>
-            <span>Expanda para selecionar uma ramificação</span>
+            <span>Selecione o grupo para iniciar ramificado ou expanda para escolher um produto</span>
           </div>
           <div className="product-hierarchy-groups">
             {roots.map((root) => renderNode(root, 0))}
