@@ -761,6 +761,59 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     expect(savedFlow.steps[2].traceItems?.[0].confirmed).toBe(true);
   });
 
+  it("finaliza todas as peças preenchidas em um único lote", async () => {
+    const test = mapYieldTest({
+      ID_TESTE: 94,
+      VERSAO: 1,
+      STATUS: "EM_EXECUCAO",
+      MODO_EXECUCAO: "RASTREAVEL",
+      MODO_PESO_ENTRADA: "PECAS",
+      PESO_ENTRADA: 21,
+      PESOS_ENTRADA: [
+        { ID_TESTE_PESO_ITEM: 501, ORDEM: 1, PESO: 10 },
+        { ID_TESTE_PESO_ITEM: 502, ORDEM: 2, PESO: 11 },
+      ],
+      FLUXOS: [{
+        ID_FLUXO: 999,
+        ID_PRODUTO_RAIZ: 10,
+        ORDEM: 1,
+        STATUS: "EM_EXECUCAO",
+        ETAPAS: [
+          { ID_ETAPA: 20, ID_PRODUTO: 10, SEQUENCIA: 1, PESOS: [], DESCARTES: [] },
+          { ID_ETAPA: 21, ID_PRODUTO: 11, SEQUENCIA: 2, PESOS: [], DESCARTES: [] },
+          { ID_ETAPA: 22, ID_PRODUTO: 12, SEQUENCIA: 3, PESOS: [], DESCARTES: [] },
+        ],
+      }],
+    });
+    vi.spyOn(rendimentoApi, "getTest").mockResolvedValue(test);
+    const save = vi.spyOn(rendimentoApi, "saveTest").mockImplementation(async (value) => value);
+    vi.spyOn(rendimentoApi, "changeStatus").mockImplementation(async (value) => ({ ...value, status: "FINALIZADO" }));
+
+    const saved = await testService.saveTracePiecesBatch("94", "999", "10", [
+      {
+        inputPieceOrder: 1,
+        inputs: [
+          { stepId: "20", stepIndex: 0, initialWeightKg: 9, discards: [] },
+          { stepId: "21", stepIndex: 1, initialWeightKg: 8, discards: [] },
+        ],
+      },
+      {
+        inputPieceOrder: 2,
+        inputs: [
+          { stepId: "20", stepIndex: 0, initialWeightKg: 10, discards: [] },
+          { stepId: "21", stepIndex: 1, initialWeightKg: 9, discards: [] },
+        ],
+      },
+    ]);
+
+    const savedFlow = save.mock.calls[0][0].flows[0];
+    expect(save).toHaveBeenCalledOnce();
+    expect(savedFlow.steps[0].traceItems).toHaveLength(2);
+    expect(savedFlow.steps[1].traceItems?.every((item) => item.confirmed)).toBe(true);
+    expect(savedFlow.steps[2].traceItems).toHaveLength(2);
+    expect(saved.status).toBe("FINALIZADO");
+  });
+
   it("separa entrada, produtos e descartes no relatório rastreável por peça", () => {
     const test = mapYieldTest({
       ID_TESTE: 91,

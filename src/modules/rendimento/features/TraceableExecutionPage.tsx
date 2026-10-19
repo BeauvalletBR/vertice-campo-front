@@ -400,21 +400,69 @@ export function TraceableExecutionPage({ testId, onNavigate }: { testId?: string
       ? calculateCleanWeight(payloads.at(-1)!.weight, payloads.at(-1)!.discards)
       : 0;
     if (finalWeight <= 0) { setMessage("O produto final precisa ter peso maior que zero."); return; }
+    const finalizingTest = isLastVisiblePiece || isLastTestPiece;
+    const pieceBatches: Array<{
+      inputPieceOrder: number;
+      inputs: Array<{ stepId: string; stepIndex: number; initialWeightKg: number; discards: TestDiscard[] }>;
+    }> = [];
+    if (finalizingTest) {
+      for (const piece of pieces) {
+        const source = piece.order === pieceOrder
+          ? drafts
+          : draftCacheRef.current[`${flow.id}:${piece.order}`];
+        if (!source) continue;
+        const piecePayloads = operationSteps.map((step) => {
+          const draft = source[step.id];
+          const weight = parseDecimal(draft?.weight || "0");
+          const discards = (draft?.discards || []).map(({ input, ...discard }) => ({
+            ...discard,
+            weightKg: parseDecimal(input),
+          }));
+          return { step, weight, discards, totalDiscard: calculateTotalDiscard(discards) };
+        });
+        const hasDraftData = piecePayloads.some((payload) => payload.weight > 0 || payload.totalDiscard > 0);
+        if (!hasDraftData) continue;
+        const pending = piecePayloads.find((payload) => payload.weight <= 0 || payload.totalDiscard >= payload.weight);
+        if (pending) {
+          setPieceOrder(piece.order);
+          setMessage(pending.weight <= 0
+            ? `Peça ${piece.order}: informe o peso de ${productName(pending.step.productId)}.`
+            : `Peça ${piece.order}: os descartes de ${productName(pending.step.productId)} devem ser menores que o peso.`);
+          window.requestAnimationFrame(() => pageTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+          return;
+        }
+        pieceBatches.push({
+          inputPieceOrder: piece.order,
+          inputs: piecePayloads.map((payload) => ({
+            stepId: payload.step.id,
+            stepIndex: flow.steps.findIndex((step) => step.id === payload.step.id),
+            initialWeightKg: payload.weight,
+            discards: payload.discards,
+          })),
+        });
+      }
+    }
     Object.values(autoSaveTimers.current).forEach((timer) => clearTimeout(timer));
     setSavingStepId(`piece-${pieceOrder}`); setMessage("");
     try {
       await saveQueue.current.catch(() => undefined);
-      const saved = await testService.saveTracePieceBatch(
-        test.id,
-        flow.id,
-        flow.rootProductId,
-        pieceOrder,
-        payloads.map((payload) => ({
-          stepId: payload.step.id,
-          initialWeightKg: payload.weight,
-          discards: payload.discards,
-        })),
-      );
+      let saved = finalizingTest
+        ? await testService.saveTracePiecesBatch(test.id, flow.id, flow.rootProductId, pieceBatches)
+        : await testService.saveTracePieceBatch(
+            test.id,
+            flow.id,
+            flow.rootProductId,
+            pieceOrder,
+            payloads.map((payload) => ({
+              stepId: payload.step.id,
+              stepIndex: flow.steps.findIndex((step) => step.id === payload.step.id),
+              initialWeightKg: payload.weight,
+              discards: payload.discards,
+            })),
+          );
+      if (finalizingTest && saved.status !== "FINALIZADO") {
+        saved = await testService.finalizeTraceableTest(test.id);
+      }
       updateTest(saved);
       if (saved.status === "FINALIZADO") { onNavigate({ route: "detail", id: test.id }); return; }
       const nextPiece = pieces.find((piece) => piece.order > pieceOrder && pieceStatus(piece.order) !== "complete");

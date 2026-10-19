@@ -524,22 +524,24 @@ export const testService = {
     return allFinished ? rendimentoApi.changeStatus(saved, "FINALIZAR") : saved;
   },
 
-  async saveTracePieceBatch(
+  async saveTracePiecesBatch(
     id: string,
     flowId: string,
     flowRootProductId: string,
-    inputPieceOrder: number,
-    inputs: Array<{
-      stepId: string;
-      initialWeightKg: number;
-      discards: TestDiscard[];
+    pieces: Array<{
+      inputPieceOrder: number;
+      inputs: Array<{
+        stepId: string;
+        stepIndex?: number;
+        initialWeightKg: number;
+        discards: TestDiscard[];
+      }>;
     }>,
   ) {
     const before = await rendimentoApi.getTest(id);
     const targetFlow = before.flows.find((flow) => flow.id === flowId)
       || before.flows.find((flow) => flow.rootProductId === flowRootProductId);
-    const inputPiece = before.inputPieces?.find((piece) => piece.order === inputPieceOrder);
-    if (!targetFlow || !inputPiece || before.executionMode !== "traceable") return before;
+    if (!targetFlow || before.executionMode !== "traceable") return before;
 
     const terminalIndex = targetFlow.steps.length - 1;
     const branched = isBranchedFlow(targetFlow.steps);
@@ -548,24 +550,28 @@ export const testService = {
       traceItems: [...(step.traceItems || [])],
     }));
 
-    for (const input of inputs) {
-      const stepIndex = steps.findIndex((step) => step.id === input.stepId);
-      if (stepIndex < 0 || (!branched && stepIndex >= terminalIndex)) continue;
-      const cleanWeightKg = calculateCleanWeight(input.initialWeightKg, input.discards);
-      const traceItem: TraceableStepItem = {
-        inputPieceId: inputPiece.id,
-        inputPieceOrder,
-        initialWeightKg: input.initialWeightKg,
-        discards: input.discards,
-        cleanWeightKg,
-        confirmed: true,
-      };
-      steps[stepIndex].traceItems = [
-        ...(steps[stepIndex].traceItems || []).filter(
-          (item) => item.inputPieceOrder !== inputPieceOrder,
-        ),
-        traceItem,
-      ].sort((a, b) => a.inputPieceOrder - b.inputPieceOrder);
+    for (const piece of pieces) {
+      const inputPiece = before.inputPieces?.find((item) => item.order === piece.inputPieceOrder);
+      if (!inputPiece) continue;
+      for (const input of piece.inputs) {
+        const stepIndex = input.stepIndex ?? steps.findIndex((step) => step.id === input.stepId);
+        if (stepIndex < 0 || stepIndex >= steps.length || (!branched && stepIndex >= terminalIndex)) continue;
+        const cleanWeightKg = calculateCleanWeight(input.initialWeightKg, input.discards);
+        const traceItem: TraceableStepItem = {
+          inputPieceId: inputPiece.id,
+          inputPieceOrder: piece.inputPieceOrder,
+          initialWeightKg: input.initialWeightKg,
+          discards: input.discards,
+          cleanWeightKg,
+          confirmed: true,
+        };
+        steps[stepIndex].traceItems = [
+          ...(steps[stepIndex].traceItems || []).filter(
+            (item) => item.inputPieceOrder !== piece.inputPieceOrder,
+          ),
+          traceItem,
+        ].sort((a, b) => a.inputPieceOrder - b.inputPieceOrder);
+      }
     }
 
     const pieceOrders = before.inputPieces?.map((piece) => piece.order) || [];
@@ -622,6 +628,21 @@ export const testService = {
       updatedAt: now,
     }), false);
     return allFinished ? rendimentoApi.changeStatus(saved, "FINALIZAR") : saved;
+  },
+
+  async saveTracePieceBatch(
+    id: string,
+    flowId: string,
+    flowRootProductId: string,
+    inputPieceOrder: number,
+    inputs: Array<{
+      stepId: string;
+      stepIndex?: number;
+      initialWeightKg: number;
+      discards: TestDiscard[];
+    }>,
+  ) {
+    return this.saveTracePiecesBatch(id, flowId, flowRootProductId, [{ inputPieceOrder, inputs }]);
   },
 
   async finalizeTraceableTest(id: string) {
