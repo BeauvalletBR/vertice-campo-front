@@ -296,6 +296,13 @@ export function AppSidebar() {
       icon: FlaskConical,
       items: [
         {
+          id: "rendimento-dashboard",
+          title: "Dashboard",
+          url: "/rendimento/dashboard",
+          icon: LayoutDashboard,
+          access: APP_ROUTE_ACCESS.rendimento,
+        },
+        {
           id: "rendimento-testes",
           title: "Testes",
           url: "/rendimento/testes",
@@ -318,6 +325,12 @@ export function AppSidebar() {
               title: "Tipos de descarte",
               url: "/rendimento/cadastros/descartes",
               icon: Trash2,
+              access: APP_ROUTE_ACCESS.rendimento,
+            },
+            {
+              title: "Faixas de peso",
+              url: "/rendimento/cadastros/faixas-peso",
+              icon: TrendingUp,
               access: APP_ROUTE_ACCESS.rendimento,
             },
           ],

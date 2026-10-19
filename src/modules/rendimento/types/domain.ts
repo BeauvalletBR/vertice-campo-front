@@ -46,6 +46,19 @@ export interface DiscardType extends AuditFields {
   active: boolean;
 }
 
+export interface WeightBand extends AuditFields {
+  id: string;
+  version: number;
+  productReferenceId: string;
+  productReferenceName: string;
+  name: string;
+  minWeightKg: number;
+  maxWeightKg: number | null;
+  color: string;
+  order: number;
+  active: boolean;
+}
+
 export interface TestDiscard {
   id: string;
   discardTypeId: string | null;
@@ -121,6 +134,10 @@ export interface YieldTest extends AuditFields {
   finalizedBy?: string;
   finalizedAt?: string;
   reopenedAt?: string;
+  weightBandId?: string;
+  weightBandName?: string;
+  bandReferenceWeightKg?: number;
+  bandReferenceOrigin?: "ENTRADA" | "PRIMEIRO_PRODUTO";
 }
 
 export interface TestFlowSetupInput {

@@ -1,4 +1,4 @@
-import type { DiscardType, Product } from "../types/domain";
+import type { DiscardType, Product, WeightBand } from "../types/domain";
 import { rendimentoApi } from "./rendimentoApi";
 
 export const catalogService = {
@@ -18,5 +18,8 @@ export const catalogService = {
   },
   async toggleDiscard(item: DiscardType) {
     await rendimentoApi.saveDiscard({ ...item, active: !item.active });
+  },
+  async saveWeightBand(input: Partial<WeightBand> & Pick<WeightBand, "name" | "productReferenceId">) {
+    await rendimentoApi.saveWeightBand(input);
   },
 };

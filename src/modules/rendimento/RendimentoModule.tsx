@@ -1,6 +1,8 @@
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { DiscardsPage } from "./features/DiscardsPage";
+import { WeightBandsPage } from "./features/WeightBandsPage";
+import { YieldDashboardPage } from "./features/YieldDashboardPage";
 import { ExecutionPage } from "./features/ExecutionPage";
 import { NewTestPage } from "./features/NewTestPage";
 import { ProductsPage } from "./features/ProductsPage";
@@ -16,6 +18,8 @@ const pathForTarget = (target: NavigationTarget) => {
   const id = target.id ? encodeURIComponent(target.id) : "";
 
   switch (target.route) {
+    case "dashboard":
+      return `${BASE_PATH}/dashboard`;
     case "new-test":
       return id ? `${BASE_PATH}/testes/${id}/editar` : `${BASE_PATH}/testes/novo`;
     case "execute":
@@ -26,14 +30,18 @@ const pathForTarget = (target: NavigationTarget) => {
       return `${BASE_PATH}/cadastros/produtos`;
     case "discards":
       return `${BASE_PATH}/cadastros/descartes`;
+    case "weight-bands":
+      return `${BASE_PATH}/cadastros/faixas-peso`;
     default:
       return `${BASE_PATH}/testes`;
   }
 };
 
 const targetFromPath = (pathname: string): NavigationTarget => {
+  if (pathname === `${BASE_PATH}/dashboard`) return { route: "dashboard" };
   if (pathname === `${BASE_PATH}/cadastros/produtos`) return { route: "products" };
   if (pathname === `${BASE_PATH}/cadastros/descartes`) return { route: "discards" };
+  if (pathname === `${BASE_PATH}/cadastros/faixas-peso`) return { route: "weight-bands" };
   if (pathname === `${BASE_PATH}/testes/novo`) return { route: "new-test" };
 
   const editMatch = pathname.match(/^\/rendimento\/testes\/([^/]+)\/editar$/);
@@ -58,7 +66,9 @@ function RendimentoContent() {
   if (loading) return <section className="yield-module"><div className="app-content"><div className="empty-state"><strong>Buscando dados do Teste rendimento...</strong></div></div></section>;
   if (error) return <section className="yield-module"><div className="app-content"><div className="empty-state"><strong>Não foi possível carregar o módulo</strong><p>{error}</p><button className="primary-button" onClick={() => void refreshAll()}>Tentar novamente</button></div></div></section>;
 
-  const content = target.route === "new-test"
+  const content = target.route === "dashboard"
+    ? <YieldDashboardPage />
+    : target.route === "new-test"
     ? <NewTestPage testId={target.id} onNavigate={navigateInsideModule} />
     : target.route === "execute"
       ? <ExecutionPage testId={target.id} onNavigate={navigateInsideModule} />
@@ -68,6 +78,8 @@ function RendimentoContent() {
           ? <ProductsPage />
           : target.route === "discards"
             ? <DiscardsPage />
+            : target.route === "weight-bands"
+              ? <WeightBandsPage />
             : <TestsPage onNavigate={navigateInsideModule} />;
 
   return (

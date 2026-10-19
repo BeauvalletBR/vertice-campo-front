@@ -6,6 +6,7 @@ import type {
   TestFlow,
   TestStep,
   TraceableStepItem,
+  WeightBand,
   YieldTest,
 } from "../types/domain";
 import { orderTreeSteps } from "../utils/flowTree";
@@ -105,6 +106,23 @@ const mapDiscardType = (row: ApiRow): DiscardType => ({
       row.CRIADO_POR_NOME ||
       row.CRIADO_POR_ID,
   ),
+  updatedAt: asString(row.ATUALIZADO_EM || row.CRIADO_EM),
+});
+
+const mapWeightBand = (row: ApiRow): WeightBand => ({
+  id: asString(row.ID_FAIXA_PESO),
+  version: asNumber(row.VERSAO),
+  productReferenceId: asString(row.ID_PRODUTO_REFERENCIA),
+  productReferenceName: asString(row.NOME_PRODUTO_REFERENCIA),
+  name: asString(row.NOME),
+  minWeightKg: asNumber(row.PESO_MINIMO),
+  maxWeightKg: row.PESO_MAXIMO == null ? null : asNumber(row.PESO_MAXIMO),
+  color: asString(row.COR) || "#173D6E",
+  order: asNumber(row.ORDEM),
+  active: asBoolean(row.ATIVO),
+  createdBy: asString(row.CRIADO_POR_NOME || row.CRIADO_POR_ID),
+  createdAt: asString(row.CRIADO_EM),
+  updatedBy: asString(row.ATUALIZADO_POR_NOME || row.ATUALIZADO_POR_ID || row.CRIADO_POR_NOME || row.CRIADO_POR_ID),
   updatedAt: asString(row.ATUALIZADO_EM || row.CRIADO_EM),
 });
 
@@ -247,6 +265,10 @@ export const mapYieldTest = (row: ApiRow): YieldTest => {
     ),
     finalizedAt: asOptionalString(row.FINALIZADO_EM),
     reopenedAt: asOptionalString(row.REABERTO_EM),
+    weightBandId: asOptionalString(row.ID_FAIXA_PESO),
+    weightBandName: asOptionalString(row.NOME_FAIXA_SNAPSHOT),
+    bandReferenceWeightKg: row.PESO_REFERENCIA_FAIXA == null ? undefined : asNumber(row.PESO_REFERENCIA_FAIXA),
+    bandReferenceOrigin: asOptionalString(row.ORIGEM_PESO_REFERENCIA) as YieldTest["bandReferenceOrigin"],
   };
 };
 
@@ -363,6 +385,27 @@ export const rendimentoApi = {
       editing ? `/rendimento/descartes/${discard.id}` : "/rendimento/descartes",
       { method: editing ? "PUT" : "POST", body: JSON.stringify(body) },
     );
+  },
+  async listWeightBands() {
+    const data = await request<{ FAIXAS: ApiRow[] }>(`/rendimento/faixas-peso?nroempresa=${company()}`);
+    return (data.FAIXAS || []).map(mapWeightBand);
+  },
+  async saveWeightBand(band: Partial<WeightBand> & Pick<WeightBand, "name" | "productReferenceId">) {
+    const editing = Boolean(band.id);
+    await request(editing ? `/rendimento/faixas-peso/${band.id}` : "/rendimento/faixas-peso", {
+      method: editing ? "PUT" : "POST",
+      body: JSON.stringify({
+        nroempresa: company(),
+        id_produto_referencia: Number(band.productReferenceId),
+        nome: band.name,
+        peso_minimo: band.minWeightKg || 0,
+        peso_maximo: band.maxWeightKg ?? null,
+        cor: band.color || "#173D6E",
+        ordem: band.order || 1,
+        ativo: band.active ?? true,
+        versao: band.version,
+      }),
+    });
   },
   async listTests() {
     const data = await request<{ TESTES: ApiRow[] }>(
