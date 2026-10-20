@@ -170,11 +170,46 @@
 .yield-module .weight-band-search:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(27,88,160,.1); }
 .yield-module .weight-band-search input { min-width: 0; width: 100%; border: 0; outline: 0; color: var(--navy); background: transparent; font-size: 11px; font-weight: 750; }
 .yield-module .table-empty-search { padding: 22px; color: var(--muted); text-align: center; font-size: 11px; font-weight: 750; }
-.yield-module .yield-dashboard-filters { display: grid; grid-template-columns: minmax(210px, 1.5fr) minmax(210px, 1.5fr) minmax(150px, .8fr) minmax(150px, .8fr); gap: 10px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 13px; padding: 13px; background: #fff; box-shadow: var(--shadow); }
+.yield-module .yield-dashboard-filters { display: grid; grid-template-columns: minmax(210px, 1.4fr) minmax(210px, 1.4fr) minmax(140px, .75fr) minmax(140px, .75fr) minmax(145px, .7fr); gap: 10px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 13px; padding: 13px; background: #fff; box-shadow: var(--shadow); }
 .yield-module .yield-dashboard-filters label { display: grid; gap: 6px; color: #52697e; font-size: 9px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
 .yield-module .yield-dashboard-filters select, .yield-module .yield-dashboard-filters input { width: 100%; min-height: 40px; border: 1px solid #cfdbe6; border-radius: 8px; padding: 8px 10px; color: var(--navy); background: #f9fbfd; font-size: 11px; font-weight: 750; outline: 0; }
 .yield-module .yield-dashboard-filters select:focus, .yield-module .yield-dashboard-filters input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(27, 88, 160, .1); }
-.yield-module .yield-dashboard-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 11px; margin-bottom: 14px; }
+.yield-module .yield-filter-actions { display: grid; gap: 6px; color: #52697e; font-size: 9px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+.yield-module .yield-filter-actions button { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #b9cbdc; border-radius: 8px; padding: 8px 10px; color: var(--navy); background: #f7fafc; font-size: 10px; font-weight: 850; cursor: pointer; white-space: nowrap; }
+.yield-module .yield-filter-actions button:hover { border-color: var(--blue); color: var(--blue); background: #edf5fc; }
+.yield-module .yield-multi-filter { min-width: 0; display: grid; gap: 6px; position: relative; color: #52697e; font-size: 9px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+.yield-module .yield-multi-filter details { min-width: 0; position: relative; }
+.yield-module .yield-multi-filter summary { width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid #cfdbe6; border-radius: 8px; padding: 8px 10px; color: var(--navy); background: #f9fbfd; cursor: pointer; list-style: none; }
+.yield-module .yield-multi-filter summary::-webkit-details-marker { display: none; }
+.yield-module .yield-multi-filter summary b { min-width: 0; overflow: hidden; font-size: 11px; font-weight: 750; letter-spacing: 0; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }
+.yield-module .yield-multi-filter details[open] summary { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(27,88,160,.1); }
+.yield-module .yield-multi-filter details[open] summary svg { transform: rotate(180deg); }
+.yield-module .yield-multi-filter-menu { min-width: 100%; max-height: 280px; display: grid; gap: 3px; position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; overflow-y: auto; border: 1px solid #bdcedd; border-radius: 10px; padding: 7px; background: #fff; box-shadow: 0 14px 32px rgba(20,51,84,.18); }
+.yield-module .yield-multi-filter-menu button { min-width: 230px; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 7px; padding: 8px 9px; color: #3d566e; background: transparent; font-size: 10px; font-weight: 750; text-align: left; cursor: pointer; }
+.yield-module .yield-multi-filter-menu button:hover { background: #f1f6fa; }
+.yield-module .yield-multi-filter-menu button.active { color: var(--navy); background: #eaf3fb; font-weight: 900; }
+.yield-module .yield-multi-filter-menu button i { width: 18px; height: 18px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid #b8c9d8; border-radius: 5px; color: #fff; background: #fff; }
+.yield-module .yield-multi-filter-menu button.active i { border-color: var(--blue); background: var(--blue); }
+.yield-module .yield-product-filter-menu { width: max(100%, 370px); max-height: 430px; display: block; overflow: hidden; padding: 0; }
+.yield-module .yield-product-filter-actions { display: flex; align-items: center; gap: 7px; border-bottom: 1px solid #dbe5ed; padding: 8px; background: #f5f8fb; }
+.yield-module .yield-product-filter-actions button { min-width: 0; min-height: 31px; justify-content: center; border: 1px solid #bfd0df; padding: 6px 10px; color: var(--navy); background: #fff; white-space: nowrap; }
+.yield-module .yield-product-filter-actions button:first-child { border-color: #8bb2d8; color: #0f5597; background: #eef6fd; }
+.yield-module .yield-product-filter-actions button:hover { border-color: var(--blue); color: var(--blue); background: #fff; }
+.yield-module .yield-product-filter-tree { max-height: 350px; overflow-y: auto; padding: 6px; }
+.yield-module .yield-product-filter-row { min-height: 40px; display: flex; align-items: center; border-bottom: 1px solid #edf2f6; }
+.yield-module .yield-product-filter-row.is-root { margin: 4px 0; border: 1px solid #d5e1eb; border-radius: 8px; background: #f7fafc; box-shadow: 0 1px 2px rgba(20, 51, 84, .04); }
+.yield-module .yield-product-filter-menu .yield-product-filter-expand { width: 27px; min-width: 27px; height: 27px; display: grid; place-items: center; flex: 0 0 27px; border: 1px solid #d5e1eb; border-radius: 6px; padding: 0; color: #315d88; background: #fff; }
+.yield-module .yield-product-filter-menu .yield-product-filter-expand:hover { border-color: #95b5d2; color: var(--blue); background: #edf5fc; }
+.yield-module .yield-product-filter-menu .yield-product-filter-expand:disabled { border-color: transparent; opacity: .28; cursor: default; }
+.yield-module .yield-product-filter-menu .yield-product-filter-check { min-width: 0; flex: 1; border: 0; padding: 7px 8px; background: transparent; text-transform: none; }
+.yield-module .yield-product-filter-menu .yield-product-filter-check:hover { background: rgba(220, 232, 242, .45); }
+.yield-module .yield-product-filter-menu .yield-product-filter-check i { width: 18px; height: 18px; }
+.yield-module .yield-product-filter-menu .yield-product-filter-check.active i,
+.yield-module .yield-product-filter-menu .yield-product-filter-check.partial i { border-color: var(--blue); background: var(--blue); }
+.yield-module .yield-product-filter-check span { min-width: 0; display: grid; gap: 1px; }
+.yield-module .yield-product-filter-check strong { overflow: hidden; color: var(--navy); font-size: 10px; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .yield-product-filter-check small { color: #7a90a4; font-size: 8px; font-weight: 750; letter-spacing: .01em; }
+.yield-module .yield-dashboard-cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 11px; margin-bottom: 14px; }
 .yield-module .yield-dashboard-cards article { min-width: 0; display: grid; gap: 5px; border: 1px solid var(--line); border-top: 3px solid #8aa7c1; border-radius: 12px; padding: 14px; background: #fff; box-shadow: var(--shadow); }
 .yield-module .yield-dashboard-cards article.featured { border-top-color: var(--green); background: linear-gradient(145deg, #fff, #effaf5); }
 .yield-module .yield-dashboard-cards span { display: flex; align-items: center; gap: 7px; overflow: hidden; color: #536b82; font-size: 9px; font-weight: 900; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
@@ -189,11 +224,44 @@
 .yield-module .yield-dashboard-chart > header span { color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
 .yield-module .yield-dashboard-chart > header h2 { margin: 0; color: var(--navy); font-size: 15px; }
 .yield-module .yield-dashboard-chart > div { min-height: 320px; padding: 10px 8px 4px; }
+.yield-module .yield-target-panel { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow); }
+.yield-module .yield-target-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line-soft); padding: 14px 16px; color: var(--blue); }
+.yield-module .yield-target-panel > header div { display: grid; gap: 2px; }
+.yield-module .yield-target-panel > header span { color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.yield-module .yield-target-panel > header h2 { margin: 0; color: var(--navy); font-size: 15px; }
+.yield-module .yield-target-table-wrap { max-height: 330px; overflow: auto; }
+.yield-module .yield-target-table { width: 100%; min-width: 820px; border-collapse: separate; border-spacing: 0; font-size: 10px; }
+.yield-module .yield-target-table th { position: sticky; z-index: 2; top: 0; padding: 10px 8px; color: #fff; background: #1f527f; font-weight: 900; text-align: center; white-space: nowrap; }
+.yield-module .yield-target-table th button { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; padding: 0; color: inherit; background: transparent; font: inherit; cursor: pointer; white-space: nowrap; }
+.yield-module .yield-target-table th button svg { opacity: .65; }
+.yield-module .yield-target-table th:hover { background: #28628f; }
+.yield-module .yield-target-table th[aria-sort="ascending"],
+.yield-module .yield-target-table th[aria-sort="descending"] { background: #123f6c; box-shadow: inset 0 -3px 0 #76baf0; }
+.yield-module .yield-target-table th[aria-sort="ascending"] button svg,
+.yield-module .yield-target-table th[aria-sort="descending"] button svg { opacity: 1; }
+.yield-module .yield-target-table td { border-right: 1px solid #d9e2ea; border-bottom: 1px solid #d9e2ea; padding: 8px; color: #223e59; text-align: center; white-space: nowrap; }
+.yield-module .yield-target-table td:nth-child(3) { max-width: 220px; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+.yield-module .yield-target-table tbody tr:nth-child(even) td { background: #f7fafc; }
+.yield-module .yield-target-table .below-target { color: #087b58; font-weight: 900; }
+.yield-module .yield-target-table .above-target { color: #b4232d; font-weight: 900; }
+.yield-module .yield-panel-actions, .yield-module .yield-comparison-header-actions { display: flex !important; align-items: center; justify-content: flex-end; gap: 7px; }
+.yield-module .yield-panel-actions button { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #b9cbdc; border-radius: 8px; padding: 7px 10px; color: var(--navy); background: #f7fafc; font-size: 9px; font-weight: 850; cursor: pointer; }
+.yield-module .yield-panel-actions button:first-child { border-color: #97b9a9; color: #087653; background: #f0faf6; }
+.yield-module .yield-panel-actions button:hover { border-color: var(--blue); color: #fff; background: var(--blue); }
+.yield-module .yield-panel-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.yield-module .yield-target-panel.is-expanded { position: fixed; z-index: 90; inset: 18px; display: flex; flex-direction: column; box-shadow: 0 24px 70px rgba(6,30,57,.34); }
+.yield-module .yield-target-panel.is-expanded .yield-target-table-wrap { max-height: none; flex: 1; }
+.yield-module .yield-target-panel.is-expanded .yield-target-table { min-width: 100%; font-size: 12px; }
 .yield-module .dashboard-empty { min-height: 280px; display: grid; place-items: center; margin: 0; color: var(--muted); font-size: 11px; }
 .yield-module .yield-dashboard-table td small { display: block; margin-top: 3px; }
-.yield-module .yield-comparison-header { align-items: center; }
+.yield-module .yield-comparison-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.yield-module .yield-comparison-header > div:first-child { min-width: 0; flex: 1; }
+.yield-module .yield-comparison-header > div:first-child > span { font-size: 17px; font-weight: 900; line-height: 1.2; }
+.yield-module .yield-comparison-header > div:first-child > small { margin-top: 2px; font-size: 10px; }
 .yield-module .comparison-expand-all { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #b9cbdc; border-radius: 8px; padding: 7px 11px; color: var(--navy); background: #f7fafc; font-size: 10px; font-weight: 850; cursor: pointer; }
 .yield-module .comparison-expand-all:hover { border-color: #7f9fbd; background: #edf4fa; }
+.yield-module .yield-comparison-header-actions { width: auto; flex: 0 0 auto; flex-direction: row !important; justify-content: flex-end; flex-wrap: nowrap; margin-top: 0; }
+.yield-module .yield-comparison-header-actions button { width: auto; min-width: 118px; }
 .yield-module .weight-band-legend { display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); padding: 11px 15px; background: #fbfcfe; }
 .yield-module .weight-band-legend > strong { flex: 0 0 auto; color: #52697e; font-size: 9px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
 .yield-module .weight-band-legend > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -227,13 +295,20 @@
 
 @media (max-width: 720px) {
   .yield-module .yield-dashboard-filters { grid-template-columns: 1fr; }
+  .yield-module .yield-product-filter-menu { width: min(370px, calc(100vw - 44px)); }
   .yield-module .yield-dashboard-cards { display: flex; overflow-x: auto; padding-bottom: 5px; }
   .yield-module .yield-dashboard-cards article { min-width: 180px; }
   .yield-module .yield-dashboard-grid { grid-template-columns: 1fr; }
   .yield-module .yield-dashboard-chart > div { min-width: 560px; overflow-x: auto; }
+  .yield-module .yield-target-table-wrap { max-height: 360px; }
+  .yield-module .yield-target-panel.is-expanded { inset: 8px; }
   .yield-module .yield-dashboard-grid { overflow-x: auto; }
   .yield-module .yield-comparison-header, .yield-module .weight-band-legend, .yield-module .yield-comparison-detail > header { align-items: stretch; flex-direction: column; }
   .yield-module .comparison-expand-all { width: 100%; }
+  .yield-module .yield-panel-actions { width: 100%; align-items: stretch; flex-direction: column; }
+  .yield-module .yield-panel-actions button { width: 100%; }
+  .yield-module .yield-comparison-header-actions { width: 100%; align-items: center; flex-direction: row !important; justify-content: center; gap: 6px; }
+  .yield-module .yield-comparison-header-actions button { width: auto !important; min-width: 0; flex: 0 1 auto; padding-inline: 9px; font-size: 9px; }
   .yield-module .weight-band-legend > div { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 3px; }
   .yield-module .weight-band-legend span { flex: 0 0 auto; }
   .yield-module .yield-comparison-detail { margin: 8px; padding: 9px; }
@@ -241,6 +316,7 @@
   .yield-module .yield-comparison-detail .result-view-toggle button { flex: 1; }
   .yield-module .yield-comparison-detail-actions { align-items: stretch; flex-direction: column; }
   .yield-module .comparison-excel-button { width: 100%; }
+  .yield-module .yield-comparison-header-actions .comparison-excel-button { width: auto !important; }
 }
 
 .yield-module .app-loading { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--muted); }
@@ -331,6 +407,7 @@
 .yield-module .page-header h1 { margin: 0; color: var(--navy); font-size: 24px; font-weight: 900; letter-spacing: -.025em; line-height: 1.2; }
 .yield-module .page-header p { margin: 5px 0 0; color: #667b90; font-size: 12px; font-weight: 500; line-height: 1.5; }
 .yield-module .page-header__actions, .yield-module .detail-actions { display: flex; align-items: center; gap: 10px; }
+.yield-module .page-action-group, .yield-module .table-toolbar-actions { display: flex; align-items: center; gap: 9px; }
 
 /* Campos e filtros */
 .yield-module .field { display: flex; flex-direction: column; gap: 7px; }
@@ -338,6 +415,17 @@
 .yield-module .field > span small { color: #8396a8; font-size: 8px; }
 .yield-module .field input, .yield-module .field select, .yield-module .field textarea, .yield-module .filter-grid input, .yield-module .filter-grid select { width: 100%; min-height: 43px; border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; outline: 0; color: var(--ink); background: #fff; font-size: 12px; transition: .15s ease; }
 .yield-module .field textarea { resize: vertical; }
+.yield-module .erp-product-link-field { display: grid; gap: 8px; position: relative; margin: 12px 0; }
+.yield-module .erp-product-selected { display: flex; align-items: center; gap: 10px; border: 1px solid #a9d7c5; border-radius: 9px; padding: 9px 11px; color: #176648; background: #effaf6; font-size: 10px; }
+.yield-module .erp-product-selected span { min-width: 0; flex: 1; overflow: hidden; color: #496b5e; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .erp-product-selected button { border: 0; color: #a52d36; background: transparent; font-size: 9px; font-weight: 850; cursor: pointer; }
+.yield-module .erp-product-results { max-height: 220px; display: grid; overflow-y: auto; border: 1px solid #c8d6e2; border-radius: 9px; padding: 5px; background: #fff; box-shadow: 0 10px 24px rgba(20,51,84,.12); }
+.yield-module .erp-product-results > small { padding: 10px; color: var(--muted); }
+.yield-module .erp-product-results button { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-radius: 7px; padding: 9px; color: var(--ink); background: transparent; text-align: left; cursor: pointer; }
+.yield-module .erp-product-results button:hover { background: #edf5fb; }
+.yield-module .erp-product-results button span { min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .erp-product-results button small { flex: 0 0 auto; color: var(--green); font-weight: 800; }
+.yield-module .erp-link-tag { border-color: #9bc9e9 !important; color: #175a88 !important; background: #edf7fd !important; }
 .yield-module .field input:focus, .yield-module .field select:focus, .yield-module .field textarea:focus, .yield-module .filter-grid input:focus, .yield-module .filter-grid select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(27,88,160,.1); }
 .yield-module .field--calculated > span { color: var(--blue); }
 .yield-module .calculated-value { min-height: 43px; display: flex; align-items: center; gap: 8px; border: 1px solid #c9daeb; border-radius: 9px; padding: 10px 12px; color: var(--navy); background: #f0f6fc; font-size: 13px; font-weight: 850; }
@@ -405,6 +493,8 @@
 .yield-module .search-box input { width: 100%; min-height: 38px; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 11px; }
 .yield-module .select-filter { display: flex; align-items: center; gap: 7px; color: var(--muted); }
 .yield-module .select-filter select { min-height: 38px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 28px 8px 10px; color: var(--ink); background: #fff; font-size: 10px; }
+.yield-module .cleanup-inactive-button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #e3a6ab; border-radius: 9px; padding: 8px 11px; color: #a52d36; background: #fff7f7; font-size: 10px; font-weight: 850; cursor: pointer; white-space: nowrap; }
+.yield-module .cleanup-inactive-button:hover { border-color: #c83a45; color: #fff; background: #c83a45; }
 .yield-module .table-title { padding: 17px 19px; border-bottom: 1px solid var(--line-soft); }
 .yield-module .table-title > div { display: flex; flex-direction: column; gap: 4px; }
 .yield-module .table-title span { color: var(--navy); font-size: 13px; font-weight: 850; }
@@ -453,7 +543,7 @@
 .yield-module .form-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 4px; }
 .yield-module .form-actions > div { display: flex; gap: 9px; }
 .yield-module .form-error, .yield-module .inline-message { border: 1px solid #f0c5c8; border-radius: 9px; padding: 11px 13px; color: #9a3038; background: #fff1f2; font-size: 10px; font-weight: 750; }
-.yield-module .inline-message.success { border-color: #bce2d3; color: var(--green); background: #effaf6; }
+.yield-module .inline-message.success, .yield-module .inline-message--success { border-color: #bce2d3; color: var(--green); background: #effaf6; }
 
 /* Execução */
 .yield-module .step-progress { display: flex; align-items: stretch; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 12px; padding: 13px 16px; background: #fff; box-shadow: var(--shadow); overflow-x: auto; }
@@ -712,6 +802,8 @@
   .yield-module .page-header { align-items: flex-start; flex-direction: column; }
   .yield-module .page-header__actions { width: 100%; }
   .yield-module .page-header__actions .button { width: 100%; }
+  .yield-module .page-action-group, .yield-module .table-toolbar-actions { width: 100%; align-items: stretch; flex-direction: column; }
+  .yield-module .page-action-group .button, .yield-module .cleanup-inactive-button { width: 100%; }
   .yield-module .kpi-grid, .yield-module .filter-grid, .yield-module .form-grid--2, .yield-module .form-grid--3, .yield-module .detail-summary { grid-template-columns: 1fr; }
   .yield-module .detail-summary > div { border-right: 0; border-bottom: 1px solid var(--line-soft); }
   .yield-module .quick-periods > span { display: none; }
@@ -1061,9 +1153,9 @@
 .yield-module .trace-report-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .yield-module .trace-report-title-row h3, .yield-module .trace-report tbody th, .yield-module .yield-comparison-detail > header h3 { font-weight: 900; }
 .yield-module .trace-band-legend { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 3px; }
+.yield-module .trace-band-legend > strong { margin-right: 2px; color: #52697e; font-size: 9px; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
 .yield-module .trace-band-legend small { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--trace-legend-color); border-radius: 999px; padding: 6px 10px; color: #263f57; background: var(--trace-legend-soft); font-size: 10px; font-weight: 900; white-space: nowrap; }
 .yield-module .trace-band-legend small b { color: var(--navy); font-size: 9px; font-weight: 900; }
-.yield-module .trace-band-legend i { width: 15px; height: 15px; flex: 0 0 auto; border: 3px solid rgba(255,255,255,.8); border-radius: 4px; background: var(--trace-legend-color); box-shadow: 0 0 0 1px var(--trace-legend-color); }
 .yield-module .trace-report .trace-piece-yield-heading { min-width: 76px; border-right: 2px solid #afc1d2; background: #244f80; }
 .yield-module .trace-report .trace-piece-yield-cell { min-width: 76px; border-right: 2px solid #b8c8d7; color: #355a78; font-size: 10px; font-weight: 850; }
 .yield-module .trace-product-branch { min-height: 39px; display: flex; align-items: center; position: relative; padding-left: 24px; }

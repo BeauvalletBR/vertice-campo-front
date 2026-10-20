@@ -10,7 +10,7 @@ const softBandColor = (color: string) => {
   return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, .14)`;
 };
 
-export function TraceabilityMatrix({ test, products, weightBands = [], filterBandId = "" }: { test: YieldTest; products: Product[]; weightBands?: WeightBand[]; filterBandId?: string }) {
+export function TraceabilityMatrix({ test, products, weightBands = [], filterBandIds = [] }: { test: YieldTest; products: Product[]; weightBands?: WeightBand[]; filterBandIds?: string[] }) {
   const matrices = buildTraceabilityMatrices(test, products);
   return <div className="trace-report-list">
     {matrices.map((matrix) => {
@@ -24,7 +24,7 @@ export function TraceabilityMatrix({ test, products, weightBands = [], filterBan
         const weight = referenceValues[index] || 0;
         return weightBands.find((band) => band.productReferenceId === referenceProductId && weight >= band.minWeightKg && (band.maxWeightKg == null || weight < band.maxWeightKg));
       });
-      const selectedColumns = matrix.pieceOrders.map((order, index) => ({ order, index, band: columnBands[index] })).filter((column) => !filterBandId || column.band?.id === filterBandId);
+      const selectedColumns = matrix.pieceOrders.map((order, index) => ({ order, index, band: columnBands[index] })).filter((column) => !filterBandIds.length || Boolean(column.band && filterBandIds.includes(column.band.id)));
       const finalRows = matrix.rows.filter((row) => row.kind === "final");
       const finalValues = matrix.pieceOrders.map((_, index) => finalRows.reduce((total, row) => total + (row.values[index] || 0), 0));
       const matrixBands = [...new Map(selectedColumns.map((column) => column.band).filter((band): band is WeightBand => Boolean(band)).map((band) => [band.id, band])).values()].sort((first, second) => first.order - second.order);
@@ -39,7 +39,7 @@ export function TraceabilityMatrix({ test, products, weightBands = [], filterBan
         return band ? { "--trace-band-soft": softBandColor(band.color) } as CSSProperties : undefined;
       };
       return <article className="trace-report" key={matrix.id}>
-      <header><div><span>Rastreabilidade por peça</span><div className="trace-report-title-row"><h3>{matrix.title}</h3>{matrixBands.length > 0 && <div className="trace-band-legend" aria-label="Legenda das faixas">{matrixBands.map((band) => <small style={{ "--trace-legend-color": band.color, "--trace-legend-soft": softBandColor(band.color) } as CSSProperties} key={band.id}><i />{band.name}<b>Média {formatPercent(bandSummary(band))}</b></small>)}</div>}</div></div><strong>{selectedColumns.length} {selectedColumns.length === 1 ? "peça" : "peças"}</strong></header>
+      <header><div><span>Rastreabilidade por peça</span><div className="trace-report-title-row"><h3>{matrix.title}</h3>{matrixBands.length > 0 && <div className="trace-band-legend" aria-label="Médias por faixa"><strong>Médias por faixa:</strong>{matrixBands.map((band) => <small style={{ "--trace-legend-color": band.color, "--trace-legend-soft": softBandColor(band.color) } as CSSProperties} key={band.id}>{band.name}<b>{formatPercent(bandSummary(band))}</b></small>)}</div>}</div></div><strong>{selectedColumns.length} {selectedColumns.length === 1 ? "peça" : "peças"}</strong></header>
       <div className="trace-report-scroll">
         <table aria-label={`Rastreabilidade de ${matrix.title}`}>
           <thead><tr><th>Produto / descarte</th>{selectedColumns.map((column) => <Fragment key={column.order}><th title={column.band?.name || "Sem faixa"}><small>Peça</small>{column.order}</th><th className="trace-piece-yield-heading"><small>Rend.</small>Entrada</th></Fragment>)}<th className="trace-total-column">Total</th><th className="trace-yield-column">Rendimento</th></tr></thead>

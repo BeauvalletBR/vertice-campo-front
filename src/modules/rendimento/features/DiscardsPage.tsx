@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CirclePlus, Pencil, Power, PowerOff } from "lucide-react";
+import { CirclePlus, Pencil, Power, PowerOff, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Button, Field, Modal } from "../components/ui";
@@ -18,7 +18,9 @@ export function DiscardsPage() {
   const [form, setForm] = useState<DiscardForm>(blank);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [pendingToggle, setPendingToggle] = useState<DiscardType | null>(null);
+  const [confirmCleanup, setConfirmCleanup] = useState(false);
 
   const openEdit = (item?: DiscardType) => {
     setError("");
@@ -56,10 +58,21 @@ export function DiscardsPage() {
     if (item.active) setPendingToggle(item);
     else void toggle(item);
   };
+  const clearInactive = async () => {
+    setError("");
+    try {
+      const result = await catalogService.deleteInactiveDiscards();
+      await refreshCatalogs();
+      setNotice(`${result.EXCLUIDOS} ${result.EXCLUIDOS === 1 ? "tipo de descarte apagado" : "tipos de descarte apagados"}.${result.BLOQUEADOS ? ` ${result.BLOQUEADOS} permaneceram por possuírem histórico em testes.` : ""}`);
+    } catch (cleanupError) {
+      setError(cleanupError instanceof Error ? cleanupError.message : "Não foi possível limpar os tipos de descarte inativos.");
+    }
+  };
 
   return <>
-    <PageHeader eyebrow="Cadastros" title="Tipos de Descarte" description="Mantenha os tipos de retirada disponíveis nas etapas dos testes." actions={<Button onClick={() => openEdit()}><CirclePlus size={17} /> Novo tipo de descarte</Button>} />
+    <PageHeader eyebrow="Cadastros" title="Tipos de Descarte" description="Mantenha os tipos de retirada disponíveis nas etapas dos testes." actions={<div className="page-action-group">{items.some((item) => !item.active) && <Button variant="secondary" onClick={() => setConfirmCleanup(true)}><Trash2 size={17} /> Limpar inativos</Button>}<Button onClick={() => openEdit()}><CirclePlus size={17} /> Novo tipo de descarte</Button></div>} />
     {error && <div className="inline-message">{error}</div>}
+    {notice && <div className="inline-message inline-message--success">{notice}</div>}
     <section className="table-panel">
       <header className="table-title"><div><span>Tipos cadastrados</span><small>{items.length} registros · {items.filter((item) => item.active).length} ativos</small></div></header>
       <div className="responsive-table"><table><thead><tr><th>Ordem</th><th>ID</th><th>Nome</th><th>Descrição</th><th>Status</th><th>Ações</th></tr></thead><tbody>
@@ -72,5 +85,6 @@ export function DiscardsPage() {
       <label className="switch-field"><input aria-label="Tipo de descarte ativo" type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} /><span /><div><strong>Tipo ativo</strong><small>Disponível para uso nos produtos</small></div></label>
     </Modal>
     <ConfirmDialog open={pendingToggle !== null} title="Inativar tipo de descarte?" description={pendingToggle ? `${pendingToggle.name} deixará de aparecer para novos lançamentos, sem alterar testes já registrados.` : ""} confirmLabel="Inativar descarte" danger onCancel={() => setPendingToggle(null)} onConfirm={async () => { if (pendingToggle) await toggle(pendingToggle); setPendingToggle(null); }} />
+    <ConfirmDialog open={confirmCleanup} title="Limpar tipos de descarte inativos?" description="Tipos sem uso histórico serão apagados definitivamente. Os descartes já utilizados em testes serão preservados por segurança." confirmLabel="Apagar inativos" danger onCancel={() => setConfirmCleanup(false)} onConfirm={async () => { setConfirmCleanup(false); await clearInactive(); }} />
   </>;
 }

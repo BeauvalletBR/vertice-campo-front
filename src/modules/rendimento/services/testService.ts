@@ -735,6 +735,10 @@ export const testService = {
     return true;
   },
 
+  async removeInactive() {
+    return rendimentoApi.deleteInactiveTests();
+  },
+
   async inactivate(id: string) {
     const test = await rendimentoApi.getTest(id);
     if (test.status !== "FINALIZADO") return undefined;

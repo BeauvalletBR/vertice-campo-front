@@ -7,6 +7,7 @@ export type TraceabilityMatrixRowKind = "input" | "product" | "discard" | "final
 
 export interface TraceabilityMatrixRow {
   id: string;
+  productId?: string;
   label: string;
   kind: TraceabilityMatrixRowKind;
   values: number[];
@@ -64,6 +65,7 @@ export function buildTraceabilityMatrices(test: YieldTest, products: Product[]):
       const total = sum(values);
       rows.push({
         id: `${step.id}-product`,
+        productId: step.productId,
         label: productName(products, step.productId),
         kind: branched && isLeafStep(flow.steps, step.id) ? "final" : "product",
         depth: stepDepth(flow.steps, step),
@@ -104,6 +106,7 @@ export function buildTraceabilityMatrices(test: YieldTest, products: Product[]):
       const total = sum(values);
       rows.push({
         id: `${finalStep.id}-final`,
+        productId: finalStep.productId,
         label: productName(products, finalStep.productId),
         kind: "final",
         depth: stepDepth(flow.steps, finalStep),
@@ -193,7 +196,7 @@ export async function exportTraceabilityPdf(test: YieldTest, products: Product[]
   return true;
 }
 
-export async function exportTraceabilityExcel(test: YieldTest, products: Product[], weightBands: WeightBand[] = [], filterBandId = "") {
+export async function exportTraceabilityExcel(test: YieldTest, products: Product[], weightBands: WeightBand[] = [], filterBandIds: string[] = []) {
   if (test.executionMode !== "traceable") return false;
   const ExcelJS = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
@@ -211,7 +214,7 @@ export async function exportTraceabilityExcel(test: YieldTest, products: Product
       const weight = referenceValues[index] || 0;
       const band = weightBands.find((item) => item.productReferenceId === referenceProductId && weight >= item.minWeightKg && (item.maxWeightKg == null || weight < item.maxWeightKg));
       return { order, index, band };
-    }).filter((column) => !filterBandId || column.band?.id === filterBandId);
+    }).filter((column) => !filterBandIds.length || Boolean(column.band && filterBandIds.includes(column.band.id)));
     const sheetName = `Produto ${matrixIndex + 1}`.slice(0, 31);
     const worksheet = workbook.addWorksheet(sheetName, {
       views: [{ state: "frozen", xSplit: 1, ySplit: 4, showGridLines: false }],

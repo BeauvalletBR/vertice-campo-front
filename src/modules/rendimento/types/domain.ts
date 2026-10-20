@@ -34,6 +34,15 @@ export interface Product extends AuditFields {
   level: number;
   applicableDiscardIds: string[];
   active: boolean;
+  erpProductSeq?: number | null;
+  erpProductDescription?: string;
+  erpYieldTarget?: number | null;
+}
+
+export interface ErpProduct {
+  seqProduct: number;
+  description: string;
+  yieldTarget: number | null;
 }
 
 export interface DiscardType extends AuditFields {

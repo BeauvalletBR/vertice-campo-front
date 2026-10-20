@@ -13,11 +13,20 @@ export const catalogService = {
   async saveProduct(input: Partial<Product> & Pick<Product, "name" | "type">) {
     await rendimentoApi.saveProduct(input);
   },
+  async deleteInactiveProducts() {
+    return rendimentoApi.deleteInactiveProducts();
+  },
+  async searchErpProducts(search = "") {
+    return rendimentoApi.searchErpProducts(search);
+  },
   async saveDiscard(input: Partial<DiscardType> & Pick<DiscardType, "name">) {
     await rendimentoApi.saveDiscard(input);
   },
   async toggleDiscard(item: DiscardType) {
     await rendimentoApi.saveDiscard({ ...item, active: !item.active });
+  },
+  async deleteInactiveDiscards() {
+    return rendimentoApi.deleteInactiveDiscards();
   },
   async saveWeightBand(input: Partial<WeightBand> & Pick<WeightBand, "name" | "productReferenceId">) {
     await rendimentoApi.saveWeightBand(input);

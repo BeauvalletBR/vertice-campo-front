@@ -22,6 +22,7 @@ export function TestsPage({ onNavigate }: { onNavigate: (target: NavigationTarge
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<TestStatus | "">("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
   const [reportTestId, setReportTestId] = useState<string | null>(null);
   const { products, tests, refreshTests } = useRendimentoData();
@@ -60,6 +61,13 @@ export function TestsPage({ onNavigate }: { onNavigate: (target: NavigationTarge
     try { await testService.restore(id); await refreshTests(); }
     catch (actionError) { setError(actionError instanceof Error ? actionError.message : "Não foi possível restaurar o teste."); }
   };
+  const clearInactive = () => {
+    const count = tests.filter((item) => item.status === "CANCELADO").length;
+    setConfirmation({ title: "Limpar todos os testes inativos?", description: `${count} ${count === 1 ? "teste será apagado" : "testes serão apagados"} definitivamente, incluindo pesos, etapas, produtos vinculados e descartes. Esta ação não pode ser desfeita.`, label: "Apagar inativos", danger: true, action: async () => {
+      try { const result = await testService.removeInactive(); await refreshTests(); setNotice(`${result.EXCLUIDOS} ${result.EXCLUIDOS === 1 ? "teste inativo apagado" : "testes inativos apagados"}.`); }
+      catch (actionError) { setError(actionError instanceof Error ? actionError.message : "Não foi possível limpar os testes inativos."); }
+    } });
+  };
   const reopenFinished = (id: string, number: number) => {
     setConfirmation({ title: `Reabrir teste ${number}?`, description: "O teste voltará para execução e o relatório poderá ser gerado novamente após a nova finalização.", label: "Reabrir teste", action: async () => {
       try { const reopened = await testService.reopen(id); if (reopened) onNavigate({ route: "execute", id }); }
@@ -70,13 +78,14 @@ export function TestsPage({ onNavigate }: { onNavigate: (target: NavigationTarge
   return <>
     <PageHeader eyebrow="Operação" title="Testes de Rendimento" description="Crie, continue e consulte todos os testes." actions={<Button onClick={() => onNavigate({ route: "new-test" })}><Plus size={17} /> Novo teste</Button>} />
     {error && <div className="inline-message">{error}</div>}
+    {notice && <div className="inline-message inline-message--success">{notice}</div>}
     <div className="tabs">
       <button className={tab === "pending" ? "active" : ""} onClick={() => selectTab("pending")}>Pendentes <span>{tests.filter((item) => ["RASCUNHO", "ABERTO", "EM_EXECUCAO"].includes(item.status)).length}</span></button>
       <button className={tab === "finished" ? "active" : ""} onClick={() => selectTab("finished")}>Finalizados <span>{tests.filter((item) => item.status === "FINALIZADO").length}</span></button>
       <button className={tab === "inactive" ? "active" : ""} onClick={() => selectTab("inactive")}>Inativos <span>{tests.filter((item) => item.status === "CANCELADO").length}</span></button>
     </div>
     <section className="table-panel tests-panel">
-      <header className="table-toolbar"><label className="search-box"><Search size={17} /><input placeholder="Buscar por data, número, produto, corte ou status..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><label className="select-filter"><Filter size={15} /><select value={status} onChange={(event) => setStatus(event.target.value as TestStatus | "")}><option value="">Todos os status</option>{tab === "pending" ? <><option value="RASCUNHO">Rascunho</option><option value="ABERTO">Aberto</option><option value="EM_EXECUCAO">Em andamento</option></> : tab === "finished" ? <option value="FINALIZADO">Finalizado</option> : <option value="CANCELADO">Inativo</option>}</select></label></header>
+      <header className="table-toolbar"><label className="search-box"><Search size={17} /><input placeholder="Buscar por data, número, produto, corte ou status..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><div className="table-toolbar-actions"><label className="select-filter"><Filter size={15} /><select value={status} onChange={(event) => setStatus(event.target.value as TestStatus | "")}><option value="">Todos os status</option>{tab === "pending" ? <><option value="RASCUNHO">Rascunho</option><option value="ABERTO">Aberto</option><option value="EM_EXECUCAO">Em andamento</option></> : tab === "finished" ? <option value="FINALIZADO">Finalizado</option> : <option value="CANCELADO">Inativo</option>}</select></label>{tab === "inactive" && tests.some((item) => item.status === "CANCELADO") && <button type="button" className="cleanup-inactive-button" onClick={clearInactive}><Trash2 size={15} /> Limpar inativos</button>}</div></header>
       {!rows.length ? <EmptyState title="Nenhum teste encontrado" description="Ajuste a busca ou os filtros para visualizar outros resultados." /> : tab === "pending" ? <>
         <div className="pending-cards-heading"><div><span className="pending-heading-icon"><Clock3 size={19} /></span><div><h2>Testes pendentes</h2><p>Escolha um card para continuar de onde parou.</p></div><strong>{rows.length} {rows.length === 1 ? "pendente" : "pendentes"}</strong></div></div>
         <div className="pending-card-rail">{rows.map((test) => {

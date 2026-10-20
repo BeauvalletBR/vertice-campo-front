@@ -1,6 +1,7 @@
 import { getAuthHeaders, getBackendUrl } from "../../../services/api";
 import type {
   DiscardType,
+  ErpProduct,
   Product,
   TestDiscard,
   TestFlow,
@@ -79,6 +80,9 @@ const mapProduct = (row: ApiRow): Product => ({
     ? row.IDS_TIPOS_DESCARTE.map(asString)
     : [],
   active: asBoolean(row.ATIVO),
+  erpProductSeq: row.SEQPRODUTO_ERP == null ? null : asNumber(row.SEQPRODUTO_ERP),
+  erpProductDescription: asString(row.DESCRICAO_PRODUTO_ERP),
+  erpYieldTarget: row.BOI_METAREND == null ? null : asNumber(row.BOI_METAREND),
   createdBy: asString(row.CRIADO_POR_NOME || row.CRIADO_POR_ID),
   createdAt: asString(row.CRIADO_EM),
   updatedBy: asString(
@@ -360,6 +364,7 @@ export const rendimentoApi = {
       nroempresa: company(),
       nome: product.name,
       tipo: product.type,
+      seqproduto_erp: product.erpProductSeq ?? null,
       id_produto_pai: product.parentId ? Number(product.parentId) : null,
       ids_produtos_origem: (product.originProductIds || []).map(Number),
       ids_tipos_descarte: (product.applicableDiscardIds || []).map(Number),
@@ -370,6 +375,17 @@ export const rendimentoApi = {
       editing ? `/rendimento/produtos/${product.id}` : "/rendimento/produtos",
       { method: editing ? "PUT" : "POST", body: JSON.stringify(body) },
     );
+  },
+  async deleteInactiveProducts() {
+    return request<{ success: boolean; EXCLUIDOS: number; BLOQUEADOS: number }>(`/rendimento/produtos/inativos?nroempresa=${company()}`, { method: "DELETE" });
+  },
+  async searchErpProducts(search = "") {
+    const data = await request<{ PRODUTOS: ApiRow[] }>(`/rendimento/produtos-erp?busca=${encodeURIComponent(search)}&limite=50`);
+    return (data.PRODUTOS || []).map((row): ErpProduct => ({
+      seqProduct: asNumber(row.SEQPRODUTO),
+      description: asString(row.DESCRICAO),
+      yieldTarget: row.BOI_METAREND == null ? null : asNumber(row.BOI_METAREND),
+    }));
   },
   async saveDiscard(discard: Partial<DiscardType> & Pick<DiscardType, "name">) {
     const editing = Boolean(discard.id);
@@ -385,6 +401,9 @@ export const rendimentoApi = {
       editing ? `/rendimento/descartes/${discard.id}` : "/rendimento/descartes",
       { method: editing ? "PUT" : "POST", body: JSON.stringify(body) },
     );
+  },
+  async deleteInactiveDiscards() {
+    return request<{ success: boolean; EXCLUIDOS: number; BLOQUEADOS: number }>(`/rendimento/descartes/inativos?nroempresa=${company()}`, { method: "DELETE" });
   },
   async listWeightBands() {
     const data = await request<{ FAIXAS: ApiRow[] }>(`/rendimento/faixas-peso?nroempresa=${company()}`);
@@ -454,5 +473,8 @@ export const rendimentoApi = {
       `/rendimento/testes/${encodeURIComponent(test.id)}?${params}`,
       { method: "DELETE" },
     );
+  },
+  async deleteInactiveTests() {
+    return request<{ success: boolean; EXCLUIDOS: number; BLOQUEADOS: number }>(`/rendimento/testes/inativos?nroempresa=${company()}`, { method: "DELETE" });
   },
 };
