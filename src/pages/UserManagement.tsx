@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Trash2,
   UserCog,
+  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -81,6 +82,10 @@ export default function UserManagement() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [erpSearchOpen, setErpSearchOpen] = useState(false);
+  const [erpSearch, setErpSearch] = useState("");
+  const [erpUsers, setErpUsers] = useState<AdminUser[]>([]);
+  const [searchingErp, setSearchingErp] = useState(false);
 
   const [systemForm, setSystemForm] = useState(systemInitial);
   const [editingSystem, setEditingSystem] = useState<string | null>(null);
@@ -96,8 +101,24 @@ export default function UserManagement() {
   };
 
   const loadUsers = async (term = "") => {
-    const data = await userManagementApi.getUsers(term);
+    const data = await userManagementApi.getUsers(term, true);
     setUsers(data);
+  };
+
+  const searchErpUsers = async () => {
+    const term = erpSearch.trim();
+    if (term.length < 2) {
+      toast.info("Digite pelo menos 2 caracteres para pesquisar no ERP.");
+      return;
+    }
+    setSearchingErp(true);
+    try {
+      setErpUsers(await userManagementApi.getUsers(term, false));
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setSearchingErp(false);
+    }
   };
 
   const refresh = async () => {
@@ -132,6 +153,13 @@ export default function UserManagement() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const selectErpUser = async (user: AdminUser) => {
+    await selectUser(user);
+    setErpSearchOpen(false);
+    setErpSearch("");
+    setErpUsers([]);
   };
 
   const togglePermission = (system: string, module: string, checked: boolean) => {
@@ -285,6 +313,9 @@ export default function UserManagement() {
   const modulesForApplication = catalog.modulos.filter(
     (module) => module.SISTEMA === applicationForm.sistema,
   );
+  const grantedModules = catalog.modulos.filter((module) =>
+    permissions.has(permissionKey(selectedCompany, module.SISTEMA, module.MODULO)),
+  );
 
   return (
     <div className="min-h-full bg-[#F4F7FA] p-3 sm:p-5 lg:p-7">
@@ -320,12 +351,24 @@ export default function UserManagement() {
           <TabsContent value="usuarios">
             <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
               <Card className="border-[#D4DFE9]">
-                <CardHeader className="pb-3"><CardTitle className="text-base text-[#173D6E]">Usuários do ERP</CardTitle></CardHeader>
+                <CardHeader className="pb-3"><div className="flex items-center justify-between gap-3"><div><CardTitle className="text-base text-[#173D6E]">Usuários cadastrados</CardTitle><p className="mt-1 text-xs text-[#6B7F92]">Pessoas que já possuem ao menos um módulo.</p></div><Badge variant="secondary">{users.length}</Badge></div></CardHeader>
                 <CardContent className="space-y-3">
+                  <Button type="button" variant={erpSearchOpen ? "secondary" : "outline"} className="w-full border-[#9DB7CF] text-[#173D6E]" onClick={() => { setErpSearchOpen((current) => !current); setErpUsers([]); }}><UserPlus className="mr-2 h-4 w-4" />{erpSearchOpen ? "Fechar busca do ERP" : "Adicionar usuário do ERP"}</Button>
+                  {erpSearchOpen && <div className="space-y-2 rounded-xl border border-[#BFD0DF] bg-[#F4F8FB] p-3">
+                    <div><p className="text-xs font-black text-[#173D6E]">Pesquisar no ERP</p><p className="text-[10px] text-[#6B7F92]">Localize por nome, login ou e-mail para conceder o primeiro acesso.</p></div>
+                    <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void searchErpUsers(); }}>
+                      <Input value={erpSearch} onChange={(event) => setErpSearch(event.target.value)} placeholder="Usuário do ERP" autoFocus />
+                      <Button type="submit" size="icon" aria-label="Pesquisar usuário no ERP" disabled={searchingErp}><Search className={`h-4 w-4 ${searchingErp ? "animate-pulse" : ""}`} /></Button>
+                    </form>
+                    {erpUsers.length > 0 && <div className="max-h-60 space-y-1 overflow-y-auto pr-1">{erpUsers.map((user) => <button key={`erp-${user.SEQUSUARIO}`} type="button" onClick={() => void selectErpUser(user)} className="flex w-full items-center justify-between gap-2 rounded-lg border border-[#D5E0E9] bg-white p-2.5 text-left hover:border-[#1B58A0] hover:bg-[#EDF5FD]"><span className="min-w-0"><strong className="block truncate text-xs text-[#173D6E]">{user.NOME}</strong><small className="block truncate text-[10px] text-[#6B7F92]">{user.CODUSUARIO}{user.EMAIL ? ` · ${user.EMAIL}` : ""}</small></span><Badge variant={user.QTD_PERMISSOES > 0 ? "secondary" : "outline"}>{user.QTD_PERMISSOES > 0 ? "Cadastrado" : "Adicionar"}</Badge></button>)}</div>}
+                    {!searchingErp && erpSearch.trim().length >= 2 && erpUsers.length === 0 && <p className="rounded-lg border border-dashed border-[#C9D6E2] p-3 text-center text-[10px] font-semibold text-[#6B7F92]">Nenhum usuário encontrado no ERP.</p>}
+                  </div>}
+                  <div className="border-t border-[#E0E8EF] pt-3"><p className="mb-2 text-[10px] font-black uppercase tracking-wider text-[#60758A]">Filtrar cadastrados</p>
                   <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void loadUsers(search); }}>
                     <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome, login ou e-mail" />
                     <Button type="submit" size="icon" aria-label="Pesquisar"><Search className="h-4 w-4" /></Button>
                   </form>
+                  </div>
                   <div className="max-h-[600px] space-y-2 overflow-y-auto pr-1">
                     {users.map((user) => (
                       <button key={user.SEQUSUARIO} type="button" onClick={() => void selectUser(user)} className={`w-full rounded-xl border p-3 text-left transition ${selectedUser?.SEQUSUARIO === user.SEQUSUARIO ? "border-[#1B58A0] bg-[#EDF5FD] ring-1 ring-[#1B58A0]" : "border-[#DCE5ED] bg-white hover:border-[#8EABC7]"}`}>
@@ -335,6 +378,7 @@ export default function UserManagement() {
                         </div>
                       </button>
                     ))}
+                    {!loading && users.length === 0 && <p className="rounded-xl border border-dashed border-[#C9D6E2] bg-[#F8FAFC] p-5 text-center text-xs font-semibold text-[#60758A]">Nenhum usuário com módulos cadastrados.</p>}
                   </div>
                 </CardContent>
               </Card>
@@ -350,6 +394,10 @@ export default function UserManagement() {
                   {!selectedUser ? <EmptyState text="Escolha um usuário para configurar os acessos." /> : (
                     <div className="space-y-4">
                       <div className="max-w-md space-y-2"><Label>Empresa</Label><select className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={selectedCompany} onChange={(event) => setSelectedCompany(Number(event.target.value))}>{catalog.empresas.map((company) => <option key={company.NROEMPRESA} value={company.NROEMPRESA}>{company.NROEMPRESA} - {company.NOMEREDUZIDO || company.FANTASIA || company.RAZAOSOCIAL}</option>)}</select></div>
+                      <div className="rounded-xl border border-[#BFD0DF] bg-[#F4F8FB] p-4">
+                        <div className="mb-3 flex items-center justify-between gap-3"><div><p className="text-sm font-black text-[#173D6E]">Módulos com acesso</p><p className="text-[10px] text-[#6B7F92]">Liberações atuais na empresa selecionada.</p></div><Badge className="bg-[#173D6E]">{grantedModules.length}</Badge></div>
+                        {grantedModules.length > 0 ? <div className="flex flex-wrap gap-2">{grantedModules.map((module) => <Badge key={`granted-${module.SISTEMA}-${module.MODULO}`} variant="outline" className="border-[#9AB6CF] bg-white px-2.5 py-1 text-[#173D6E]"><span className="font-black">{module.DESCRICAO}</span><span className="ml-1 text-[9px] text-[#71869A]">{module.SISTEMA}/{module.MODULO}</span></Badge>)}</div> : <p className="rounded-lg border border-dashed border-[#C9D6E2] bg-white p-3 text-center text-xs font-semibold text-[#6B7F92]">Nenhum módulo liberado nesta empresa.</p>}
+                      </div>
                       <div className="grid gap-3 xl:grid-cols-2">
                         {catalog.sistemas.map((system) => {
                           const modules = catalog.modulos.filter((module) => module.SISTEMA === system.SISTEMA);

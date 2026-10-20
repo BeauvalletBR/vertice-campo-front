@@ -78,8 +78,8 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
 
 export const userManagementApi = {
   getCatalog: () => request<AdminCatalog>("/admin/acessos/catalogo"),
-  getUsers: (search = "") =>
-    request<AdminUser[]>(`/admin/acessos/usuarios?busca=${encodeURIComponent(search)}`),
+  getUsers: (search = "", onlyWithAccess = false) =>
+    request<AdminUser[]>(`/admin/acessos/usuarios?busca=${encodeURIComponent(search)}&limite=${onlyWithAccess ? 5000 : 100}&somente_com_acesso=${onlyWithAccess}`),
   getPermissions: (userId: number) =>
     request<AdminPermission[]>(`/admin/acessos/usuarios/${userId}/permissoes`),
   savePermissions: (userId: number, permissoes: Array<Omit<AdminPermission, "SEQUSUARIO" | "PERMISSAO">>) =>

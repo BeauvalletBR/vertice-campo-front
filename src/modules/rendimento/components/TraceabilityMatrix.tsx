@@ -1,5 +1,5 @@
 import { Fragment, type CSSProperties } from "react";
-import type { Product, WeightBand, YieldTest } from "../types/domain";
+import { UNCLASSIFIED_WEIGHT_BAND_ID, type Product, type WeightBand, type YieldTest } from "../types/domain";
 import { formatPercent, formatWeight } from "../utils/format";
 import { buildTraceabilityMatrices } from "../utils/traceabilityReport";
 
@@ -24,7 +24,7 @@ export function TraceabilityMatrix({ test, products, weightBands = [], filterBan
         const weight = referenceValues[index] || 0;
         return weightBands.find((band) => band.productReferenceId === referenceProductId && weight >= band.minWeightKg && (band.maxWeightKg == null || weight < band.maxWeightKg));
       });
-      const selectedColumns = matrix.pieceOrders.map((order, index) => ({ order, index, band: columnBands[index] })).filter((column) => !filterBandIds.length || Boolean(column.band && filterBandIds.includes(column.band.id)));
+      const selectedColumns = matrix.pieceOrders.map((order, index) => ({ order, index, band: columnBands[index] })).filter((column) => !filterBandIds.length || (column.band ? filterBandIds.includes(column.band.id) : filterBandIds.includes(UNCLASSIFIED_WEIGHT_BAND_ID)));
       const finalRows = matrix.rows.filter((row) => row.kind === "final");
       const finalValues = matrix.pieceOrders.map((_, index) => finalRows.reduce((total, row) => total + (row.values[index] || 0), 0));
       const matrixBands = [...new Map(selectedColumns.map((column) => column.band).filter((band): band is WeightBand => Boolean(band)).map((band) => [band.id, band])).values()].sort((first, second) => first.order - second.order);

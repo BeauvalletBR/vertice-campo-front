@@ -1,4 +1,4 @@
-import type { Product, TestFlow, WeightBand, YieldTest } from "../types/domain";
+import { UNCLASSIFIED_WEIGHT_BAND_ID, type Product, type TestFlow, type WeightBand, type YieldTest } from "../types/domain";
 import { formatDate } from "./format";
 import { isBranchedFlow, isLeafStep, orderTreeSteps, stepDepth } from "./flowTree";
 import { calculateFlowReferenceWeight } from "./calculations";
@@ -214,7 +214,7 @@ export async function exportTraceabilityExcel(test: YieldTest, products: Product
       const weight = referenceValues[index] || 0;
       const band = weightBands.find((item) => item.productReferenceId === referenceProductId && weight >= item.minWeightKg && (item.maxWeightKg == null || weight < item.maxWeightKg));
       return { order, index, band };
-    }).filter((column) => !filterBandIds.length || Boolean(column.band && filterBandIds.includes(column.band.id)));
+    }).filter((column) => !filterBandIds.length || (column.band ? filterBandIds.includes(column.band.id) : filterBandIds.includes(UNCLASSIFIED_WEIGHT_BAND_ID)));
     const sheetName = `Produto ${matrixIndex + 1}`.slice(0, 31);
     const worksheet = workbook.addWorksheet(sheetName, {
       views: [{ state: "frozen", xSplit: 1, ySplit: 4, showGridLines: false }],

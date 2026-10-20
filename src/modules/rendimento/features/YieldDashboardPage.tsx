@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Boxes, Check, ChevronDown, ChevronRight, ChevronUp, FileSpreadsheet, GitBranch, Layers3, Maximize2, Minimize2, Minus, RotateCcw, Scale, Table2, Target, TestTube2, Trash2 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { PageHeader } from "../components/PageHeader";
@@ -11,7 +11,7 @@ import { calculateFlowFinalWeight, calculateFlowReferenceWeight, calculateTotalD
 import { formatDate, formatPercent, formatWeight } from "../utils/format";
 import { buildTraceabilityMatrices, exportTraceabilityExcel } from "../utils/traceabilityReport";
 import { exportYieldComparisonExcel, exportYieldGoalExcel } from "../utils/dashboardReport";
-import type { Product } from "../types/domain";
+import { UNCLASSIFIED_WEIGHT_BAND_ID, type Product } from "../types/domain";
 
 const pct = (value: number, base: number) => base > 0 ? (value / base) * 100 : 0;
 type TargetSortKey = "week" | "date" | "standard" | "pieces" | "band" | "yieldPercent" | "goal" | "difference";
@@ -100,6 +100,17 @@ export function YieldDashboardPage() {
   const [targetSort, setTargetSort] = useState<{ key: TargetSortKey; direction: SortDirection } | null>(null);
   const nameOf = (id: string) => products.find((product) => product.id === id)?.name || "Produto";
 
+  useEffect(() => {
+    const closeOpenFilters = (event: PointerEvent) => {
+      const target = event.target as Node;
+      document.querySelectorAll<HTMLDetailsElement>("#yield-dashboard-filters details[open]").forEach((details) => {
+        if (!details.contains(target)) details.removeAttribute("open");
+      });
+    };
+    document.addEventListener("pointerdown", closeOpenFilters);
+    return () => document.removeEventListener("pointerdown", closeOpenFilters);
+  }, []);
+
   const rawRecords = tests.filter((test) => test.status === "FINALIZADO").flatMap((test) => {
     const matrices = buildTraceabilityMatrices(test, products);
     return test.flows.map((flow) => {
@@ -133,6 +144,7 @@ export function YieldDashboardPage() {
       return {
         test, flow, matrix, pieceBands,
         productIds: flowProductIds,
+        referenceProductId: test.inputProductId || referenceProductId,
         productId: flow.rootProductId,
         productName: nameOf(flow.rootProductId),
         referenceWeight, averageReference, finalWeight, discardWeight,
@@ -148,15 +160,19 @@ export function YieldDashboardPage() {
       };
     });
   });
-  const records = rawRecords.filter((record) => (!productIds.length || record.productIds.some((id) => productIds.includes(id))) && (!bandIds.length || record.pieceBands.some((piece) => Boolean(piece.band && bandIds.includes(piece.band.id))) || (!record.pieceBands.length && bandIds.includes(record.bandId))) && (!startDate || record.test.date >= startDate) && (!endDate || record.test.date <= endDate)).map((record) => {
+  const pieceMatchesBandFilter = (piece: { band?: { id: string } }) => piece.band
+    ? bandIds.includes(piece.band.id)
+    : bandIds.includes(UNCLASSIFIED_WEIGHT_BAND_ID);
+  const records = rawRecords.filter((record) => (!productIds.length || record.productIds.some((id) => productIds.includes(id))) && (!bandIds.length || record.pieceBands.some(pieceMatchesBandFilter) || (!record.pieceBands.length && (record.bandId ? bandIds.includes(record.bandId) : bandIds.includes(UNCLASSIFIED_WEIGHT_BAND_ID)))) && (!startDate || record.test.date >= startDate) && (!endDate || record.test.date <= endDate)).map((record) => {
     if (!bandIds.length) return record;
-    const scopedPieces = record.pieceBands.filter((piece) => Boolean(piece.band && bandIds.includes(piece.band.id)));
+    const scopedPieces = record.pieceBands.filter(pieceMatchesBandFilter);
     if (!scopedPieces.length) return record;
     const selectedBand = bandIds.length === 1 ? weightBands.find((band) => band.id === bandIds[0]) : undefined;
+    const onlyUnclassified = bandIds.length === 1 && bandIds[0] === UNCLASSIFIED_WEIGHT_BAND_ID;
     const referenceWeight = scopedPieces.reduce((total, piece) => total + piece.referenceWeight, 0);
     const finalWeight = scopedPieces.reduce((total, piece) => total + piece.finalWeight, 0);
     const discardWeight = scopedPieces.reduce((total, piece) => total + piece.discardWeight, 0);
-    return { ...record, referenceWeight, finalWeight, discardWeight, averageReference: referenceWeight / scopedPieces.length, yieldPercent: pct(finalWeight, referenceWeight), discardPercent: pct(discardWeight, referenceWeight), bandId: selectedBand?.id || "MULTIPLAS", bandName: selectedBand?.name || `${bandIds.length} faixas`, bandLabel: selectedBand ? bandRange(selectedBand) : `${bandIds.length} faixas`, bandColor: selectedBand?.color || "#7890A8", pieceCount: scopedPieces.length, visiblePieceIndexes: scopedPieces.map((piece) => piece.index) };
+    return { ...record, referenceWeight, finalWeight, discardWeight, averageReference: referenceWeight / scopedPieces.length, yieldPercent: pct(finalWeight, referenceWeight), discardPercent: pct(discardWeight, referenceWeight), bandId: onlyUnclassified ? UNCLASSIFIED_WEIGHT_BAND_ID : selectedBand?.id || "MULTIPLAS", bandName: onlyUnclassified ? "Sem faixa" : selectedBand?.name || `${bandIds.length} faixas`, bandLabel: onlyUnclassified ? "Sem faixa" : selectedBand ? bandRange(selectedBand) : `${bandIds.length} faixas`, bandColor: selectedBand?.color || "#7890A8", pieceCount: scopedPieces.length, visiblePieceIndexes: scopedPieces.map((piece) => piece.index) };
   });
 
   const totalReference = records.reduce((sum, item) => sum + item.referenceWeight, 0);
@@ -167,10 +183,10 @@ export function YieldDashboardPage() {
   const productCount = new Set(records.flatMap((record) => record.productIds)).size;
   const bandGroups = new Map<string, { id: string; name: string; color: string; reference: number; final: number; pieces: number }>();
   records.forEach((record) => {
-    const pieces = bandIds.length ? record.pieceBands.filter((piece) => Boolean(piece.band && bandIds.includes(piece.band.id))) : record.pieceBands;
+    const pieces = bandIds.length ? record.pieceBands.filter(pieceMatchesBandFilter) : record.pieceBands;
     if (!pieces.length) {
-      const key = record.bandId || record.bandName;
-      const group = bandGroups.get(key) || { id: record.bandId, name: record.bandName, color: record.bandColor, reference: 0, final: 0, pieces: 0 };
+      const key = record.bandId || UNCLASSIFIED_WEIGHT_BAND_ID;
+      const group = bandGroups.get(key) || { id: record.bandId || UNCLASSIFIED_WEIGHT_BAND_ID, name: record.bandId ? record.bandName : "Sem faixa", color: record.bandColor, reference: 0, final: 0, pieces: 0 };
       group.reference += record.referenceWeight;
       group.final += record.finalWeight;
       group.pieces += record.pieceCount;
@@ -178,8 +194,8 @@ export function YieldDashboardPage() {
       return;
     }
     pieces.forEach((piece) => {
-      const key = piece.band?.id || "sem-faixa";
-      const group = bandGroups.get(key) || { id: piece.band?.id || "", name: piece.band?.name || "Sem faixa", color: piece.band?.color || "#7890A8", reference: 0, final: 0, pieces: 0 };
+      const key = piece.band?.id || UNCLASSIFIED_WEIGHT_BAND_ID;
+      const group = bandGroups.get(key) || { id: piece.band?.id || UNCLASSIFIED_WEIGHT_BAND_ID, name: piece.band?.name || "Sem faixa", color: piece.band?.color || "#7890A8", reference: 0, final: 0, pieces: 0 };
       group.reference += piece.referenceWeight;
       group.final += piece.finalWeight;
       group.pieces += 1;
@@ -257,6 +273,36 @@ export function YieldDashboardPage() {
     }
   });
   const availableProducts = products.filter((product) => hierarchyProductIds.has(product.id)).sort((first, second) => first.level - second.level || first.name.localeCompare(second.name, "pt-BR"));
+  const referenceProductIdsFor = (selectedIds: string[]) => {
+    const referenceIds = new Set<string>();
+    const selectedIdSet = new Set(selectedIds);
+    const visitOrigins = (productId: string, visited = new Set<string>()) => {
+      if (visited.has(productId)) return;
+      const nextVisited = new Set(visited).add(productId);
+      referenceIds.add(productId);
+      const product = productById.get(productId);
+      const originIds = product?.originProductIds.length
+        ? product.originProductIds
+        : product?.parentId
+          ? [product.parentId]
+          : [];
+      originIds.forEach((originId) => visitOrigins(originId, nextVisited));
+    };
+    selectedIds.forEach((productId) => visitOrigins(productId));
+    rawRecords.filter((record) => record.productIds.some((productId) => selectedIdSet.has(productId))).forEach((record) => {
+      if (record.referenceProductId) referenceIds.add(record.referenceProductId);
+    });
+    return referenceIds;
+  };
+  const compatibleReferenceProductIds = referenceProductIdsFor(productIds);
+  const availableWeightBands = weightBands.filter((band) => band.active && (!productIds.length || compatibleReferenceProductIds.has(band.productReferenceId)));
+  const handleProductIdsChange = (nextProductIds: string[]) => {
+    const nextReferenceIds = referenceProductIdsFor(nextProductIds);
+    const compatibleBandIds = new Set(weightBands.filter((band) => band.active && (!nextProductIds.length || nextReferenceIds.has(band.productReferenceId))).map((band) => band.id));
+    compatibleBandIds.add(UNCLASSIFIED_WEIGHT_BAND_ID);
+    setProductIds(nextProductIds);
+    setBandIds((current) => current.filter((bandId) => compatibleBandIds.has(bandId)));
+  };
   const comparisonExportRecords = records.flatMap((record) => record.matrix ? [{
     testNumber: record.test.number,
     date: record.test.date,
@@ -296,7 +342,7 @@ export function YieldDashboardPage() {
 
   return <>
     <PageHeader eyebrow="Análise" title="Dashboard de Rendimento" description="Compare testes do mesmo produto por período e faixa de peso, com médias ponderadas pelos quilos processados." />
-    <section className="yield-dashboard-filters" id="yield-dashboard-filters"><ProductTreeFilter products={availableProducts} selectableProductIds={selectableProductIds} values={productIds} onChange={setProductIds} /><MultiFilter label="Faixa de peso" allLabel="Todas as faixas" values={bandIds} onChange={setBandIds} options={weightBands.filter((band) => band.active).map((band) => ({ value: band.id, label: `${band.productReferenceName} · ${band.name}` }))} /><label>Início<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label>Fim<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label><div className="yield-filter-actions"><span>Ações</span><button type="button" onClick={resetFilters}><RotateCcw size={15} /> Restaurar filtros</button></div></section>
+    <section className="yield-dashboard-filters" id="yield-dashboard-filters"><ProductTreeFilter products={availableProducts} selectableProductIds={selectableProductIds} values={productIds} onChange={handleProductIdsChange} /><MultiFilter label="Faixa de peso" allLabel="Todas as faixas" values={bandIds} onChange={setBandIds} options={[{ value: UNCLASSIFIED_WEIGHT_BAND_ID, label: "Sem faixa" }, ...availableWeightBands.map((band) => ({ value: band.id, label: `${band.productReferenceName} · ${band.name}` }))]} /><label>Início<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label>Fim<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label><div className="yield-filter-actions"><span>Ações</span><button type="button" onClick={resetFilters}><RotateCcw size={15} /> Restaurar filtros</button></div></section>
     <section className="yield-dashboard-cards"><article><span><TestTube2 size={18} />Testes comparados</span><strong>{records.length}</strong><small>registros finalizados</small></article><article><span><Layers3 size={18} />Produtos</span><strong>{productCount}</strong><small>grupos e subprodutos</small></article><article><span><Scale size={18} />Peso médio base</span><strong>{formatWeight(averageReference)}</strong><small>por peça</small></article><article className="featured"><span><Target size={18} />Rendimento ponderado</span><strong>{formatPercent(weightedYield)}</strong><small>{formatWeight(totalFinal)} de produto final</small></article><article><span><Trash2 size={18} />Descarte</span><strong>{formatPercent(pct(totalDiscard, totalReference))}</strong><small>{formatWeight(totalDiscard)} retirados</small></article><article><span><Boxes size={18} />Peso analisado</span><strong>{formatWeight(totalReference)}</strong><small>base dos cálculos</small></article></section>
     <section className="yield-dashboard-grid">
       <article className="yield-dashboard-chart"><header><div><span>Comparação</span><h2>Rendimento e peças por faixa</h2></div><Activity size={20} /></header><div>{byBand.length ? <ResponsiveContainer width="100%" height={300}><BarChart data={byBand} layout="vertical" margin={{ left: 14, right: 35 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" domain={[0, 100]} tickFormatter={(value) => `${value}%`} /><YAxis dataKey="label" type="category" width={145} /><Tooltip formatter={(value: number, name: string, item) => name === "rendimento" ? [formatPercent(value), `${item.payload.pieces} peças`] : value} /><Bar dataKey="rendimento" radius={[0, 6, 6, 0]} cursor="pointer" onClick={(entry) => { const clicked = entry as unknown as { id?: string; payload?: { id?: string } }; const id = String(clicked.id || clicked.payload?.id || ""); if (id) setBandIds((current) => current.length === 1 && current[0] === id ? [] : [id]); }} label={{ position: "right", formatter: (value: number) => formatPercent(value), fill: "#173D6E", fontSize: 11 }}>{byBand.map((item) => <Cell key={item.id || item.name} fill={item.color} opacity={!bandIds.length || bandIds.includes(item.id) ? 1 : .35} />)}</Bar></BarChart></ResponsiveContainer> : <p className="dashboard-empty">Nenhum teste encontrado para os filtros.</p>}</div></article>

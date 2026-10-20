@@ -3,6 +3,8 @@ export const LOCAL_USER = {
   name: "Usuário Local",
 } as const;
 
+export const UNCLASSIFIED_WEIGHT_BAND_ID = "__SEM_FAIXA__";
+
 export type ProductType = "ENTRADA" | "PRODUTO";
 export type TestStatus =
   "RASCUNHO" | "ABERTO" | "EM_EXECUCAO" | "FINALIZADO" | "CANCELADO";
