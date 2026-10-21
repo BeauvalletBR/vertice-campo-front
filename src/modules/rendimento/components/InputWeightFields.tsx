@@ -34,6 +34,7 @@ export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuan
   const committedCount = useRef(
     Math.max(0, Math.min(200, Math.trunc(Number(quantity) || 0))),
   );
+  const pieceWeightsRef = useRef(pieceWeights);
   const count = Math.max(
     0,
     Math.min(200, Math.trunc(Number(quantityDraft) || 0)),
@@ -48,11 +49,16 @@ export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuan
     );
   }, [quantity]);
 
+  useEffect(() => {
+    pieceWeightsRef.current = pieceWeights;
+  }, [pieceWeights]);
+
   const applyQuantity = (value: string, nextCount: number) => {
     const next = Array.from(
       { length: nextCount },
-      (_, index) => pieceWeights[index] || "",
+      (_, index) => pieceWeightsRef.current[index] || "",
     );
+    pieceWeightsRef.current = next;
     committedCount.current = nextCount;
     setQuantityDraft(value);
     onQuantityChange(value);
@@ -64,7 +70,7 @@ export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuan
     if (value === "") return;
 
     const nextCount = Math.max(0, Math.min(200, Math.trunc(Number(value) || 0)));
-    const removed = pieceWeights
+    const removed = pieceWeightsRef.current
       .slice(nextCount, committedCount.current)
       .map((pieceValue, index) => ({
         position: nextCount + index + 1,
@@ -80,7 +86,8 @@ export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuan
     applyQuantity(value, nextCount);
   };
   const changePiece = (index: number, value: string) => {
-    const next = Array.from({ length: count }, (_, itemIndex) => itemIndex === index ? sanitizeWeightInput(value) : pieceWeights[itemIndex] || "");
+    const next = Array.from({ length: count }, (_, itemIndex) => itemIndex === index ? sanitizeWeightInput(value) : pieceWeightsRef.current[itemIndex] || "");
+    pieceWeightsRef.current = next;
     onPieceWeightsChange(next);
   };
   const applyMode = (nextMode: WeightEntryMode) => {
@@ -88,7 +95,8 @@ export function InputWeightFields({ quantity, weight, pieceWeights, mode, onQuan
       onModeChange("total");
       return;
     }
-    const next = Array.from({ length: count }, (_, index) => pieceWeights[index] || "");
+    const next = Array.from({ length: count }, (_, index) => pieceWeightsRef.current[index] || "");
+    pieceWeightsRef.current = next;
     onPieceWeightsChange(next);
     onModeChange("pieces");
     setExpanded(true);

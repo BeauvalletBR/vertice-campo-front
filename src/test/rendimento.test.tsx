@@ -1049,6 +1049,38 @@ describe("módulo Teste de Rendimento integrado ao backend", () => {
     expect(screen.getByLabelText("Peça 3")).toHaveValue("12,000");
   });
 
+  it("mantém as 12 peças preenchidas ao reduzir de 15 para 12", () => {
+    function QuantityHarness() {
+      const [quantity, setQuantity] = useState("15");
+      const [pieces, setPieces] = useState([
+        "1,000", "2,000", "3,000", "4,000", "5,000", "6,000",
+        "7,000", "8,000", "9,000", "10,000", "11,000", "12,000",
+        "", "", "",
+      ]);
+      return (
+        <InputWeightFields
+          quantity={quantity}
+          weight=""
+          pieceWeights={pieces}
+          mode="pieces"
+          onQuantityChange={setQuantity}
+          onWeightChange={() => undefined}
+          onPieceWeightsChange={setPieces}
+          onModeChange={() => undefined}
+        />
+      );
+    }
+
+    render(<QuantityHarness />);
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "12" } });
+
+    expect(screen.queryByRole("heading", { name: /Reduzir a quantidade de peças/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Peça 10")).toHaveValue("10,000");
+    expect(screen.getByLabelText("Peça 11")).toHaveValue("11,000");
+    expect(screen.getByLabelText("Peça 12")).toHaveValue("12,000");
+    expect(screen.queryByLabelText("Peça 13")).not.toBeInTheDocument();
+  });
+
   it("avança pelos pesos de entrada ao pressionar Enter", () => {
     render(
       <InputWeightFields
