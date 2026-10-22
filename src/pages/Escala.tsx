@@ -58,6 +58,8 @@ import {
 } from "@/components/ui/table";
 import {
   consultarEscala,
+  carregarAgrotoolsEscala,
+  consultarAnaliseAgrotoolsEscala,
   consultarOcorrenciasEscala,
   consultarPrazosPagamento,
   consultarResumoEscala,
@@ -78,6 +80,8 @@ import {
   type ApiRancher,
 } from "@/services/api";
 import type {
+  AgrotoolsAnaliseStatus,
+  EscalaAgrotoolsAnalise,
   EscalaChinaAjuste,
   EscalaLinha,
   EscalaOcorrencia,
@@ -130,6 +134,38 @@ const currencyFormat = new Intl.NumberFormat("pt-BR", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+const agrotoolsStatusLabel = (status?: AgrotoolsAnaliseStatus | null) => {
+  switch (status) {
+    case "APTO":
+      return "Apto";
+    case "APTO_COM_RESSALVAS":
+      return "Apto com ressalva";
+    case "INAPTO":
+      return "Inapto";
+    case "NAO_ENCONTRADO":
+      return "IE não encontrada";
+    case "EM_ANALISE":
+      return "Em análise";
+    case "ERRO":
+      return "Erro na análise";
+    default:
+      return "Pendente";
+  }
+};
+
+const agrotoolsStatusClasses = (status?: AgrotoolsAnaliseStatus | null) => {
+  if (status === "APTO") {
+    return "border-[#8ED0B1] bg-[#EAF8F1] text-[#137554] hover:bg-[#DDF3E8]";
+  }
+  if (status === "APTO_COM_RESSALVAS") {
+    return "border-[#F2B176] bg-[#FFF4E8] text-[#A65312] hover:bg-[#FFE9D2]";
+  }
+  if (["INAPTO", "NAO_ENCONTRADO", "ERRO"].includes(String(status))) {
+    return "border-[#F0A5AD] bg-[#FFF0F2] text-[#B42332] hover:bg-[#FFE2E6]";
+  }
+  return "border-[#CBD8E5] bg-[#F5F8FB] text-[#60758A] hover:bg-[#EAF1F8]";
+};
 
 const decimalFormat = new Intl.NumberFormat("pt-BR", {
   minimumFractionDigits: 2,
@@ -194,6 +230,12 @@ interface OccurrencesDialogState {
   title: string;
   description: string;
   occurrences: EscalaOcorrencia[];
+  loading: boolean;
+}
+
+interface AgrotoolsDialogState {
+  row: EscalaLinha;
+  analysis: EscalaAgrotoolsAnalise | null;
   loading: boolean;
 }
 
@@ -1006,6 +1048,9 @@ export default function Escala() {
   const [loading, setLoading] = useState(true);
   const [loadingWeeks, setLoadingWeeks] = useState(true);
   const [loadingChinaHistory, setLoadingChinaHistory] = useState(false);
+  const [loadingAgrotools, setLoadingAgrotools] = useState(false);
+  const [agrotoolsDialog, setAgrotoolsDialog] =
+    useState<AgrotoolsDialogState | null>(null);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [openDays, setOpenDays] = useState<Record<string, boolean>>(
     () => restoredPlanningView?.openDays || {},
@@ -1723,6 +1768,70 @@ export default function Escala() {
           });
         });
       }
+    }
+  };
+
+  const handleLoadAgrotools = async () => {
+    if (loadingAgrotools) return;
+    setLoadingAgrotools(true);
+    try {
+      const result = await carregarAgrotoolsEscala({
+        nroempresa,
+        data_inicio: dateStart,
+        data_fim: dateEnd,
+      });
+      await loadData(false);
+      toast.success(
+        `${result.message} ${numberFormat.format(result.aptos || 0)} apto(s), ${numberFormat.format(
+          result.aptos_com_ressalvas || 0,
+        )} com ressalva(s) e ${numberFormat.format(result.inaptos || 0)} inapto(s).`,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível consultar a Agrotools.",
+      );
+    } finally {
+      setLoadingAgrotools(false);
+    }
+  };
+
+  const openAgrotoolsAnalysis = async (row: EscalaLinha) => {
+    const analysisId = String(row.ID_ANALISE_AGROTOOLS || "").trim();
+    setAgrotoolsDialog({ row, analysis: null, loading: Boolean(analysisId) });
+
+    if (!analysisId) {
+      setAgrotoolsDialog({
+        row,
+        loading: false,
+        analysis: {
+          status: row.STATUS_AGROTOOLS_ANALISE || "PENDENTE",
+          produtor: row.PRODUTOR,
+          fazenda: row.DESC_PROPRIEDADE,
+          mensagem: "Esta linha ainda não foi consultada na Agrotools.",
+        },
+      });
+      return;
+    }
+
+    try {
+      const analysis = await consultarAnaliseAgrotoolsEscala(
+        nroempresa,
+        analysisId,
+      );
+      setAgrotoolsDialog((current) =>
+        current?.row === row ? { ...current, analysis, loading: false } : current,
+      );
+    } catch (error) {
+      setAgrotoolsDialog((current) =>
+        current?.row === row ? { ...current, loading: false } : current,
+      );
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível abrir a análise Agrotools.",
+      );
     }
   };
 
@@ -2666,6 +2775,25 @@ export default function Escala() {
                   <Settings2 className="h-3.5 w-3.5" />
                   China: {chinaPeriodConfig?.buttonLabel || "Manual"}
                 </Button>
+
+                {canManage && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={loading || loadingAgrotools}
+                    className="h-10 gap-2 rounded-xl border-[#8FB8D9] bg-[#F1F7FC] px-4 text-xs font-extrabold text-[#145E96] hover:border-[#367FB5] hover:bg-[#E6F1FA] disabled:border-[#D4DFE8] disabled:text-[#90A3B7]"
+                    onClick={() => void handleLoadAgrotools()}
+                  >
+                    {loadingAgrotools ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <BadgeCheck className="h-3.5 w-3.5" />
+                    )}
+                    {loadingAgrotools
+                      ? "Consultando Agrotools..."
+                      : "Carregar Agrotools"}
+                  </Button>
+                )}
 
                 <Button
                   variant="outline"
@@ -4002,39 +4130,26 @@ export default function Escala() {
                                   </TableCell>
 
                                   <TableCell className="px-1.5 py-2.5 text-right align-top font-extrabold text-[#173D6E]">
-                                    {isInlineEditing(
-                                      row,
-                                      item.sex === "VACA"
-                                        ? "qtd_agrotools_vaca"
-                                        : "qtd_agrotools_boi",
-                                    ) ? (
-                                      renderInlineEditor(
-                                        item.sex === "VACA"
-                                          ? "qtd_agrotools_vaca"
-                                          : "qtd_agrotools_boi",
-                                        { align: "right" },
-                                      )
-                                    ) : canManage && rowScaleId > 0 ? (
+                                    {loadingAgrotools ? (
+                                      <span
+                                        className="inline-flex h-7 w-full items-center justify-end gap-1.5 text-[10px] font-bold text-[#60758A]"
+                                        title="Consultando aptidão na Agrotools"
+                                      >
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      </span>
+                                    ) : (
                                       <button
                                         type="button"
-                                        className="w-full rounded-md px-1 py-0.5 text-right transition hover:bg-[#EEF4FA] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30"
-                                        title="Editar quantidade Agrotools"
-                                        onClick={() =>
-                                          openRequiredField(
-                                            row,
-                                            day,
-                                            rowScaleId,
-                                            pendingDayOrders,
-                                            item.sex === "VACA"
-                                              ? "qtd_agrotools_vaca"
-                                              : "qtd_agrotools_boi",
-                                          )
-                                        }
+                                        className={`inline-flex min-w-10 items-center justify-center rounded-lg border px-2 py-1 text-xs font-black transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30 ${agrotoolsStatusClasses(
+                                          row.STATUS_AGROTOOLS_ANALISE,
+                                        )}`}
+                                        title={`${agrotoolsStatusLabel(
+                                          row.STATUS_AGROTOOLS_ANALISE,
+                                        )}. Clique para ver os detalhes.`}
+                                        onClick={() => void openAgrotoolsAnalysis(row)}
                                       >
                                         {numberFormat.format(item.agrotoolsQuantity)}
                                       </button>
-                                    ) : (
-                                      numberFormat.format(item.agrotoolsQuantity)
                                     )}
                                   </TableCell>
 
@@ -4706,6 +4821,163 @@ export default function Escala() {
               </Button>
             )}
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(agrotoolsDialog)}
+        onOpenChange={(open) => {
+          if (!open) setAgrotoolsDialog(null);
+        }}
+      >
+        <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-2xl">
+          <DialogHeader>
+            <div className="mb-1 flex h-11 w-11 items-center justify-center rounded-xl border border-[#A9CAE4] bg-[#EAF4FD] text-[#17679F]">
+              <BadgeCheck className="h-5 w-5" />
+            </div>
+            <DialogTitle>Análise Agrotools</DialogTitle>
+            <DialogDescription>
+              {agrotoolsDialog
+                ? `${agrotoolsDialog.row.PRODUTOR || "Produtor"} • ${
+                    agrotoolsDialog.row.DESC_PROPRIEDADE || "propriedade não informada"
+                  }`
+                : "Resultado da consulta de aptidão."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[62vh] space-y-3 overflow-y-auto pr-1">
+            {agrotoolsDialog?.loading ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-sm font-bold text-[#60758A]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Buscando detalhes da análise...
+              </div>
+            ) : agrotoolsDialog?.analysis ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#D5E1EB] bg-[#F8FAFC] p-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.08em] text-[#71869A]">
+                      Resultado
+                    </p>
+                    <p className="mt-1 text-sm font-extrabold text-[#173D6E]">
+                      {agrotoolsStatusLabel(agrotoolsDialog.analysis.status)}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-black ${agrotoolsStatusClasses(
+                      agrotoolsDialog.analysis.status,
+                    )}`}
+                  >
+                    {agrotoolsStatusLabel(agrotoolsDialog.analysis.status)}
+                  </span>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-xl border border-[#D9E3EC] bg-white p-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.08em] text-[#71869A]">
+                      Inscrição estadual
+                    </p>
+                    <p className="mt-1 font-extrabold text-[#173D6E]">
+                      {agrotoolsDialog.analysis.entrada?.ie || "Não informada"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-[#D9E3EC] bg-white p-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.08em] text-[#71869A]">
+                      CPF consultado
+                    </p>
+                    <p className="mt-1 font-extrabold text-[#173D6E]">
+                      {agrotoolsDialog.analysis.entrada?.cpf || "Não informado"}
+                    </p>
+                  </div>
+                </div>
+
+                {agrotoolsDialog.analysis.mensagem && (
+                  <div
+                    className={`rounded-xl border p-3 text-sm font-bold ${agrotoolsStatusClasses(
+                      agrotoolsDialog.analysis.status,
+                    )}`}
+                  >
+                    {agrotoolsDialog.analysis.mensagem}
+                  </div>
+                )}
+
+                {agrotoolsDialog.analysis.fazendas?.map((farm, farmIndex) => (
+                  <div
+                    key={`${farm.nomeFazenda || "fazenda"}-${farmIndex}`}
+                    className="rounded-xl border border-[#D5E1EB] bg-white p-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-extrabold text-[#173D6E]">
+                          {farm.nomeFazenda || "Propriedade consultada"}
+                        </p>
+                        <p className="mt-0.5 text-xs font-semibold text-[#60758A]">
+                          {[farm.municipio, farm.uf].filter(Boolean).join(" • ") ||
+                            farm.nomePecuarista ||
+                            "Local não informado"}
+                        </p>
+                      </div>
+                      <Badge variant="outline">
+                        {farm.statusFinal || agrotoolsStatusLabel(agrotoolsDialog.analysis.status)}
+                      </Badge>
+                    </div>
+
+                    {[...(farm.criteriosInaptos || []), ...(farm.criteriosComRessalva || [])].map(
+                      (criterion, criterionIndex) => (
+                        <div
+                          key={`${criterion.criterio || "criterio"}-${criterionIndex}`}
+                          className="mt-2 rounded-lg border border-[#F0C18B] bg-[#FFF8EE] p-3"
+                        >
+                          <p className="text-xs font-black text-[#8E460F]">
+                            {criterion.criterio || "Critério Agrotools"}
+                          </p>
+                          <p className="mt-1 text-xs font-semibold leading-relaxed text-[#6C4A2D]">
+                            {criterion.motivo ||
+                              criterion.resultadoOriginal ||
+                              "Ocorrência identificada na análise."}
+                          </p>
+                          {criterion.areaSobreposicaoHa != null && (
+                            <p className="mt-1 text-[10px] font-bold text-[#8E5B32]">
+                              Área de sobreposição: {criterion.areaSobreposicaoHa} ha
+                            </p>
+                          )}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                ))}
+
+                {!agrotoolsDialog.analysis.fazendas?.length &&
+                  agrotoolsDialog.analysis.criterios?.map((criterion, index) => (
+                    <div
+                      key={`${criterion.criterio || "criterio"}-${index}`}
+                      className="rounded-xl border border-[#F0C18B] bg-[#FFF8EE] p-3"
+                    >
+                      <p className="text-xs font-black text-[#8E460F]">
+                        {criterion.criterio || "Critério Agrotools"}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-[#6C4A2D]">
+                        {criterion.motivo || criterion.resultadoOriginal}
+                      </p>
+                    </div>
+                  ))}
+
+                {agrotoolsDialog.analysis.status === "APTO" &&
+                  !agrotoolsDialog.analysis.fazendas?.some(
+                    (farm) =>
+                      (farm.criteriosInaptos?.length || 0) > 0 ||
+                      (farm.criteriosComRessalva?.length || 0) > 0,
+                  ) && (
+                    <div className="rounded-xl border border-[#9DD6BC] bg-[#ECF9F3] p-3 text-sm font-bold text-[#137554]">
+                      Produtor apto, sem ressalvas informadas pela Agrotools.
+                    </div>
+                  )}
+              </>
+            ) : (
+              <div className="rounded-xl border border-dashed border-[#C8D5E2] bg-[#F8FAFC] px-4 py-10 text-center text-sm font-semibold text-[#60758A]">
+                Não foi possível recuperar os detalhes desta análise.
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

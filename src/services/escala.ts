@@ -9,6 +9,8 @@ import type {
   EditarRegistroManualPayload,
   EditarVinculoPedidoPayload,
   EscalaFiltro,
+  EscalaAgrotoolsAnalise,
+  EscalaAgrotoolsCarregamento,
   EscalaPreparacaoAutomatica,
   EscalaChinaSincronizacao,
   EscalaLinha,
@@ -44,6 +46,8 @@ const urls = {
   prazoPagamentoSelect: getBackendUrl("/escala/prazo-pagto/select"),
   chinaSincronizar: getBackendUrl("/escala/china/sincronizar"),
   chinaAlertasCiente: getBackendUrl("/escala/china/alertas/ciente"),
+  agrotoolsCarregar: getBackendUrl("/escala/agrotools/carregar"),
+  agrotoolsAnalise: getBackendUrl("/escala/agrotools/analise"),
   manualInsert: getBackendUrl("/escala/manual/insert"),
   manualEditar: getBackendUrl("/escala/manual/editar"),
   manualInativar: getBackendUrl("/escala/manual/inativar"),
@@ -114,6 +118,18 @@ export const confirmarAlertasChinaEscala = (
     ids_ajuste: idsAjuste,
   });
 };
+
+export const carregarAgrotoolsEscala = (filtro: EscalaFiltro) =>
+  n8nPost<EscalaAgrotoolsCarregamento>(urls.agrotoolsCarregar, filtro);
+
+export const consultarAnaliseAgrotoolsEscala = (
+  nroempresa: number,
+  idAnaliseAgrotools: string,
+) =>
+  n8nPost<EscalaAgrotoolsAnalise>(urls.agrotoolsAnalise, {
+    nroempresa,
+    id_analise_agrotools: idAnaliseAgrotools,
+  });
 
 export const consultarPrazosPagamento = async () => {
   if (cachedPaymentTerms) return cachedPaymentTerms;

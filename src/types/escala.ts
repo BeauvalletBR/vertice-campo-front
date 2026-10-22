@@ -13,7 +13,51 @@ export type AgrotoolsAnaliseStatus =
   | "APTO"
   | "APTO_COM_RESSALVAS"
   | "INAPTO"
+  | "NAO_ENCONTRADO"
   | "ERRO";
+
+export interface EscalaAgrotoolsCriterio {
+  criterio?: string | null;
+  classificacao?: string | null;
+  motivo?: string | null;
+  resultadoOriginal?: string | null;
+  areaSobreposicaoHa?: number | null;
+}
+
+export interface EscalaAgrotoolsFazenda {
+  nomeFazenda?: string | null;
+  nomePecuarista?: string | null;
+  municipio?: string | null;
+  uf?: string | null;
+  statusFinal?: string | null;
+  quantidadeOcorrencias?: number | null;
+  criteriosInaptos?: EscalaAgrotoolsCriterio[];
+  criteriosComRessalva?: EscalaAgrotoolsCriterio[];
+}
+
+export interface EscalaAgrotoolsAnalise {
+  idAnalise?: number | null;
+  consultadoEm?: string | null;
+  status: AgrotoolsAnaliseStatus;
+  statusExterno?: string | null;
+  mensagem?: string | null;
+  produtor?: string | null;
+  fazenda?: string | null;
+  entrada?: { ie?: string | null; cpf?: string | null };
+  quantidadeFazendas?: number | null;
+  fazendas?: EscalaAgrotoolsFazenda[];
+  criterios?: EscalaAgrotoolsCriterio[];
+  detalhesResumidos?: boolean;
+}
+
+export interface EscalaAgrotoolsCarregamento extends ApiMessage {
+  total: number;
+  aptos?: number;
+  aptos_com_ressalvas?: number;
+  inaptos?: number;
+  nao_encontrados?: number;
+  erros?: number;
+}
 
 export type EscalaOrigemRegistro = "ERP" | "MANUAL";
 
