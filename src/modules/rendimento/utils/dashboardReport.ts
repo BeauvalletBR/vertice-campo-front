@@ -2,16 +2,87 @@ import type { TraceabilityMatrix, TraceabilityMatrixRow } from "./traceabilityRe
 import { formatDate } from "./format";
 
 export interface YieldGoalExportRow {
-  testId: string;
+  id: string;
+  productId: string;
+  hierarchyOrder: number;
   week: string;
-  date: string;
   standard: string;
   pieces: number;
-  band: string;
   yieldPercent: number | null;
   goal: number | null;
   difference: number | null;
 }
+
+export interface YieldGoalSourceRow extends Omit<YieldGoalExportRow, "id" | "pieces" | "difference"> {
+  id: string;
+  testId: string;
+  pieces: number;
+  referenceWeight: number;
+  productWeight: number;
+}
+
+export const aggregateYieldGoalRows = (
+  rows: YieldGoalSourceRow[],
+): YieldGoalExportRow[] => {
+  const groups = new Map<string, {
+    row: Omit<YieldGoalExportRow, "pieces" | "yieldPercent" | "difference">;
+    piecesByTest: Map<string, number>;
+    referenceWeight: number;
+    productWeight: number;
+    fallbackYieldTotal: number;
+    fallbackYieldWeight: number;
+  }>();
+
+  rows.forEach((item) => {
+    const key = `${item.week}|${item.productId}`;
+    const group = groups.get(key) || {
+      row: {
+        id: key,
+        productId: item.productId,
+        hierarchyOrder: item.hierarchyOrder,
+        week: item.week,
+        standard: item.standard,
+        goal: item.goal,
+      },
+      piecesByTest: new Map<string, number>(),
+      referenceWeight: 0,
+      productWeight: 0,
+      fallbackYieldTotal: 0,
+      fallbackYieldWeight: 0,
+    };
+
+    group.piecesByTest.set(
+      item.testId,
+      Math.max(group.piecesByTest.get(item.testId) || 0, item.pieces),
+    );
+    group.referenceWeight += item.referenceWeight;
+    group.productWeight += item.productWeight;
+    if (item.yieldPercent !== null) {
+      group.fallbackYieldTotal += item.yieldPercent * Math.max(1, item.pieces);
+      group.fallbackYieldWeight += Math.max(1, item.pieces);
+    }
+    if (group.row.goal === null && item.goal !== null) group.row.goal = item.goal;
+    groups.set(key, group);
+  });
+
+  return [...groups.values()].map((group) => {
+    const pieces = [...group.piecesByTest.values()].reduce((total, value) => total + value, 0);
+    const yieldPercent = group.referenceWeight > 0
+      ? (group.productWeight / group.referenceWeight) * 100
+      : group.fallbackYieldWeight > 0
+        ? group.fallbackYieldTotal / group.fallbackYieldWeight
+        : null;
+
+    return {
+      ...group.row,
+      pieces,
+      yieldPercent,
+      difference: group.row.goal === null || yieldPercent === null
+        ? null
+        : group.row.goal - yieldPercent,
+    };
+  });
+};
 
 export interface YieldComparisonExportRecord {
   testNumber: number;
@@ -44,12 +115,7 @@ const border = {
   right: { style: "thin" as const, color: { argb: "FFC6D2DE" } },
 };
 
-export async function exportYieldGoalExcel(rows: YieldGoalExportRow[]) {
-  const piecesByTest = new Map<string, number>();
-  rows.forEach((item) => {
-    piecesByTest.set(item.testId, Math.max(piecesByTest.get(item.testId) || 0, item.pieces));
-  });
-  const totalPieces = [...piecesByTest.values()].reduce((total, pieces) => total + pieces, 0);
+export async function exportYieldGoalExcel(rows: YieldGoalExportRow[], totalPieces: number) {
   const ExcelJS = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Vértice";

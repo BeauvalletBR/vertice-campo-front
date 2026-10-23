@@ -33,6 +33,19 @@ export const getScaleCalculationPrice = (
     ? getEffectivePremium(row) ?? getAnimalBasePrice(row, "BOI")
     : getAnimalBasePrice(row, "VACA");
 
+export const compareScaleRowsByPriceDescending = (
+  first: { row: EscalaLinha; sex: EscalaAnimalSex },
+  second: { row: EscalaLinha; sex: EscalaAnimalSex },
+): number => {
+  const firstPrice = getScaleCalculationPrice(first.row, first.sex);
+  const secondPrice = getScaleCalculationPrice(second.row, second.sex);
+
+  if (firstPrice === null && secondPrice === null) return 0;
+  if (firstPrice === null) return 1;
+  if (secondPrice === null) return -1;
+  return secondPrice - firstPrice;
+};
+
 export interface ScaleMacroAverages {
   totalAnimals: number;
   totalArrobas: number;

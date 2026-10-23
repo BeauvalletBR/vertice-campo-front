@@ -92,6 +92,7 @@ import type {
 import { EscalaPlaybackDialog } from "@/components/EscalaPlaybackDialog";
 import {
   calculateScaleMacroAverages,
+  compareScaleRowsByPriceDescending,
   getAnimalBasePrice,
   getEffectivePremium,
 } from "@/lib/escala-pricing";
@@ -2974,6 +2975,9 @@ export default function Escala() {
                   };
                 })
                 .sort((a, b) => {
+                  const priceOrder = compareScaleRowsByPriceDescending(a, b);
+                  if (priceOrder !== 0) return priceOrder;
+
                   const orderA = toNumber(a.row.NROPEDIDO);
                   const orderB = toNumber(b.row.NROPEDIDO);
                   if (orderA !== orderB) return orderA - orderB;

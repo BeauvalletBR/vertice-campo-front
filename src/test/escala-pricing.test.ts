@@ -4,6 +4,7 @@ import {
   calculateBaseWeightedPrice,
   calculateRowsWeightedBasePrice,
   calculateScaleMacroAverages,
+  compareScaleRowsByPriceDescending,
   getAnimalBasePrice,
   getEffectivePremium,
   getScaleCalculationPrice,
@@ -69,6 +70,24 @@ describe("escala pricing", () => {
 
     expect(getScaleCalculationPrice(withoutPremium, "BOI")).toBe(320);
     expect(getScaleCalculationPrice(withPremium, "BOI")).toBe(7);
+  });
+
+  it("orders planning rows by premium or base price from highest to lowest", () => {
+    const items = [
+      { row: row({ PRECO_BOI: 350 }), sex: "BOI" as const, label: "normal" },
+      { row: row({ PRECO_BOI: 400, VLRUNITARIO_PREMIO: 360 }), sex: "BOI" as const, label: "premium" },
+      { row: row({ PRECO_VACA: 330 }), sex: "VACA" as const, label: "cow" },
+      { row: row({}), sex: "BOI" as const, label: "without-price" },
+    ];
+
+    items.sort(compareScaleRowsByPriceDescending);
+
+    expect(items.map((item) => item.label)).toEqual([
+      "premium",
+      "normal",
+      "cow",
+      "without-price",
+    ]);
   });
 
   it("ignores invalid prices without turning them into zero-priced animals", () => {

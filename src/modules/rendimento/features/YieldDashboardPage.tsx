@@ -10,7 +10,7 @@ import { useRendimentoData } from "../context/RendimentoDataContext";
 import { calculateFlowFinalWeight, calculateFlowReferenceWeight, calculateTotalDiscard } from "../utils/calculations";
 import { formatDate, formatPercent, formatWeight } from "../utils/format";
 import { buildTraceabilityMatrices, exportTraceabilityExcel } from "../utils/traceabilityReport";
-import { exportYieldComparisonExcel, exportYieldGoalExcel } from "../utils/dashboardReport";
+import { aggregateYieldGoalRows, exportYieldComparisonExcel, exportYieldGoalExcel } from "../utils/dashboardReport";
 import { UNCLASSIFIED_WEIGHT_BAND_ID, type Product } from "../types/domain";
 
 const pct = (value: number, base: number) => base > 0 ? (value / base) * 100 : 0;
@@ -325,27 +325,30 @@ export function YieldDashboardPage() {
   });
   const unclassifiedBuckets = comparisonBuckets.filter((bucket) => bucket.bandId === UNCLASSIFIED_WEIGHT_BAND_ID);
   const maxChartYield = classifiedYields.length ? Math.max(...classifiedYields) : 0;
-  const targetRows = records.flatMap((record) => {
+  const targetSourceRows = records.flatMap((record) => {
     const rows = record.matrix?.rows.filter((row) => (row.kind === "product" || row.kind === "final") && row.productId && (!productIds.length || productIds.includes(row.productId))) || [];
     return rows.map((row) => {
       const product = products.find((item) => item.id === row.productId);
       const goal = product?.erpProductSeq ? targetPercent(product.erpYieldTarget) : null;
+      const referenceWeight = record.visiblePieceIndexes.reduce((total, pieceIndex) => total + (record.referenceValues[pieceIndex] || 0), 0);
+      const productWeight = record.visiblePieceIndexes.reduce((total, pieceIndex) => total + (row.values[pieceIndex] || 0), 0);
       return {
         id: `${record.test.id}-${record.flow.id}-${row.id}`,
         testId: record.test.id,
         productId: product?.id || row.productId || "",
         hierarchyOrder: productHierarchyOrder.get(product?.id || row.productId || "") ?? Number.MAX_SAFE_INTEGER,
         week: isoWeek(record.test.date),
-        date: record.test.date,
         standard: product?.name || row.label,
         pieces: record.pieceCount,
-        band: record.bandLabel,
+        referenceWeight,
+        productWeight,
         yieldPercent: row.yieldPercent,
         goal,
-        difference: goal == null || row.yieldPercent == null ? null : goal - row.yieldPercent,
       };
     });
-  }).sort((first, second) => second.date.localeCompare(first.date) || first.hierarchyOrder - second.hierarchyOrder || first.standard.localeCompare(second.standard, "pt-BR"));
+  });
+  const targetRows = aggregateYieldGoalRows(targetSourceRows)
+    .sort((first, second) => second.week.localeCompare(first.week, "pt-BR", { numeric: true }) || first.hierarchyOrder - second.hierarchyOrder || first.standard.localeCompare(second.standard, "pt-BR"));
   const sortedTargetRows = targetSort ? [...targetRows].sort((first, second) => {
     const firstValue = first[targetSort.key];
     const secondValue = second[targetSort.key];
@@ -358,8 +361,8 @@ export function YieldDashboardPage() {
     return targetSort.direction === "asc" ? comparison : -comparison;
   }) : targetRows;
   const targetPiecesByTest = new Map<string, number>();
-  sortedTargetRows.forEach((row) => {
-    targetPiecesByTest.set(row.testId, Math.max(targetPiecesByTest.get(row.testId) || 0, row.pieces));
+  records.forEach((record) => {
+    targetPiecesByTest.set(record.test.id, Math.max(targetPiecesByTest.get(record.test.id) || 0, record.pieceCount));
   });
   const targetTotalPieces = [...targetPiecesByTest.values()].reduce((total, pieces) => total + pieces, 0);
   const selectableProductIds = products.filter((product) => periodRecords.some((record) => record.productIds.includes(product.id))).map((product) => product.id);
@@ -489,7 +492,7 @@ export function YieldDashboardPage() {
       {unclassifiedBuckets.length > 0 && <div className="yield-unclassified"><header><div><strong>Sem faixa</strong><small>Resultados mantidos fora do gráfico para não distorcer a comparação.</small></div><span>{unclassifiedBuckets.reduce((total, bucket) => total + bucket.pieces, 0)} peças</span></header><div>{unclassifiedBuckets.map((bucket) => <article key={bucket.productId}><strong>{bucket.productName}</strong><span>{formatPercent(bucket.yieldPercent)}</span><small>{bucket.pieces} peças · {formatWeight(bucket.referenceWeight)} analisados</small></article>)}</div></div>}
     </section>
     <article className={`yield-target-panel ${targetExpanded ? "is-expanded" : ""}`}>
-      <header><div><span>Meta do ERP</span><h2>Teste x meta do produto <strong className="yield-target-piece-total">{targetTotalPieces} peças de entrada</strong></h2></div><div className="yield-panel-actions"><button type="button" onClick={() => void exportYieldGoalExcel(sortedTargetRows)} disabled={!sortedTargetRows.length}><FileSpreadsheet size={15} /> Excel</button><button type="button" onClick={toggleTargetExpanded}>{targetExpanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}{targetExpanded ? "Voltar aos filtros" : "Expandir"}</button></div></header>
+      <header><div><span>Meta do ERP</span><h2>Teste x meta do produto <strong className="yield-target-piece-total">{targetTotalPieces} peças de entrada</strong></h2></div><div className="yield-panel-actions"><button type="button" onClick={() => void exportYieldGoalExcel(sortedTargetRows, targetTotalPieces)} disabled={!sortedTargetRows.length}><FileSpreadsheet size={15} /> Excel</button><button type="button" onClick={toggleTargetExpanded}>{targetExpanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}{targetExpanded ? "Voltar aos filtros" : "Expandir"}</button></div></header>
       <div className="yield-target-table-wrap"><table className="yield-target-table"><thead><tr>{targetSortHeader("week", "Ano/Semana")}{targetSortHeader("standard", "Padrão")}{targetSortHeader("pieces", "Peças")}{targetSortHeader("yieldPercent", "Rend. teste")}{targetSortHeader("goal", "Meta")}{targetSortHeader("difference", "Diferença")}</tr></thead><tbody>
         {sortedTargetRows.length ? sortedTargetRows.map((row) => <tr key={row.id}><td>{row.week}</td><td><strong>{row.standard}</strong></td><td>{row.pieces}</td><td>{row.yieldPercent == null ? "" : formatPercent(row.yieldPercent)}</td><td>{row.goal == null ? "" : formatPercent(row.goal)}</td><td className={row.difference == null ? "" : row.difference < 0 ? "below-target" : "above-target"}>{row.difference == null ? "" : formatPercent(row.difference)}</td></tr>) : <tr><td colSpan={6} className="dashboard-empty">Nenhum teste encontrado para os filtros.</td></tr>}
       </tbody></table></div>
