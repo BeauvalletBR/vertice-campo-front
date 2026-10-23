@@ -2,6 +2,7 @@ import type { TraceabilityMatrix, TraceabilityMatrixRow } from "./traceabilityRe
 import { formatDate } from "./format";
 
 export interface YieldGoalExportRow {
+  testId: string;
   week: string;
   date: string;
   standard: string;
@@ -44,19 +45,24 @@ const border = {
 };
 
 export async function exportYieldGoalExcel(rows: YieldGoalExportRow[]) {
+  const piecesByTest = new Map<string, number>();
+  rows.forEach((item) => {
+    piecesByTest.set(item.testId, Math.max(piecesByTest.get(item.testId) || 0, item.pieces));
+  });
+  const totalPieces = [...piecesByTest.values()].reduce((total, pieces) => total + pieces, 0);
   const ExcelJS = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Vértice";
   const worksheet = workbook.addWorksheet("Teste x meta", {
     views: [{ state: "frozen", ySplit: 2, showGridLines: false }],
   });
-  worksheet.mergeCells("A1:H1");
-  worksheet.getCell("A1").value = "COMPARATIVO DE RENDIMENTO X META";
+  worksheet.mergeCells("A1:F1");
+  worksheet.getCell("A1").value = `COMPARATIVO DE RENDIMENTO X META · ${totalPieces} PEÇAS DE ENTRADA`;
   worksheet.getCell("A1").font = { name: "Arial", size: 15, bold: true, color: { argb: "FFFFFFFF" } };
   worksheet.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF173D6E" } };
   worksheet.getCell("A1").alignment = { horizontal: "left", vertical: "middle" };
   worksheet.getRow(1).height = 27;
-  worksheet.addRow(["Ano/Semana", "Data", "Padrão", "Peças", "Faixa @", "Rend. teste", "Meta", "Diferença"]);
+  worksheet.addRow(["Ano/Semana", "Padrão", "Peças", "Rend. teste", "Meta", "Diferença"]);
   const header = worksheet.getRow(2);
   header.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
   header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF245A86" } };
@@ -64,22 +70,20 @@ export async function exportYieldGoalExcel(rows: YieldGoalExportRow[]) {
   rows.forEach((item) => {
     const row = worksheet.addRow([
       item.week,
-      formatDate(item.date),
       item.standard,
       item.pieces,
-      item.band,
       item.yieldPercent == null ? null : item.yieldPercent / 100,
       item.goal == null ? null : item.goal / 100,
       item.difference == null ? null : item.difference / 100,
     ]);
     row.eachCell((cell, column) => {
       cell.border = border;
-      cell.alignment = { horizontal: column === 3 ? "left" : "center", vertical: "middle" };
-      if (column >= 6) cell.numFmt = "0.00%";
+      cell.alignment = { horizontal: column === 2 ? "left" : "center", vertical: "middle" };
+      if (column >= 4) cell.numFmt = "0.00%";
     });
   });
-  [14, 13, 30, 10, 21, 14, 12, 14].forEach((width, index) => { worksheet.getColumn(index + 1).width = width; });
-  worksheet.autoFilter = { from: "A2", to: `H${rows.length + 2}` };
+  [14, 30, 10, 14, 12, 14].forEach((width, index) => { worksheet.getColumn(index + 1).width = width; });
+  worksheet.autoFilter = { from: "A2", to: `F${rows.length + 2}` };
   await downloadWorkbook(workbook, "comparativo-rendimento-meta.xlsx");
 }
 

@@ -204,17 +204,33 @@
 .yield-module .yield-product-filter-menu .yield-product-filter-check { min-width: 0; flex: 1; border: 0; padding: 7px 8px; background: transparent; text-transform: none; }
 .yield-module .yield-product-filter-menu .yield-product-filter-check:hover { background: rgba(220, 232, 242, .45); }
 .yield-module .yield-product-filter-menu .yield-product-filter-check i { width: 18px; height: 18px; }
-.yield-module .yield-product-filter-menu .yield-product-filter-check.active i,
-.yield-module .yield-product-filter-menu .yield-product-filter-check.partial i { border-color: var(--blue); background: var(--blue); }
+.yield-module .yield-product-filter-menu .yield-product-filter-check.active i { border-color: var(--blue); background: var(--blue); }
+.yield-module .yield-product-filter-menu .yield-product-filter-check.has-selected-children { background: #f5f8fb; }
+.yield-module .yield-product-filter-menu .yield-product-filter-check.has-selected-children i { border-color: #7899b7; background: #fff; }
 .yield-module .yield-product-filter-check span { min-width: 0; display: grid; gap: 1px; }
 .yield-module .yield-product-filter-check strong { overflow: hidden; color: var(--navy); font-size: 10px; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
 .yield-module .yield-product-filter-check small { color: #7a90a4; font-size: 8px; font-weight: 750; letter-spacing: .01em; }
+.yield-module .yield-product-box-filter { overflow: hidden; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow); }
+.yield-module .yield-product-box-filter > header { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--line-soft); padding: 11px 15px; }
+.yield-module .yield-product-box-filter > header > div:first-child { min-width: 0; display: grid; gap: 3px; }
+.yield-module .yield-product-box-filter > header span { color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.yield-module .yield-product-box-filter > header h2 { overflow: hidden; margin: 0; color: var(--navy); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .yield-product-box-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.yield-module .yield-product-box-actions button { min-height: 33px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #b9cbdc; border-radius: 8px; padding: 6px 10px; color: var(--navy); background: #f7fafc; font-size: 9px; font-weight: 850; cursor: pointer; white-space: nowrap; }
+.yield-module .yield-product-box-actions button:first-child { border-color: #8bb2d8; color: #0f5597; background: #eef6fd; }
+.yield-module .yield-product-box-actions button:hover { border-color: var(--blue); color: #fff; background: var(--blue); }
+.yield-module .yield-product-filter-menu.yield-product-box-body { width: 100%; max-height: none; overflow: visible; }
+.yield-module .yield-product-box-body .yield-product-filter-tree { display: flex; align-items: flex-start; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 10px 10px 13px; scrollbar-color: #8ea2b5 #edf2f6; scrollbar-width: thin; }
+.yield-module .yield-product-box-body .yield-product-filter-tree > .yield-product-filter-node { min-width: 245px; max-width: 280px; flex: 0 0 245px; overflow: hidden; border: 1px solid #d5e1eb; border-radius: 9px; background: #fbfcfe; }
+.yield-module .yield-product-box-body .yield-product-filter-row.is-root { margin: 0; border: 0; border-radius: 0; background: #f3f7fb; box-shadow: none; }
+.yield-module .yield-product-box-body .yield-product-filter-children { border-top: 1px solid #e2eaf1; background: #fff; }
 .yield-module .yield-dashboard-cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 11px; margin-bottom: 14px; }
 .yield-module .yield-dashboard-cards article { min-width: 0; display: grid; gap: 5px; border: 1px solid var(--line); border-top: 3px solid #8aa7c1; border-radius: 12px; padding: 14px; background: #fff; box-shadow: var(--shadow); }
 .yield-module .yield-dashboard-cards article.featured { border-top-color: var(--green); background: linear-gradient(145deg, #fff, #effaf5); }
 .yield-module .yield-dashboard-cards span { display: flex; align-items: center; gap: 7px; overflow: hidden; color: #536b82; font-size: 9px; font-weight: 900; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .yield-module .yield-dashboard-cards span svg { color: var(--blue); }
 .yield-module .yield-dashboard-cards strong { overflow: hidden; color: var(--navy); font-size: clamp(18px, 2vw, 26px); font-weight: 900; letter-spacing: -.035em; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .yield-dashboard-cards .pieces-card strong { font-size: clamp(26px, 2.6vw, 34px); line-height: 1; }
 .yield-module .yield-dashboard-cards .featured strong { color: var(--green); }
 .yield-module .yield-dashboard-cards small { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .yield-module .yield-dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
@@ -224,13 +240,80 @@
 .yield-module .yield-dashboard-chart > header span { color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
 .yield-module .yield-dashboard-chart > header h2 { margin: 0; color: var(--navy); font-size: 15px; }
 .yield-module .yield-dashboard-chart > div { min-height: 320px; padding: 10px 8px 4px; }
-.yield-module .yield-target-panel { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow); }
+.yield-module .yield-product-band-panel { overflow: hidden; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: var(--shadow); }
+.yield-module .yield-product-band-header { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line-soft); padding: 14px 16px; background: linear-gradient(110deg, #fff 0%, #f8fbfd 100%); }
+.yield-module .yield-product-band-header > div:first-child { min-width: 0; display: grid; gap: 3px; }
+.yield-module .yield-product-band-header span, .yield-module .yield-grouped-chart > header span { color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
+.yield-module .yield-product-band-header h2 { margin: 0; color: var(--navy); font-size: 17px; }
+.yield-module .yield-product-band-header small, .yield-module .yield-grouped-chart > header small { color: var(--muted); font-size: 9px; }
+.yield-module .yield-comparison-view-toggle { display: inline-flex; flex: 0 0 auto; align-items: center; overflow: hidden; border: 1px solid #b8cadb; border-radius: 9px; background: #f5f8fb; }
+.yield-module .yield-comparison-view-toggle button { min-height: 35px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-right: 1px solid #cbd8e3; padding: 0 11px; color: #46617b; background: transparent; font-size: 9px; font-weight: 850; cursor: pointer; }
+.yield-module .yield-comparison-view-toggle button:last-child { border-right: 0; }
+.yield-module .yield-comparison-view-toggle button:hover { color: var(--blue); background: #eaf2f8; }
+.yield-module .yield-comparison-view-toggle button.active { color: #fff; background: var(--blue); }
+.yield-module .yield-analysis-products { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line-soft); padding: 10px 16px; background: #fbfcfe; }
+.yield-module .yield-analysis-products > strong { flex: 0 0 auto; color: #536b82; font-size: 9px; font-weight: 900; text-transform: uppercase; }
+.yield-module .yield-analysis-products > div { min-width: 0; display: flex; align-items: center; gap: 7px; overflow-x: auto; padding-bottom: 2px; }
+.yield-module .yield-analysis-products span { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; border: 1px solid #d7e1ea; border-radius: 999px; padding: 5px 8px; color: var(--navy); background: #fff; font-size: 9px; font-weight: 800; }
+.yield-module .yield-analysis-products span i { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #315d88; }
+.yield-module .yield-heatmap-wrap { overflow-x: auto; padding: 14px; background: #f8fafc; }
+.yield-module .yield-heatmap-table { width: 100%; min-width: 720px; border-collapse: separate; border-spacing: 5px; table-layout: fixed; }
+.yield-module .yield-heatmap-table th { color: #49637c; background: transparent; font-size: 9px; font-weight: 900; text-align: center; }
+.yield-module .yield-heatmap-table thead th { position: sticky; z-index: 3; top: 0; height: 46px; background: #f8fafc; vertical-align: bottom; }
+.yield-module .yield-heatmap-table thead th:first-child { width: 210px; text-align: left; }
+.yield-module .yield-heatmap-table thead th span, .yield-module .yield-heatmap-table thead th small { display: block; }
+.yield-module .yield-heatmap-table thead th span { color: var(--navy); font-size: 10px; }
+.yield-module .yield-heatmap-table thead th small { margin-top: 3px; overflow: hidden; color: #7790a6; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .yield-heatmap-table tbody th { position: sticky; z-index: 2; left: 0; height: 67px; border: 1px solid #d7e2ec; border-radius: 9px; padding: 10px; background: #fff; box-shadow: 5px 0 10px rgba(17,54,91,.04); text-align: left; }
+.yield-module .yield-heatmap-table tbody th i { width: 4px; height: 28px; display: inline-block; margin-right: 9px; border-radius: 4px; background: #315d88; vertical-align: middle; }
+.yield-module .yield-heatmap-table tbody th span { display: inline-block; max-width: 170px; overflow: hidden; color: var(--navy); font-size: 10px; font-weight: 900; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
+.yield-module .yield-heatmap-table td { position: relative; height: 67px; border: 1px solid #d9e3ec; border-radius: 9px; padding: 0; background: #fff; text-align: center; }
+.yield-module .yield-heatmap-cell { position: relative; width: 100%; height: 65px; display: grid; place-content: center; gap: 3px; border: 0; border-radius: 8px; color: var(--navy); cursor: pointer; }
+.yield-module .yield-heatmap-cell:hover, .yield-module .yield-heatmap-cell:focus-visible { z-index: 5; outline: 2px solid #6d96bb; outline-offset: 1px; }
+.yield-module .yield-heatmap-cell.is-highest { box-shadow: inset 0 0 0 2px #285f91; }
+.yield-module .yield-heatmap-cell.is-lowest { box-shadow: inset 0 0 0 2px #91a8bc; }
+.yield-module .yield-heatmap-cell strong { font-size: 15px; font-weight: 900; }
+.yield-module .yield-heatmap-cell > small { color: #56718a; font-size: 8px; font-weight: 750; }
+.yield-module .yield-no-data { color: #9dafbf; font-size: 15px; }
+.yield-module .yield-heatmap-tooltip { position: absolute; z-index: 10; left: 50%; bottom: calc(100% + 8px); width: 210px; display: none; gap: 3px; border: 1px solid #b8cbdc; border-radius: 9px; padding: 10px; color: #39536c; background: #fff; box-shadow: 0 12px 30px rgba(10,39,69,.22); text-align: left; transform: translateX(-50%); }
+.yield-module .yield-heatmap-cell:hover .yield-heatmap-tooltip, .yield-module .yield-heatmap-cell:focus-visible .yield-heatmap-tooltip { display: grid; }
+.yield-module .yield-heatmap-tooltip b { color: var(--navy); font-size: 10px; }
+.yield-module .yield-heatmap-tooltip em { color: var(--blue); font-size: 8px; font-style: normal; font-weight: 850; text-transform: uppercase; }
+.yield-module .yield-heatmap-tooltip span { font-size: 9px; }
+.yield-module .yield-grouped-chart { border-top: 1px solid var(--line-soft); background: #fff; }
+.yield-module .yield-grouped-chart > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px 4px; }
+.yield-module .yield-grouped-chart > header div { display: grid; gap: 2px; }
+.yield-module .yield-grouped-chart > header h3 { margin: 0; color: var(--navy); font-size: 14px; }
+.yield-module .yield-grouped-chart-scroll { overflow-x: auto; padding: 0 8px 8px; }
+.yield-module .yield-product-axis-tick { color: var(--navy); cursor: pointer; outline: none; }
+.yield-module .yield-product-axis-tick text { fill: currentColor; font-size: 12px; font-weight: 900; }
+.yield-module .yield-product-axis-tick:hover, .yield-module .yield-product-axis-tick:focus { color: var(--blue); text-decoration: underline; }
+.yield-module .yield-chart-tooltip { min-width: 220px; display: grid; gap: 8px; border: 1px solid #b9cad9; border-radius: 9px; padding: 10px; background: rgba(255,255,255,.98); box-shadow: 0 12px 28px rgba(10,39,69,.18); }
+.yield-module .yield-chart-tooltip > strong { color: var(--navy); font-size: 11px; }
+.yield-module .yield-chart-tooltip > div { display: flex; align-items: center; gap: 8px; }
+.yield-module .yield-chart-tooltip i { width: 9px; height: 28px; flex: 0 0 auto; border-radius: 4px; }
+.yield-module .yield-chart-tooltip span { display: grid; gap: 2px; }
+.yield-module .yield-chart-tooltip b { color: var(--navy); font-size: 9px; }
+.yield-module .yield-chart-tooltip small { color: #5d748a; font-size: 8px; }
+.yield-module .yield-unclassified { border-top: 1px solid #d7e1ea; padding: 12px 15px 15px; background: #f5f7f9; }
+.yield-module .yield-unclassified > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.yield-module .yield-unclassified > header div { display: grid; gap: 2px; }
+.yield-module .yield-unclassified > header strong { color: #40576e; font-size: 11px; }
+.yield-module .yield-unclassified > header small { color: #72879a; font-size: 8px; }
+.yield-module .yield-unclassified > header > span { border-radius: 999px; padding: 5px 8px; color: #52677a; background: #e5ebf0; font-size: 8px; font-weight: 850; }
+.yield-module .yield-unclassified > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.yield-module .yield-unclassified article { display: grid; grid-template-columns: 1fr auto; gap: 3px 9px; border: 1px solid #d4dee7; border-radius: 8px; padding: 9px; background: #fff; }
+.yield-module .yield-unclassified article strong { overflow: hidden; color: var(--navy); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.yield-module .yield-unclassified article span { color: #40576e; font-size: 11px; font-weight: 900; }
+.yield-module .yield-unclassified article small { grid-column: 1 / -1; color: #74899c; font-size: 8px; }
+.yield-module .yield-target-panel { min-width: 0; overflow: hidden; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow); }
 .yield-module .yield-target-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line-soft); padding: 14px 16px; color: var(--blue); }
 .yield-module .yield-target-panel > header div { display: grid; gap: 2px; }
 .yield-module .yield-target-panel > header span { color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
-.yield-module .yield-target-panel > header h2 { margin: 0; color: var(--navy); font-size: 15px; }
+.yield-module .yield-target-panel > header h2 { display: flex; align-items: center; gap: 9px; margin: 0; color: var(--navy); font-size: 15px; }
+.yield-module .yield-target-piece-total { min-height: 36px; display: inline-flex; align-items: center; border: 1px solid #8eafd0; border-radius: 999px; padding: 8px 14px; color: #174d7d; background: #e6f1fb; box-shadow: inset 0 0 0 1px rgba(255,255,255,.7); font-size: 15px; font-weight: 950; line-height: 1; white-space: nowrap; }
 .yield-module .yield-target-table-wrap { max-height: 330px; overflow: auto; }
-.yield-module .yield-target-table { width: 100%; min-width: 820px; border-collapse: separate; border-spacing: 0; font-size: 10px; }
+.yield-module .yield-target-table { width: 100%; min-width: 660px; border-collapse: separate; border-spacing: 0; font-size: 10px; }
 .yield-module .yield-target-table th { position: sticky; z-index: 2; top: 0; padding: 10px 8px; color: #fff; background: #1f527f; font-weight: 900; text-align: center; white-space: nowrap; }
 .yield-module .yield-target-table th button { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; padding: 0; color: inherit; background: transparent; font: inherit; cursor: pointer; white-space: nowrap; }
 .yield-module .yield-target-table th button svg { opacity: .65; }
@@ -240,8 +323,10 @@
 .yield-module .yield-target-table th[aria-sort="ascending"] button svg,
 .yield-module .yield-target-table th[aria-sort="descending"] button svg { opacity: 1; }
 .yield-module .yield-target-table td { border-right: 1px solid #d9e2ea; border-bottom: 1px solid #d9e2ea; padding: 8px; color: #223e59; text-align: center; white-space: nowrap; }
-.yield-module .yield-target-table td:nth-child(3) { max-width: 220px; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+.yield-module .yield-target-table td:nth-child(2) { max-width: 260px; text-align: left; overflow: hidden; text-overflow: ellipsis; }
 .yield-module .yield-target-table tbody tr:nth-child(even) td { background: #f7fafc; }
+.yield-module .yield-target-table tfoot td { position: sticky; z-index: 1; bottom: 0; border-top: 2px solid #9fb5c8; padding: 9px 8px; color: var(--navy); background: #eaf1f7; font-weight: 900; text-align: center; }
+.yield-module .yield-target-table tfoot td:first-child { text-align: right; text-transform: uppercase; }
 .yield-module .yield-target-table .below-target { color: #087b58; font-weight: 900; }
 .yield-module .yield-target-table .above-target { color: #b4232d; font-weight: 900; }
 .yield-module .yield-panel-actions, .yield-module .yield-comparison-header-actions { display: flex !important; align-items: center; justify-content: flex-end; gap: 7px; }
@@ -296,13 +381,26 @@
 @media (max-width: 720px) {
   .yield-module .yield-dashboard-filters { grid-template-columns: 1fr; }
   .yield-module .yield-product-filter-menu { width: min(370px, calc(100vw - 44px)); }
+  .yield-module .yield-product-box-filter > header { align-items: stretch; flex-direction: column; }
+  .yield-module .yield-product-box-actions { justify-content: flex-start; overflow-x: auto; padding-bottom: 2px; }
+  .yield-module .yield-product-box-actions button { flex: 0 0 auto; }
+  .yield-module .yield-product-filter-menu.yield-product-box-body { width: 100%; }
+  .yield-module .yield-product-box-body .yield-product-filter-tree { max-height: none; }
   .yield-module .yield-dashboard-cards { display: flex; overflow-x: auto; padding-bottom: 5px; }
   .yield-module .yield-dashboard-cards article { min-width: 180px; }
-  .yield-module .yield-dashboard-grid { grid-template-columns: 1fr; }
-  .yield-module .yield-dashboard-chart > div { min-width: 560px; overflow-x: auto; }
+  .yield-module .yield-product-band-header { align-items: stretch; flex-direction: column; }
+  .yield-module .yield-comparison-view-toggle { width: 100%; }
+  .yield-module .yield-comparison-view-toggle button { flex: 1; }
+  .yield-module .yield-analysis-products { align-items: flex-start; flex-direction: column; }
+  .yield-module .yield-analysis-products > div { width: 100%; }
+  .yield-module .yield-heatmap-wrap { padding: 8px; }
+  .yield-module .yield-heatmap-table { min-width: 680px; }
+  .yield-module .yield-heatmap-table thead th:first-child { width: 175px; }
+  .yield-module .yield-heatmap-table tbody th span { max-width: 135px; }
+  .yield-module .yield-grouped-chart > header { align-items: flex-start; flex-direction: column; }
+  .yield-module .yield-unclassified > header { align-items: flex-start; }
   .yield-module .yield-target-table-wrap { max-height: 360px; }
   .yield-module .yield-target-panel.is-expanded { inset: 8px; }
-  .yield-module .yield-dashboard-grid { overflow-x: auto; }
   .yield-module .yield-comparison-header, .yield-module .weight-band-legend, .yield-module .yield-comparison-detail > header { align-items: stretch; flex-direction: column; }
   .yield-module .comparison-expand-all { width: 100%; }
   .yield-module .yield-panel-actions { width: 100%; align-items: stretch; flex-direction: column; }
@@ -1140,7 +1238,7 @@
 .yield-module .trace-report tbody td { color: var(--ink); font-size: 12px; }
 .yield-module .trace-report .trace-total-column { min-width: 112px; border-left: 2px solid #b7c8d8; color: var(--navy); background: #f3f7fa; font-weight: 900; }
 .yield-module .trace-report .trace-yield-column { min-width: 118px; color: #0d6548; background: #f1f8f5; font-weight: 900; }
-.yield-module .trace-report-row--input th, .yield-module .trace-report-row--input td { background: #ebf3fa !important; font-weight: 900; }
+.yield-module .trace-report-row--input th, .yield-module .trace-report-row--input td { height: 48px; color: #0f3f70 !important; background: #e4eff8 !important; font-size: 17px; font-weight: 900; }
 .yield-module .trace-report-row--product th, .yield-module .trace-report-row--product td { font-weight: 850; }
 .yield-module .trace-report-row--discard th, .yield-module .trace-report-row--discard td { color: #c3222e !important; }
 .yield-module .trace-report-row--discard th { padding: 0 10px; font-weight: 700; }
@@ -1156,8 +1254,6 @@
 .yield-module .trace-band-legend > strong { margin-right: 2px; color: #52697e; font-size: 9px; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
 .yield-module .trace-band-legend small { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--trace-legend-color); border-radius: 999px; padding: 6px 10px; color: #263f57; background: var(--trace-legend-soft); font-size: 10px; font-weight: 900; white-space: nowrap; }
 .yield-module .trace-band-legend small b { color: var(--navy); font-size: 9px; font-weight: 900; }
-.yield-module .trace-report .trace-piece-yield-heading { min-width: 76px; border-right: 2px solid #afc1d2; background: #244f80; }
-.yield-module .trace-report .trace-piece-yield-cell { min-width: 76px; border-right: 2px solid #b8c8d7; color: #355a78; font-size: 10px; font-weight: 850; }
 .yield-module .trace-product-branch { min-height: 39px; display: flex; align-items: center; position: relative; padding-left: 24px; }
 .yield-module .trace-product-branch::before { width: 12px; height: 18px; position: absolute; top: 0; left: 3px; border-bottom: 1px solid #9db6cf; border-left: 1px solid #9db6cf; content: ""; }
 

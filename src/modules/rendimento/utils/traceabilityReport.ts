@@ -220,7 +220,7 @@ export async function exportTraceabilityExcel(test: YieldTest, products: Product
       views: [{ state: "frozen", xSplit: 1, ySplit: 4, showGridLines: false }],
       pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
     });
-    const lastColumn = columns.length * 2 + 3;
+    const lastColumn = columns.length + 3;
     worksheet.mergeCells(1, 1, 1, lastColumn);
     worksheet.getCell(1, 1).value = "RELATÓRIO RASTREÁVEL DE RENDIMENTO";
     worksheet.getCell(1, 1).font = { name: "Arial", size: 15, bold: true, color: { argb: "FFFFFFFF" } };
@@ -232,7 +232,7 @@ export async function exportTraceabilityExcel(test: YieldTest, products: Product
     worksheet.getCell(2, 1).font = { name: "Arial", size: 10, bold: true, color: { argb: "FF173D6E" } };
 
     worksheet.addRow([]);
-    worksheet.addRow(["Produto / descarte", ...columns.flatMap((column) => [`Peça ${column.order}`, "Rend. entrada"]), "Total", "Rendimento"]);
+    worksheet.addRow(["Produto / descarte", ...columns.map((column) => `Peça ${column.order}`), "Total", "Rendimento"]);
     const header = worksheet.getRow(4);
     header.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
     header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF173D6E" } };
@@ -243,10 +243,9 @@ export async function exportTraceabilityExcel(test: YieldTest, products: Product
       const visibleReference = columns.reduce((total, column) => total + (referenceValues[column.index] || 0), 0);
       const row = worksheet.addRow([
         matrixRow.label,
-        ...columns.flatMap((column) => {
+        ...columns.map((column) => {
           const value = matrixRow.values[column.index] || 0;
-          const reference = referenceValues[column.index] || 0;
-          return [value ? (matrixRow.kind === "discard" ? -value : value) : null, matrixRow.kind === "discard" || reference <= 0 ? null : value / reference];
+          return value ? (matrixRow.kind === "discard" ? -value : value) : null;
         }),
         visibleTotal ? (matrixRow.kind === "discard" ? -visibleTotal : visibleTotal) : null,
         matrixRow.kind === "discard" || visibleReference <= 0 ? null : visibleTotal / visibleReference,
@@ -257,7 +256,7 @@ export async function exportTraceabilityExcel(test: YieldTest, products: Product
       row.eachCell((cell, columnNumber) => {
         cell.border = { top: { style: "thin", color: { argb: "FFC6D2DE" } }, left: { style: "thin", color: { argb: "FFC6D2DE" } }, bottom: { style: "thin", color: { argb: "FFC6D2DE" } }, right: { style: "thin", color: { argb: "FFC6D2DE" } } };
         cell.alignment = { horizontal: columnNumber === 1 ? "left" : "right", vertical: "middle" };
-        if (columnNumber > 1 && columnNumber < lastColumn) cell.numFmt = columnNumber % 2 === 0 ? "0.000" : "0.00%";
+        if (columnNumber > 1 && columnNumber < lastColumn) cell.numFmt = "0.000";
         if (columnNumber === lastColumn) cell.numFmt = "0.00%";
       });
       columns.forEach((column, index) => {
@@ -268,12 +267,11 @@ export async function exportTraceabilityExcel(test: YieldTest, products: Product
         const blue = Number.parseInt(hex.slice(4, 6), 16);
         const blend = (channel: number) => Math.round(channel * .16 + 255 * .84).toString(16).padStart(2, "0").toUpperCase();
         const fill = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: `FF${blend(red)}${blend(green)}${blend(blue)}` } };
-        row.getCell(2 + index * 2).fill = fill;
-        row.getCell(3 + index * 2).fill = fill;
+        row.getCell(2 + index).fill = fill;
       });
     });
     worksheet.getColumn(1).width = 34;
-    columns.forEach((_, index) => { worksheet.getColumn(2 + index * 2).width = 12; worksheet.getColumn(3 + index * 2).width = 12; });
+    columns.forEach((_, index) => { worksheet.getColumn(2 + index).width = 12; });
     worksheet.getColumn(lastColumn - 1).width = 14;
     worksheet.getColumn(lastColumn).width = 14;
     worksheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4 + matrix.rows.length, column: lastColumn } };

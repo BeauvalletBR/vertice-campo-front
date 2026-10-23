@@ -1,4 +1,4 @@
-import { Fragment, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import { UNCLASSIFIED_WEIGHT_BAND_ID, type Product, type WeightBand, type YieldTest } from "../types/domain";
 import { formatPercent, formatWeight } from "../utils/format";
 import { buildTraceabilityMatrices } from "../utils/traceabilityReport";
@@ -42,7 +42,7 @@ export function TraceabilityMatrix({ test, products, weightBands = [], filterBan
       <header><div><span>Rastreabilidade por peça</span><div className="trace-report-title-row"><h3>{matrix.title}</h3>{matrixBands.length > 0 && <div className="trace-band-legend" aria-label="Médias por faixa"><strong>Médias por faixa:</strong>{matrixBands.map((band) => <small style={{ "--trace-legend-color": band.color, "--trace-legend-soft": softBandColor(band.color) } as CSSProperties} key={band.id}>{band.name}<b>{formatPercent(bandSummary(band))}</b></small>)}</div>}</div></div><strong>{selectedColumns.length} {selectedColumns.length === 1 ? "peça" : "peças"}</strong></header>
       <div className="trace-report-scroll">
         <table aria-label={`Rastreabilidade de ${matrix.title}`}>
-          <thead><tr><th>Produto / descarte</th>{selectedColumns.map((column) => <Fragment key={column.order}><th title={column.band?.name || "Sem faixa"}><small>Peça</small>{column.order}</th><th className="trace-piece-yield-heading"><small>Rend.</small>Entrada</th></Fragment>)}<th className="trace-total-column">Total</th><th className="trace-yield-column">Rendimento</th></tr></thead>
+          <thead><tr><th>Produto / descarte</th>{selectedColumns.map((column) => <th key={column.order} title={column.band?.name || "Sem faixa"}><small>Peça</small>{column.order}</th>)}<th className="trace-total-column">Total</th><th className="trace-yield-column">Rendimento</th></tr></thead>
           <tbody>{matrix.rows.map((row) => {
             const visibleTotal = selectedColumns.reduce((total, column) => total + (row.values[column.index] || 0), 0);
             const visibleReference = selectedColumns.reduce((total, column) => total + (referenceValues[column.index] || 0), 0);
@@ -51,9 +51,7 @@ export function TraceabilityMatrix({ test, products, weightBands = [], filterBan
               <th style={{ paddingLeft: `${12 + (row.depth || 0) * 22}px` }}>{row.kind === "discard" ? <span className={`trace-discard-branch ${row.branchLast ? "last" : ""}`}>{row.label}</span> : <span className={row.depth ? "trace-product-branch" : ""}>{row.label}</span>}</th>
               {selectedColumns.map((column) => {
                 const value = row.values[column.index] || 0;
-                const reference = referenceValues[column.index] || 0;
-                const pieceYield = row.kind === "discard" || reference <= 0 ? null : (value / reference) * 100;
-                return <Fragment key={`${row.id}-${column.order}`}><td className={column.band ? "trace-band-cell" : ""} style={bandStyle(column.index)}>{value > 0 ? row.kind === "discard" ? `− ${formatWeight(value)}` : formatWeight(value).replace(" kg", "") : "—"}</td><td className={`trace-piece-yield-cell ${column.band ? "trace-band-cell" : ""}`} style={bandStyle(column.index)}>{pieceYield === null ? "—" : formatPercent(pieceYield)}</td></Fragment>;
+                return <td key={`${row.id}-${column.order}`} className={column.band ? "trace-band-cell" : ""} style={bandStyle(column.index)}>{value > 0 ? row.kind === "discard" ? `− ${formatWeight(value)}` : formatWeight(value).replace(" kg", "") : "—"}</td>;
               })}
               <td className="trace-total-column">{visibleTotal > 0 ? row.kind === "discard" ? `− ${formatWeight(visibleTotal)}` : formatWeight(visibleTotal).replace(" kg", "") : "—"}</td>
               <td className="trace-yield-column">{visibleYield === null ? "—" : formatPercent(visibleYield)}</td>
