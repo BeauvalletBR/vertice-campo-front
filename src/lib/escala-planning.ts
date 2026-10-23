@@ -248,6 +248,7 @@ export interface PlanningChinaDivergence {
   storedPercent: number;
 }
 
+
 export const getPlanningChinaDivergence = ({
   animalQuantity,
   storedChinaQuantity,

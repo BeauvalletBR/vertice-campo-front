@@ -27,6 +27,7 @@ export interface EscalaAgrotoolsCriterio {
 export interface EscalaAgrotoolsFazenda {
   nomeFazenda?: string | null;
   nomePecuarista?: string | null;
+  car?: string | null;
   municipio?: string | null;
   uf?: string | null;
   statusFinal?: string | null;
@@ -45,6 +46,7 @@ export interface EscalaAgrotoolsAnalise {
   fazenda?: string | null;
   entrada?: { ie?: string | null; cpf?: string | null };
   quantidadeFazendas?: number | null;
+  cars?: string[];
   fazendas?: EscalaAgrotoolsFazenda[];
   criterios?: EscalaAgrotoolsCriterio[];
   detalhesResumidos?: boolean;

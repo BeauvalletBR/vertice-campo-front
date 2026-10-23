@@ -17,6 +17,7 @@ import {
   ClipboardList,
   FilePlus2,
   FileSpreadsheet,
+  FileText,
   Info,
   ListPlus,
   Loader2,
@@ -41,6 +42,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -64,7 +73,6 @@ import {
   consultarPrazosPagamento,
   consultarResumoEscala,
   confirmarAlertasChinaEscala,
-  criarVinculoPedidoEscala,
   criarVinculosPedidosDiaEscala,
   editarRegistroManualEscala,
   editarVinculoPedidoEscala,
@@ -82,7 +90,6 @@ import {
 import type {
   AgrotoolsAnaliseStatus,
   EscalaAgrotoolsAnalise,
-  EscalaChinaAjuste,
   EscalaLinha,
   EscalaOcorrencia,
   EscalaResumo,
@@ -97,12 +104,12 @@ import {
   getEffectivePremium,
 } from "@/lib/escala-pricing";
 import { exportScalePlanningToExcel } from "@/lib/escala-excel";
+import { exportScaleAgrotoolsPdf } from "@/lib/escala-agrotools-report";
 import {
   addDays,
   formatDateInput,
   getAgrotoolsPlannedQuantity,
   getAgrotoolsPlannedTotal,
-  getPlanningChinaDivergence,
   hasStoredPlanningChinaQuantity,
   getInitialPlanningWeek,
   getISOWeekValue,
@@ -208,16 +215,8 @@ interface PlanningSexRow {
   unitValue: number | null;
   chinaQuantity: number;
   chinaStored: boolean;
-  chinaSuggestedQuantity: number | null;
   chinaSuggestionMeta: ChinaSuggestionMeta | null;
-  chinaDivergence: ReturnType<typeof getPlanningChinaDivergence>;
   agrotoolsQuantity: number;
-}
-
-interface ChinaSuggestionState {
-  item: PlanningSexRow;
-  day: string;
-  scaleId: number | null;
 }
 
 interface CurralDetailsState {
@@ -690,21 +689,6 @@ const buildChinaSuggestion = (
   };
 };
 
-const getStoredAutomaticChinaSuggestion = (item: PlanningSexRow) => {
-  const origin =
-    item.sex === "VACA"
-      ? item.row.ORIGEM_CHINA_VACA
-      : item.row.ORIGEM_CHINA_BOI;
-  const percent = toOptionalNumber(
-    item.sex === "VACA"
-      ? item.row.PERCENTUAL_CHINA_VACA
-      : item.row.PERCENTUAL_CHINA_BOI,
-  );
-
-  if (origin !== "HISTORICO" || percent === null) return null;
-  return Math.max(0, Math.min(item.quantity, Math.round(item.quantity * percent)));
-};
-
 const getEmpresaLogada = (user: unknown) => {
   const userCompany = Number(
     (user as { nroempresa?: number } | null)?.nroempresa,
@@ -922,9 +906,7 @@ const splitRecordsBySex = (records: EscalaLinha[]): PlanningSexRow[] =>
             ? toNumber(row.QTD_CHINA_VACA_SALVA ?? row.QTD_CHINA_VACA)
             : toNumber(row.QTD_CHINA_BOI_SALVA ?? row.QTD_CHINA_BOI),
         chinaStored: hasStoredPlanningChinaQuantity(row, sex),
-        chinaSuggestedQuantity: null,
         chinaSuggestionMeta: null,
-        chinaDivergence: null,
         agrotoolsQuantity:
           getAgrotoolsPlannedQuantity(row, sex),
       });
@@ -1052,6 +1034,9 @@ export default function Escala() {
   const [loadingAgrotools, setLoadingAgrotools] = useState(false);
   const [agrotoolsDialog, setAgrotoolsDialog] =
     useState<AgrotoolsDialogState | null>(null);
+  const [agrotoolsReportOpen, setAgrotoolsReportOpen] = useState(false);
+  const [agrotoolsReportDate, setAgrotoolsReportDate] = useState("");
+  const [exportingAgrotoolsReport, setExportingAgrotoolsReport] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [openDays, setOpenDays] = useState<Record<string, boolean>>(
     () => restoredPlanningView?.openDays || {},
@@ -1070,22 +1055,6 @@ export default function Escala() {
     useState<ChinaPeriodPreset>("12m");
   const [chinaManualStart, setChinaManualStart] = useState(defaultManualStart);
   const [chinaManualEnd, setChinaManualEnd] = useState(defaultManualEnd);
-  const [chinaSuggestionState, setChinaSuggestionState] =
-    useState<ChinaSuggestionState | null>(null);
-  const [savingChinaSuggestionKey, setSavingChinaSuggestionKey] = useState<
-    string | null
-  >(null);
-  const [chinaAutoAdjustments, setChinaAutoAdjustments] = useState<
-    EscalaChinaAjuste[]
-  >([]);
-  const [chinaSynchronizationError, setChinaSynchronizationError] = useState<
-    string | null
-  >(null);
-  const [acknowledgingChinaAdjustments, setAcknowledgingChinaAdjustments] =
-    useState(false);
-  const [chinaAdjustmentDialog, setChinaAdjustmentDialog] = useState<
-    EscalaChinaAjuste[] | null
-  >(null);
   const [playbackDialogOpen, setPlaybackDialogOpen] = useState(false);
   const [inlineEditState, setInlineEditState] =
     useState<InlineEditState | null>(null);
@@ -1206,7 +1175,6 @@ export default function Escala() {
           data_fim: rangeEnd,
         });
         if (synchronization && isCurrentRequest()) {
-          setChinaSynchronizationError(null);
           const alerts = Array.isArray(synchronization.alertas)
             ? synchronization.alertas
             : [];
@@ -1216,17 +1184,10 @@ export default function Escala() {
               alerts.map((item) => toNumber(item.ID_AJUSTE)),
             );
           }
-          setChinaAutoAdjustments([]);
         }
       } catch (error) {
         console.error("Falha ao sincronizar a quantidade China:", error);
-        if (isCurrentRequest()) {
-          setChinaSynchronizationError(
-            error instanceof Error
-              ? error.message
-              : "Não foi possível verificar as atualizações automáticas de China.",
-          );
-        }
+
       }
 
       const data = await consultarEscala({
@@ -1426,20 +1387,6 @@ export default function Escala() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateStart, dateEnd, initialWeekResolved, nroempresa]);
 
-  useEffect(() => {
-    if (!chinaSuggestionState || chinaAutoAdjustments.length === 0) return;
-
-    const idVinculo = toNumber(
-      chinaSuggestionState.item.row.ID_ESCALA_PEDIDO_VINCULO,
-    );
-    const foiAtualizado = chinaAutoAdjustments.some(
-      (ajuste) =>
-        toNumber(ajuste.ID_ESCALA_PEDIDO_VINCULO) === idVinculo &&
-        ajuste.SEXO === chinaSuggestionState.item.sex,
-    );
-
-    if (foiAtualizado) setChinaSuggestionState(null);
-  }, [chinaAutoAdjustments, chinaSuggestionState]);
 
   const summaries = useMemo(
     () =>
@@ -1483,6 +1430,14 @@ export default function Escala() {
     }
     return Array.from(dates).sort();
   }, [lines, summaries]);
+
+  const agrotoolsReportDays = useMemo(
+    () =>
+      visibleDays.filter(
+        (day) => getUniquePlanningRecords(rowsByDay.get(day) || []).length > 0,
+      ),
+    [rowsByDay, visibleDays],
+  );
 
   const allDaysOpened =
     visibleDays.length > 0 &&
@@ -1798,6 +1753,78 @@ export default function Escala() {
     }
   };
 
+  const openAgrotoolsReport = () => {
+    if (!agrotoolsReportDays.length) {
+      toast.error("Não há pedidos da escala nesta semana para gerar o relatório.");
+      return;
+    }
+    setAgrotoolsReportDate((current) =>
+      agrotoolsReportDays.includes(current) ? current : agrotoolsReportDays[0],
+    );
+    setAgrotoolsReportOpen(true);
+  };
+
+  const handleExportAgrotoolsReport = async () => {
+    if (!agrotoolsReportDate || exportingAgrotoolsReport) return;
+
+    const dayRows = getUniquePlanningRecords(
+      rowsByDay.get(agrotoolsReportDate) || [],
+    );
+    if (!dayRows.length) {
+      toast.error("Não há produtores na data de abate selecionada.");
+      return;
+    }
+
+    setExportingAgrotoolsReport(true);
+    try {
+      const analysisRequests = new Map<
+        string,
+        Promise<EscalaAgrotoolsAnalise>
+      >();
+      const records = await Promise.all(
+        dayRows.map(async (row) => {
+          const analysisId = String(row.ID_ANALISE_AGROTOOLS || "").trim();
+          const fallback: EscalaAgrotoolsAnalise = {
+            status: row.STATUS_AGROTOOLS_ANALISE || "PENDENTE",
+            produtor: row.PRODUTOR,
+            fazenda: row.DESC_PROPRIEDADE,
+            mensagem: analysisId
+              ? "Não foi possível recuperar os detalhes desta análise."
+              : "Sem inscrição ou consulta Agrotools vinculada à escala.",
+          };
+
+          if (!analysisId) return { row, analysis: fallback };
+
+          try {
+            let request = analysisRequests.get(analysisId);
+            if (!request) {
+              request = consultarAnaliseAgrotoolsEscala(nroempresa, analysisId);
+              analysisRequests.set(analysisId, request);
+            }
+            return { row, analysis: await request };
+          } catch {
+            return { row, analysis: fallback };
+          }
+        }),
+      );
+
+      await exportScaleAgrotoolsPdf({
+        date: agrotoolsReportDate,
+        records,
+      });
+      setAgrotoolsReportOpen(false);
+      toast.success("Relatório Agrotools gerado com sucesso.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível gerar o relatório Agrotools.",
+      );
+    } finally {
+      setExportingAgrotoolsReport(false);
+    }
+  };
+
   const openAgrotoolsAnalysis = async (row: EscalaLinha) => {
     const analysisId = String(row.ID_ANALISE_AGROTOOLS || "").trim();
     setAgrotoolsDialog({ row, analysis: null, loading: Boolean(analysisId) });
@@ -1913,148 +1940,6 @@ export default function Escala() {
       );
     } finally {
       setExportingExcel(false);
-    }
-  };
-
-  const acknowledgeChinaAdjustments = async (
-    adjustments: EscalaChinaAjuste[] = chinaAutoAdjustments,
-  ) => {
-    const idsAjuste = adjustments.map((item) =>
-      toNumber(item.ID_AJUSTE),
-    );
-    if (idsAjuste.length === 0) return;
-
-    setAcknowledgingChinaAdjustments(true);
-    try {
-      await confirmarAlertasChinaEscala(nroempresa, idsAjuste);
-      const confirmedIds = new Set(idsAjuste);
-      setChinaAutoAdjustments((current) =>
-        current.filter(
-          (item) => !confirmedIds.has(toNumber(item.ID_AJUSTE)),
-        ),
-      );
-      setChinaAdjustmentDialog(null);
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível confirmar o aviso de atualização China.",
-      );
-    } finally {
-      setAcknowledgingChinaAdjustments(false);
-    }
-  };
-
-  const applyChinaSuggestion = async () => {
-    if (!chinaSuggestionState) return;
-
-    const { item, scaleId } = chinaSuggestionState;
-    const suggestion = item.chinaSuggestionMeta;
-    const row = item.row;
-    if (row.ORIGEM_REGISTRO === "ERP" && loadingPaymentTerms) {
-      toast.warning("Aguarde o carregamento do prazo de pagamento.");
-      return;
-    }
-    const recordManualId = toNumber(row.ID_ESCALA_ITEM_MANUAL);
-    const recordPedidoId = toNumber(row.ID_ESCALA_PEDIDO_VINCULO);
-    const recordPedidoVersion =
-      toNumber(row.VERSAO_REGISTRO || row.VERSAO_VINCULO) || 1;
-
-    if (!suggestion) return;
-
-    setSavingChinaSuggestionKey(item.key);
-
-    try {
-      const nextChinaVaca =
-        item.sex === "VACA"
-          ? suggestion.suggestedQuantity
-          : toNumber(row.QTD_CHINA_VACA);
-      const nextChinaBoi =
-        item.sex === "BOI"
-          ? suggestion.suggestedQuantity
-          : toNumber(row.QTD_CHINA_BOI);
-      const chinaHistoryMetadata =
-        item.sex === "VACA"
-          ? {
-              origem_china_vaca: "HISTORICO" as const,
-              percentual_china_vaca: suggestion.chinaPercent,
-              qtd_base_vaca: item.quantity,
-            }
-          : {
-              origem_china_boi: "HISTORICO" as const,
-              percentual_china_boi: suggestion.chinaPercent,
-              qtd_base_boi: item.quantity,
-            };
-
-      if (row.ORIGEM_REGISTRO === "MANUAL" && recordManualId > 0) {
-        const result = await editarRegistroManualEscala(
-          buildManualUpdatePayload(row, nroempresa, scaleId, {
-            qtd_china_vaca: nextChinaVaca,
-            qtd_china_boi: nextChinaBoi,
-          }),
-        );
-
-        toast.success(result.message || "Quantidade China atualizada.");
-      } else if (recordPedidoId > 0) {
-        const result = await editarVinculoPedidoEscala(
-          buildOrderUpdatePayload(
-            row,
-            nroempresa,
-            {
-              versao: recordPedidoVersion,
-              qtd_china_vaca: nextChinaVaca,
-              qtd_china_boi: nextChinaBoi,
-              ...chinaHistoryMetadata,
-            },
-            paymentTermsByCode,
-          ),
-        );
-
-        toast.success(result.message || "Quantidade China atualizada.");
-      } else {
-        const orderNumber = toNumber(row.NROPEDIDO);
-
-        if (!scaleId || scaleId <= 0) {
-          throw new Error("Crie a escala do dia antes de salvar a sugestão de China.");
-        }
-
-        if (orderNumber <= 0) {
-          throw new Error("Pedido não encontrado para salvar a sugestão de China.");
-        }
-
-        const result = await criarVinculoPedidoEscala({
-          id_escala: scaleId,
-          nroempresa,
-          nro_pedido: orderNumber,
-          seqpedido:
-            toNumber(row.SEQPEDIDO) > 0 ? toNumber(row.SEQPEDIDO) : undefined,
-          observacao:
-            String(
-              row.OBSERVACAO_PEDIDO_ESCALA || row.OBSERVACAO_REGISTRO || "",
-            ).trim() || null,
-          ordem_exibicao:
-            toNumber(row.ORDEM_EXIBICAO) > 0
-              ? toNumber(row.ORDEM_EXIBICAO)
-              : undefined,
-          prazo_dias: getEffectivePaymentTermDays(row, paymentTermsByCode),
-          qtd_china_vaca: nextChinaVaca,
-          qtd_china_boi: nextChinaBoi,
-          ...chinaHistoryMetadata,
-        });
-
-        toast.success(result.message || "Pedido incluído com a sugestão de China.");
-      }
-
-      setChinaSuggestionState(null);
-      await loadData(false);
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível aplicar a sugestão de China.",
-      );
-    } finally {
-      setSavingChinaSuggestionKey(null);
     }
   };
 
@@ -2632,24 +2517,37 @@ export default function Escala() {
               </div>
             </div>
 
-            {canManage && (
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
               <Button
                 variant="outline"
                 size="sm"
-                title="Adicionar lançamento manual escolhendo a data"
-                className="h-11 w-full shrink-0 gap-2 rounded-xl border-[#8EC7D9] bg-[#EFF8FA] px-4 text-sm font-black text-[#09759D] shadow-sm hover:border-[#57AFCB] hover:bg-[#E2F6FB] disabled:border-[#D4DFE8] disabled:bg-[#F5F8FB] disabled:text-[#90A3B7] sm:w-auto"
-                onClick={() => {
-                  const targetScaleId = firstScaleShortcut?.idEscala || 0;
-                  const suggestedDate = firstScaleShortcut?.day || dateStart;
-                  navigateFromPlanning(
-                    `/escala/gerenciar/${targetScaleId}?novoManual=1&data=${encodeURIComponent(suggestedDate)}&voltarEscala=1`,
-                  );
-                }}
+                disabled={loading}
+                className="h-11 w-full shrink-0 gap-2 rounded-xl border-[#BFCFDF] px-4 text-sm font-extrabold text-[#173D6E] hover:border-[#1B58A0] hover:bg-[#EEF4FA] sm:w-auto"
+                onClick={() => void refreshAll()}
               >
-                <FilePlus2 className="h-4 w-4" />
-                Adicionar manual
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                Atualizar
               </Button>
-            )}
+
+              {canManage && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="Adicionar lançamento manual escolhendo a data"
+                  className="h-11 w-full shrink-0 gap-2 rounded-xl border-[#8EC7D9] bg-[#EFF8FA] px-4 text-sm font-black text-[#09759D] shadow-sm hover:border-[#57AFCB] hover:bg-[#E2F6FB] disabled:border-[#D4DFE8] disabled:bg-[#F5F8FB] disabled:text-[#90A3B7] sm:w-auto"
+                  onClick={() => {
+                    const targetScaleId = firstScaleShortcut?.idEscala || 0;
+                    const suggestedDate = firstScaleShortcut?.day || dateStart;
+                    navigateFromPlanning(
+                      `/escala/gerenciar/${targetScaleId}?novoManual=1&data=${encodeURIComponent(suggestedDate)}&voltarEscala=1`,
+                    );
+                  }}
+                >
+                  <FilePlus2 className="h-4 w-4" />
+                  Adicionar manual
+                </Button>
+              )}
+            </div>
           </div>
         </header>
 
@@ -2777,34 +2675,57 @@ export default function Escala() {
                   China: {chinaPeriodConfig?.buttonLabel || "Manual"}
                 </Button>
 
-                {canManage && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={loading || loadingAgrotools}
-                    className="h-10 gap-2 rounded-xl border-[#8FB8D9] bg-[#F1F7FC] px-4 text-xs font-extrabold text-[#145E96] hover:border-[#367FB5] hover:bg-[#E6F1FA] disabled:border-[#D4DFE8] disabled:text-[#90A3B7]"
-                    onClick={() => void handleLoadAgrotools()}
-                  >
-                    {loadingAgrotools ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <BadgeCheck className="h-3.5 w-3.5" />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={loading || loadingAgrotools || exportingAgrotoolsReport}
+                      className="h-10 gap-2 rounded-xl border-[#8FB8D9] bg-[#F1F7FC] px-4 text-xs font-extrabold text-[#145E96] hover:border-[#367FB5] hover:bg-[#E6F1FA] disabled:border-[#D4DFE8] disabled:text-[#90A3B7]"
+                    >
+                      {loadingAgrotools || exportingAgrotoolsReport ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <BadgeCheck className="h-3.5 w-3.5" />
+                      )}
+                      Agrotools
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64 rounded-xl border-[#C9D8E6] p-1.5 shadow-xl">
+                    <DropdownMenuLabel className="px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#60758A]">
+                      Aptidão da escala
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {canManage && (
+                      <DropdownMenuItem
+                        disabled={loadingAgrotools}
+                        className="gap-3 rounded-lg px-3 py-2.5 font-bold text-[#173D6E]"
+                        onSelect={() => void handleLoadAgrotools()}
+                      >
+                        <BadgeCheck className="h-4 w-4 text-[#17679F]" />
+                        <div>
+                          <p>Carregar aptidões</p>
+                          <p className="text-[10px] font-medium text-[#71869A]">
+                            Atualiza os dados da semana
+                          </p>
+                        </div>
+                      </DropdownMenuItem>
                     )}
-                    {loadingAgrotools
-                      ? "Consultando Agrotools..."
-                      : "Carregar Agrotools"}
-                  </Button>
-                )}
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-10 gap-2 rounded-xl border-[#BFCFDF] px-4 text-xs font-bold text-[#173D6E] hover:border-[#1B58A0] hover:bg-[#EEF4FA]"
-                  onClick={() => void refreshAll()}
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Atualizar
-                </Button>
+                    <DropdownMenuItem
+                      className="gap-3 rounded-lg px-3 py-2.5 font-bold text-[#173D6E]"
+                      onSelect={openAgrotoolsReport}
+                    >
+                      <FileText className="h-4 w-4 text-[#7A3E91]" />
+                      <div>
+                        <p>Gerar relatório PDF</p>
+                        <p className="text-[10px] font-medium text-[#71869A]">
+                          Escolha uma data de abate
+                        </p>
+                      </div>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
                 <Button
                   variant="outline"
@@ -2904,30 +2825,6 @@ export default function Escala() {
           />
         </div>
 
-        {chinaSynchronizationError && (
-          <div className="flex flex-col gap-3 rounded-xl border border-[#EAB66C] bg-[#FFF8E8] p-3 text-[#8A4B08] sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-start gap-2.5">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs font-extrabold">
-                  Não foi possível verificar as atualizações de China
-                </p>
-                <p className="mt-0.5 break-words text-[11px] font-semibold text-[#9A5B17]">
-                  {chinaSynchronizationError}
-                </p>
-              </div>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="shrink-0 border-[#D89A44] bg-white/70 font-extrabold text-[#8A4B08] hover:bg-[#FFEBC7]"
-              onClick={() => void loadData(false)}
-            >
-              Tentar novamente
-            </Button>
-          </div>
-        )}
 
         {loading ? (
           <div className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_4px_18px_rgba(23,61,110,0.04)]">
@@ -2957,21 +2854,9 @@ export default function Escala() {
                     historicoCompras,
                     chinaPeriodConfig,
                   );
-                  const automaticSuggestion =
-                    getStoredAutomaticChinaSuggestion(item);
-                  const suggestedQuantity =
-                    automaticSuggestion ?? suggestion?.suggestedQuantity ?? null;
-
                   return {
                     ...item,
-                    chinaSuggestedQuantity: suggestedQuantity,
                     chinaSuggestionMeta: suggestion,
-                    chinaDivergence: getPlanningChinaDivergence({
-                      animalQuantity: item.quantity,
-                      storedChinaQuantity: item.chinaQuantity,
-                      suggestedChinaQuantity: suggestedQuantity,
-                      hasStoredQuantity: item.chinaStored,
-                    }),
                   };
                 })
                 .sort((a, b) => {
@@ -2983,9 +2868,7 @@ export default function Escala() {
                   if (orderA !== orderB) return orderA - orderB;
                   return a.sex.localeCompare(b.sex);
                 });
-              const chinaDivergenceCount = sexRows.filter(
-                (item) => item.chinaDivergence !== null,
-              ).length;
+
               const totals = calculateTotals(dayRows, paymentTermsByCode);
               const daySubtotal = calculatePlanningDaySubtotal(sexRows, dayRows);
               const curralCapacityExceeded =
@@ -3071,22 +2954,6 @@ export default function Escala() {
                         </span>
                       )}
 
-                      {chinaDivergenceCount > 0 && (
-                        <span
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#F2B176] bg-[#FFF4E8] px-2.5 text-[11px] font-extrabold text-[#A84A15]"
-                          title={`${chinaDivergenceCount} ${
-                            chinaDivergenceCount === 1 ? "linha possui" : "linhas possuem"
-                          } quantidade China divergente do percentual histórico atual.`}
-                        >
-                          <AlertTriangle className="h-4 w-4 shrink-0" />
-                          <span>{chinaDivergenceCount}</span>
-                          <span className="hidden xl:inline">
-                            {chinaDivergenceCount === 1
-                              ? "China divergente"
-                              : "China divergentes"}
-                          </span>
-                        </span>
-                      )}
 
                       {(pendingInclusion > 0 || pendingComplement > 0) && (
                         <span
@@ -3336,23 +3203,10 @@ export default function Escala() {
                                 </span>
                               </TableHead>
                               <TableHead
-                                className={`w-[4%] h-11 border-r px-1 text-[9px] font-extrabold uppercase leading-tight tracking-[0.03em] text-right ${
-                                  chinaDivergenceCount > 0
-                                    ? "border-[#F2B176] bg-[#FFE8C7] text-[#A84A15]"
-                                    : "border-[#D7E2EC] text-[#173D6E]"
-                                }`}
-                                title={
-                                  chinaDivergenceCount > 0
-                                    ? `${chinaDivergenceCount} quantidade(s) China precisam ser revisadas.`
-                                    : "Quantidade de animais China"
-                                }
+                                className="w-[4%] h-11 border-r border-[#D7E2EC] px-1 text-right text-[9px] font-extrabold uppercase leading-tight tracking-[0.03em] text-[#173D6E]"
+                                title="Quantidade de animais China"
                               >
-                                <span className="inline-flex items-center justify-end gap-1">
-                                  {chinaDivergenceCount > 0 && (
-                                    <AlertTriangle className="h-3.5 w-3.5" />
-                                  )}
-                                  China
-                                </span>
+                                China
                               </TableHead>
                               <TableHead className="w-[5%] h-11 border-r border-[#D7E2EC] px-1 text-[9px] font-extrabold uppercase leading-tight tracking-[0.03em] text-[#173D6E] text-right">
                                 Agrotools
@@ -3414,39 +3268,8 @@ export default function Escala() {
                               const compradorPendenteErp =
                                 row.ORIGEM_REGISTRO === "ERP" &&
                                 toNumber(row.SEQCOMPRADOR_ERP) === 1;
-                              const chinaSuggestionPending = Boolean(
-                                item.chinaSuggestionMeta &&
-                                  !item.chinaStored,
-                              );
-                              const chinaQuantityDivergent = Boolean(
-                                item.chinaDivergence,
-                              );
-                              const chinaDivergenceTitle = item.chinaDivergence
-                                ? `China confirmado: ${numberFormat.format(
-                                    item.chinaDivergence.storedQuantity,
-                                  )} (${percentFormat.format(
-                                    item.chinaDivergence.storedPercent * 100,
-                                  )}%). Recalculado: ${numberFormat.format(
-                                    item.chinaDivergence.suggestedQuantity,
-                                  )} (${percentFormat.format(
-                                    (item.chinaSuggestionMeta?.chinaPercent ?? 0) *
-                                      100,
-                                  )}%). Clique para revisar.`
-                                : "";
                               const displayedChinaQuantity =
                                 getDisplayedChinaQuantity(item);
-                              const rowChinaAdjustments =
-                                chinaAutoAdjustments.filter(
-                                  (adjustment) =>
-                                    toNumber(
-                                      adjustment.ID_ESCALA_PEDIDO_VINCULO,
-                                    ) ===
-                                      toNumber(
-                                        row.ID_ESCALA_PEDIDO_VINCULO,
-                                      ) && adjustment.SEXO === item.sex,
-                                );
-                              const latestChinaAdjustment =
-                                rowChinaAdjustments[0] || null;
                               const effectivePremium = getEffectivePremium(row);
                               const planningLocation = resolvePlanningLocation(
                                 row,
@@ -4050,18 +3873,8 @@ export default function Escala() {
                                         <button
                                           type="button"
                                           disabled={!canManage || rowScaleId <= 0}
-                                          className={`inline-flex min-w-[38px] items-center justify-center rounded-md px-2 py-1 text-right text-[12px] font-extrabold tabular-nums transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30 ${
-                                            chinaQuantityDivergent
-                                              ? "border border-[#E28A2E] bg-[#FFE8C7] text-[#A84A15] shadow-[inset_0_0_0_1px_rgba(226,138,46,0.12)] hover:bg-[#FFD9A3]"
-                                              : chinaSuggestionPending
-                                                ? "border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.08)] hover:bg-[#FFEBD6]"
-                                                : "text-[#334E68] hover:bg-[#EEF4FA]"
-                                          }`}
-                                          title={
-                                            chinaDivergenceTitle
-                                              ? `${chinaDivergenceTitle} Clique no número para substituir manualmente.`
-                                              : "Editar quantidade China"
-                                          }
+                                          className="inline-flex min-w-[38px] items-center justify-center rounded-md px-2 py-1 text-right text-[12px] font-extrabold tabular-nums text-[#334E68] transition hover:bg-[#EEF4FA] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B58A0]/30"
+                                          title="Editar quantidade China"
                                           onClick={() =>
                                             openRequiredField(
                                               row,
@@ -4077,59 +3890,6 @@ export default function Escala() {
                                           {numberFormat.format(displayedChinaQuantity)}
                                         </button>
                                       )}
-
-                                      {latestChinaAdjustment && (
-                                        <button
-                                          type="button"
-                                          className="inline-flex h-7 items-center gap-1 rounded-md border border-[#EAB66C] bg-[#FFF0CF] px-1.5 text-[9px] font-black text-[#8A4B08] transition hover:border-[#D98218] hover:bg-[#FFE3AD] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F59E0B]/30"
-                                          title="Ver alteração automática da quantidade China"
-                                          onClick={() =>
-                                            setChinaAdjustmentDialog(
-                                              rowChinaAdjustments,
-                                            )
-                                          }
-                                        >
-                                          <AlertTriangle className="h-3 w-3" />
-                                          OK
-                                        </button>
-                                      )}
-
-                                      {chinaQuantityDivergent ? (
-                                        <button
-                                          type="button"
-                                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#E28A2E] bg-[#FFE8C7] text-[#A84A15] transition hover:border-[#C96A1B] hover:bg-[#FFD9A3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F59E0B]/30"
-                                          title={chinaDivergenceTitle}
-                                          onClick={() =>
-                                            setChinaSuggestionState({
-                                              item,
-                                              day,
-                                              scaleId: rowScaleId > 0 ? rowScaleId : null,
-                                            })
-                                          }
-                                        >
-                                          <AlertTriangle className="h-3.5 w-3.5" />
-                                        </button>
-                                      ) : chinaSuggestionPending ? (
-                                        <button
-                                          type="button"
-                                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#F2B176] bg-[#FFF4E8] text-[#B85B00] transition hover:border-[#E28A2E] hover:bg-[#FFEBD6] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F59E0B]/30"
-                                          title="Ver cálculo da sugestão de China"
-                                          onClick={() =>
-                                            setChinaSuggestionState({
-                                              item,
-                                              day,
-                                              scaleId: rowScaleId > 0 ? rowScaleId : null,
-                                            })
-                                          }
-                                        >
-                                          <Sparkles className="h-3.5 w-3.5" />
-                                        </button>
-                                      ) : row.ORIGEM_REGISTRO === "ERP" &&
-                                        loadingChinaHistory ? (
-                                        <span className="text-[10px] font-semibold text-[#7B8EA3]">
-                                          IA...
-                                        </span>
-                                      ) : null}
                                     </div>
                                   </TableCell>
 
@@ -4504,255 +4264,14 @@ export default function Escala() {
           )}
 
           <div className="rounded-xl border border-[#D7E2EC] bg-[#F7FAFC] p-3 text-xs text-[#60758A]">
-            A sugestão usa o histórico do produtor em{" "}
+            O cálculo usa o histórico do produtor em{" "}
             <strong>{chinaPeriodConfig?.descriptionLabel || "período manual"}</strong>
-            . Ao clicar no valor sugerido, a tela mostra o cálculo e permite
-            confirmar a gravação.
+            . A quantidade China é gravada e atualizada automaticamente pela escala.
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setChinaConfigOpen(false)}>
               Fechar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(chinaSuggestionState)}
-        onOpenChange={(open) => {
-          if (!open && !savingChinaSuggestionKey) {
-            setChinaSuggestionState(null);
-          }
-        }}
-      >
-        <DialogContent
-          className="sm:max-w-lg"
-          onKeyDown={(event) => {
-            if (
-              event.key === "Enter" &&
-              !event.repeat &&
-              !savingChinaSuggestionKey &&
-              canManage &&
-              chinaSuggestionState?.item.chinaSuggestionMeta
-            ) {
-              event.preventDefault();
-              void applyChinaSuggestion();
-            }
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>
-              {chinaSuggestionState?.item.chinaDivergence
-                ? "Revisar quantidade China"
-                : "Sugestão histórica de China"}
-            </DialogTitle>
-            <DialogDescription>
-              {chinaSuggestionState?.item.chinaSuggestionMeta
-                ? `Nos últimos ${chinaSuggestionState.item.chinaSuggestionMeta.periodLabel} esse produtor matou ${numberFormat.format(
-                    chinaSuggestionState.item.chinaSuggestionMeta.totalAnimals,
-                  )} animais. Destes, ${numberFormat.format(
-                    chinaSuggestionState.item.chinaSuggestionMeta.chinaAnimals,
-                  )} foram China, gerando ${percentFormat.format(
-                    chinaSuggestionState.item.chinaSuggestionMeta.chinaPercent * 100,
-                  )}%.`
-                : "Sem histórico suficiente para montar a sugestão."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {chinaSuggestionState?.item.chinaSuggestionMeta && (
-            <>
-              <div className="grid gap-3 rounded-xl border border-[#D7E2EC] bg-[#F8FBFD] p-4 sm:grid-cols-3">
-                <div>
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#60758A]">
-                    Produtor
-                  </p>
-                  <p className="mt-1 text-sm font-bold text-[#173D6E]">
-                    {chinaSuggestionState.item.row.PRODUTOR || "Sem nome"}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#60758A]">
-                    Sexo / lote
-                  </p>
-                  <p className="mt-1 text-sm font-bold text-[#173D6E]">
-                    {chinaSuggestionState.item.sex} •{" "}
-                    {numberFormat.format(chinaSuggestionState.item.quantity)}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#60758A]">
-                    China sugerido
-                  </p>
-                  <p className="mt-1 text-sm font-bold text-[#173D6E]">
-                    {numberFormat.format(
-                      chinaSuggestionState.item.chinaSuggestionMeta
-                        .suggestedQuantity,
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {chinaSuggestionState.item.chinaDivergence && (
-                <div className="flex gap-3 rounded-xl border border-[#F2B176] bg-[#FFF4E8] p-3 text-[#8F4713]">
-                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-                  <div>
-                    <p className="text-sm font-extrabold">
-                      Quantidade confirmada fora do cálculo atual
-                    </p>
-                    <p className="mt-1 text-xs font-semibold leading-relaxed">
-                      Foram confirmados {numberFormat.format(
-                        chinaSuggestionState.item.chinaDivergence.storedQuantity,
-                      )} China, equivalentes a {percentFormat.format(
-                        chinaSuggestionState.item.chinaDivergence.storedPercent *
-                          100,
-                      )}% dos {numberFormat.format(
-                        chinaSuggestionState.item.quantity,
-                      )} animais atuais. Pelo histórico, o correto é {numberFormat.format(
-                        chinaSuggestionState.item.chinaDivergence
-                          .suggestedQuantity,
-                      )}. É necessário {chinaSuggestionState.item.chinaDivergence
-                        .difference > 0
-                        ? "aumentar"
-                        : "reduzir"}{" "}
-                      {numberFormat.format(
-                        Math.abs(
-                          chinaSuggestionState.item.chinaDivergence.difference,
-                        ),
-                      )} animais.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <div className="rounded-xl border border-[#CFE0EF] bg-[#EEF6FD] p-3 text-sm text-[#1B4D80]">
-                Aplicando {percentFormat.format(
-                  chinaSuggestionState.item.chinaSuggestionMeta.chinaPercent * 100,
-                )}
-                % sobre {numberFormat.format(chinaSuggestionState.item.quantity)}{" "}
-                {chinaSuggestionState.item.sex.toLowerCase()}, a sugestão fica em{" "}
-                <strong>
-                  {numberFormat.format(
-                    chinaSuggestionState.item.chinaSuggestionMeta
-                      .suggestedQuantity,
-                  )}{" "}
-                  China
-                </strong>
-                .
-              </div>
-            </>
-          )}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={Boolean(savingChinaSuggestionKey)}
-              onClick={() => setChinaSuggestionState(null)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              autoFocus
-              disabled={
-                !canManage ||
-                !chinaSuggestionState?.item.chinaSuggestionMeta ||
-                Boolean(savingChinaSuggestionKey)
-              }
-              onClick={() => void applyChinaSuggestion()}
-            >
-              {savingChinaSuggestionKey ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Salvando...
-                </>
-              ) : (
-                chinaSuggestionState?.item.chinaDivergence
-                  ? `Atualizar para ${numberFormat.format(
-                      chinaSuggestionState.item.chinaDivergence
-                        .suggestedQuantity,
-                    )} China`
-                  : "Confirmar sugestão"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(chinaAdjustmentDialog)}
-        onOpenChange={(open) => {
-          if (!open && !acknowledgingChinaAdjustments) {
-            setChinaAdjustmentDialog(null);
-          }
-        }}
-      >
-        <DialogContent
-          className="sm:max-w-md"
-          onKeyDown={(event) => {
-            if (
-              event.key === "Enter" &&
-              !event.repeat &&
-              !acknowledgingChinaAdjustments &&
-              chinaAdjustmentDialog?.length
-            ) {
-              event.preventDefault();
-              void acknowledgeChinaAdjustments(chinaAdjustmentDialog);
-            }
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>Quantidade China atualizada</DialogTitle>
-            <DialogDescription>
-              O sistema ajustou automaticamente esta linha após a mudança na
-              quantidade de animais.
-            </DialogDescription>
-          </DialogHeader>
-
-          {chinaAdjustmentDialog?.[0] && (
-            <div className="rounded-xl border border-[#EAB66C] bg-[#FFF7E8] p-4 text-[#744108]">
-              <div className="flex items-center gap-2 text-sm font-extrabold">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-[#D98218]" />
-                {chinaAdjustmentDialog[0].SEXO}
-              </div>
-              <p className="mt-2 text-sm font-semibold leading-relaxed">
-                A quantidade de animais mudou de {numberFormat.format(
-                  toNumber(chinaAdjustmentDialog[0].QTD_ANIMAIS_ANTERIOR),
-                )} para {numberFormat.format(
-                  toNumber(chinaAdjustmentDialog[0].QTD_ANIMAIS_NOVA),
-                )}. O China foi atualizado de {numberFormat.format(
-                  toNumber(chinaAdjustmentDialog[0].QTD_CHINA_ANTERIOR),
-                )} para {numberFormat.format(
-                  toNumber(chinaAdjustmentDialog[0].QTD_CHINA_NOVA),
-                )}.
-              </p>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              autoFocus
-              disabled={
-                acknowledgingChinaAdjustments || !chinaAdjustmentDialog?.length
-              }
-              onClick={() => {
-                if (chinaAdjustmentDialog) {
-                  void acknowledgeChinaAdjustments(chinaAdjustmentDialog);
-                }
-              }}
-            >
-              {acknowledgingChinaAdjustments ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Confirmando...
-                </>
-              ) : (
-                "OK, entendi"
-              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4824,6 +4343,94 @@ export default function Escala() {
                 Substituir manualmente
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={agrotoolsReportOpen}
+        onOpenChange={(open) => {
+          if (!exportingAgrotoolsReport) setAgrotoolsReportOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <div className="mb-2 flex items-center justify-between gap-4 rounded-xl border border-[#D7E2EC] bg-[#F8FAFC] px-4 py-3">
+              <img
+                src="/logo.png"
+                alt="Beauvallet"
+                className="h-12 w-auto object-contain"
+              />
+              <div className="h-9 w-px bg-[#D7E2EC]" />
+              <img
+                src="/agrotools-logo.png"
+                alt="Agrotools"
+                className="h-10 max-w-[160px] object-contain"
+              />
+            </div>
+            <DialogTitle>Relatório Agrotools por data de abate</DialogTitle>
+            <DialogDescription>
+              Selecione um dia da escala. O PDF apresentará produtores aptos,
+              inaptos, aptos com ressalva e registros sem inscrição ou consulta.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            <div>
+              <label
+                htmlFor="agrotools-report-date"
+                className="mb-2 block text-[10px] font-black uppercase tracking-[0.1em] text-[#60758A]"
+              >
+                Data de abate
+              </label>
+              <select
+                id="agrotools-report-date"
+                value={agrotoolsReportDate}
+                onChange={(event) => setAgrotoolsReportDate(event.target.value)}
+                className="h-11 w-full rounded-xl border border-[#BFCFDF] bg-white px-3 text-sm font-extrabold text-[#173D6E] outline-none transition focus:border-[#1B58A0] focus:ring-2 focus:ring-[#1B58A0]/15"
+              >
+                {agrotoolsReportDays.map((day) => (
+                  <option key={day} value={day}>
+                    {formatDate(day)} • {numberFormat.format(
+                      getUniquePlanningRecords(rowsByDay.get(day) || []).length,
+                    )} produtor(es)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-start gap-3 rounded-xl border border-[#E7C784] bg-[#FFF8E8] p-3 text-[#71470C]">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" />
+              <p className="text-xs font-semibold leading-relaxed">
+                Para emitir informações atualizadas, use primeiro
+                <strong> Agrotools → Carregar aptidões</strong>. O relatório
+                utiliza os detalhes da última análise salva em cada pedido.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={exportingAgrotoolsReport}
+              onClick={() => setAgrotoolsReportOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={!agrotoolsReportDate || exportingAgrotoolsReport}
+              className="bg-[#173D6E] hover:bg-[#102F57]"
+              onClick={() => void handleExportAgrotoolsReport()}
+            >
+              {exportingAgrotoolsReport ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="mr-2 h-4 w-4" />
+              )}
+              {exportingAgrotoolsReport ? "Gerando PDF..." : "Gerar relatório PDF"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

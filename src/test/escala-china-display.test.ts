@@ -42,6 +42,7 @@ describe("planning China stored values", () => {
 });
 
 describe("planning China divergence", () => {
+
   it("detects a stored quantity that no longer matches the current order", () => {
     expect(
       getPlanningChinaDivergence({
