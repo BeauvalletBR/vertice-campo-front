@@ -99,8 +99,11 @@ function ProductTreeFilter({ products, selectableProductIds, values, onChange }:
     const groupIds = (children.length ? [product.id, ...descendantsOf(product.id)] : [product.id]).filter((id) => selectableIds.has(id));
     if (!groupIds.length) return;
     const productSelected = values.includes(product.id);
+    const idsToRemove = children.length > 0 && !expanded.has(product.id)
+      ? groupIds
+      : [product.id];
     onChange(productSelected
-      ? values.filter((id) => id !== product.id)
+      ? values.filter((id) => !idsToRemove.includes(id))
       : [...new Set([...values, ...groupIds])]);
   };
   const summary = values.length === 0
