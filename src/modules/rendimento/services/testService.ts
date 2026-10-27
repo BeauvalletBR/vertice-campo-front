@@ -178,6 +178,7 @@ function aggregateTraceStep(step: TestStep, inputWeightKg: number, pieceOrders: 
 
 export const testService = {
   list: () => rendimentoApi.listTests(),
+  history: (limit = 300) => rendimentoApi.listTestHistory(limit),
   get: (id: string) => rendimentoApi.getTest(id),
 
   async saveSetup(input: TestSetupInput) {

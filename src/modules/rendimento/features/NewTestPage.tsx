@@ -74,9 +74,10 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
     status,
   });
   const autoSave = (draftFlows: FlowDraft[]) => {
-    if (!currentTestIdRef.current) return;
     const payload = setupPayload(draftFlows, editingStatus);
-    if (!payload.flows.length) return;
+    // Create the database record as soon as the first usable route exists.
+    // Previously, new tests only existed in memory until "Deixar aberto".
+    if (!payload.flows.some((flow) => flow.nodes.length >= 2)) return;
     const submittedDraftIds = new Set(
       draftFlows
         .filter((flow) => flow.id.startsWith("draft-") && flow.rootProductId && flow.productIds.length)
@@ -220,7 +221,7 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
       </section>
 
       <section className="form-card product-flows-card">
-        <header><span><PackagePlus size={19} /></span><div><h2>Produtos vinculados</h2><p>{currentTestId ? "As alterações são salvas automaticamente." : "Monte os produtos e deixe o teste aberto para salvar."}</p></div><div className={`autosave-state ${autoSaveState}`}><CheckCircle2 size={14} />{!currentTestId ? "Ainda não salvo" : autoSaveState === "saving" ? "Salvando..." : autoSaveState === "saved" ? "Salvo automaticamente" : "Salvamento automático"}</div></header>
+        <header><span><PackagePlus size={19} /></span><div><h2>Produtos vinculados</h2><p>{currentTestId ? "As alterações são salvas automaticamente." : "Ao definir a primeira rota completa, o teste será salvo automaticamente."}</p></div><div className={`autosave-state ${autoSaveState}`}><CheckCircle2 size={14} />{autoSaveState === "saving" ? "Salvando..." : currentTestId ? (autoSaveState === "saved" ? "Salvo automaticamente" : "Salvamento automático") : "Aguardando rota completa"}</div></header>
         <div className="flow-editor-list">{flows.map((flow, flowIndex) => {
           return <article className="flow-editor" key={flow.id}>
             <header><div><span>Produto {flowIndex + 1}</span><strong>{products.find((item) => item.id === flow.rootProductId)?.name || "Selecione o produto principal"}</strong></div>{flows.length > 1 && <button className="icon-button icon-button--danger" onClick={() => removeFlow(flow.id)} aria-label="Remover produto"><Trash2 size={16} /></button>}</header>
@@ -231,7 +232,7 @@ export function NewTestPage({ testId, onNavigate }: { testId?: string; onNavigat
             <div className="route-builder route-builder--tree"><header><div><span>Fluxo de transformação</span><small>Adicione uma ou mais saídas em qualquer produto. Cada caminho pode continuar ou terminar separadamente.</small></div><strong>{flow.nodes.length} produtos</strong></header>
               {flow.nodes.length ? <div className="yield-tree-canvas">{renderBranchTree(flow)}</div> : <div className="route-empty">Selecione primeiro o produto principal acima.</div>}
             </div>
-            <div className="flow-save-row"><span>{flow.nodes.length} produtos · {flow.nodes.filter((node) => !flow.nodes.some((candidate) => candidate.parentNodeId === node.id)).length} saídas finais</span><strong><CheckCircle2 size={14} /> {currentTestId ? "Salvamento automático" : "Será salvo como aberto"}</strong></div>
+            <div className="flow-save-row"><span>{flow.nodes.length} produtos · {flow.nodes.filter((node) => !flow.nodes.some((candidate) => candidate.parentNodeId === node.id)).length} saídas finais</span><strong><CheckCircle2 size={14} /> {autoSaveState === "saving" ? "Salvando..." : currentTestId ? "Salvamento automático" : "Aguardando rota completa"}</strong></div>
           </article>;
         })}</div>
         <button className="add-flow-button" onClick={addFlow}><PackagePlus size={17} /> Adicionar outro produto ao teste</button>

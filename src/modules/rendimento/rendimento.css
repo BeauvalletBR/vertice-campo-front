@@ -593,6 +593,47 @@
 .yield-module .select-filter select { min-height: 38px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 28px 8px 10px; color: var(--ink); background: #fff; font-size: 10px; }
 .yield-module .cleanup-inactive-button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #e3a6ab; border-radius: 9px; padding: 8px 11px; color: #a52d36; background: #fff7f7; font-size: 10px; font-weight: 850; cursor: pointer; white-space: nowrap; }
 .yield-module .cleanup-inactive-button:hover { border-color: #c83a45; color: #fff; background: #c83a45; }
+.yield-module .test-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 15px 16px; border-bottom: 1px solid var(--line); background: #f8fafc; }
+.yield-module .test-history-heading > div { display: flex; align-items: center; gap: 10px; }
+.yield-module .test-history-heading > div > span { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; color: var(--blue); background: #e7f1fa; }
+.yield-module .test-history-heading > div > div { display: flex; flex-direction: column; gap: 2px; }
+.yield-module .test-history-heading strong { color: var(--navy); font-size: 13px; }
+.yield-module .test-history-heading small { color: var(--muted); font-size: 10px; }
+.yield-module .test-history-heading button { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px; color: var(--navy); background: #fff; font-size: 10px; font-weight: 800; cursor: pointer; }
+.yield-module .test-history-heading button:disabled { opacity: .6; cursor: wait; }
+.yield-module .test-history-filters { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.yield-module .test-history-filters .search-box { flex: 1; }
+.yield-module .history-date-filter { min-height: 38px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 9px; padding: 0 9px; color: var(--muted); background: #fff; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.yield-module .history-date-filter input { min-width: 112px; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 10px; }
+.yield-module .history-loading { min-height: 220px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--muted); font-size: 11px; font-weight: 750; }
+.yield-module .spin { animation: yield-spin .8s linear infinite; }
+@keyframes yield-spin { to { transform: rotate(360deg); } }
+.yield-module .history-action { display: inline-flex; border-radius: 99px; padding: 5px 8px; color: #24557d; background: #e8f2fa; font-size: 9px; font-weight: 850; white-space: nowrap; }
+.yield-module .history-action--insert { color: #176648; background: #e6f6ef; }
+.yield-module .history-action--update, .yield-module .history-action--status { color: #86530d; background: #fff1d5; }
+.yield-module .history-action--delete { color: #a52d36; background: #fdebed; }
+.yield-module .history-row--delete { background: #fffafa; }
+.yield-module .history-row--delete:hover { background: #fff3f3; }
+.yield-module .history-change { min-width: 360px; display: flex; align-items: flex-start; gap: 8px; white-space: normal; line-height: 1.45; }
+.yield-module .history-change svg { flex: 0 0 auto; margin-top: 1px; color: #6e879d; }
+.yield-module .history-row--delete .history-change svg { color: #c83b44; }
+
+@media (max-width: 900px) {
+  .yield-module .test-history-filters { align-items: stretch; flex-wrap: wrap; }
+  .yield-module .test-history-filters .search-box { width: 100%; flex-basis: 100%; }
+  .yield-module .history-date-filter { flex: 1; }
+}
+
+@media (max-width: 680px) {
+  .yield-module .tabs { overflow-x: auto; }
+  .yield-module .tabs button { flex: 0 0 auto; }
+  .yield-module .test-history-heading { align-items: flex-start; }
+  .yield-module .test-history-heading small { max-width: 230px; }
+  .yield-module .test-history-filters { flex-direction: column; }
+  .yield-module .test-history-filters .search-box, .yield-module .test-history-filters .select-filter, .yield-module .test-history-filters .select-filter select, .yield-module .history-date-filter { width: 100%; }
+  .yield-module .history-date-filter input { flex: 1; }
+  .yield-module .history-change { min-width: 280px; }
+}
 .yield-module .table-title { padding: 17px 19px; border-bottom: 1px solid var(--line-soft); }
 .yield-module .table-title > div { display: flex; flex-direction: column; gap: 4px; }
 .yield-module .table-title span { color: var(--navy); font-size: 13px; font-weight: 850; }
@@ -1131,6 +1172,11 @@
 .yield-module .confirm-dialog-message.danger > span { color: #c42c36; background: #ffe3e5; }
 .yield-module .product-origins > span { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .yield-module .product-origins > span small { color: var(--muted); font-size: 9px; font-weight: 500; text-transform: none; }
+.yield-module .product-origin-search { min-height: 40px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 8px; padding: 0 11px; color: #6c8297; background: #f9fbfd; }
+.yield-module .product-origin-search:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(27, 88, 160, .1); }
+.yield-module .product-origin-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 11px; font-weight: 650; }
+.yield-module .product-origin-search input::placeholder { color: #8a9cad; }
+.yield-module .product-origin-empty { border: 1px dashed #c4d2de; border-radius: 8px; padding: 13px; color: var(--muted); background: #f8fafc; font-size: 10px; text-align: center; }
 .yield-module .product-origins .checkbox-grid label.disabled { opacity: .48; cursor: not-allowed; background: #f2f4f6; }
 .yield-module .sequence-picker { margin-top: 17px; }
 .yield-module .sequence-picker > span { display: block; margin-bottom: 9px; color: #4b6177; font-size: 11px; font-weight: 850; text-transform: uppercase; }

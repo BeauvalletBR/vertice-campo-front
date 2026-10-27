@@ -5,6 +5,7 @@ import type {
   Product,
   TestDiscard,
   TestFlow,
+  TestHistoryEntry,
   TestStep,
   TraceableStepItem,
   WeightBand,
@@ -128,6 +129,18 @@ const mapWeightBand = (row: ApiRow): WeightBand => ({
   createdAt: asString(row.CRIADO_EM),
   updatedBy: asString(row.ATUALIZADO_POR_NOME || row.ATUALIZADO_POR_ID || row.CRIADO_POR_NOME || row.CRIADO_POR_ID),
   updatedAt: asString(row.ATUALIZADO_EM || row.CRIADO_EM),
+});
+
+const mapTestHistoryEntry = (row: ApiRow): TestHistoryEntry => ({
+  id: asString(row.ID_LOG),
+  testId: asString(row.COD_LINK),
+  action: asString(row.ACAO).toUpperCase(),
+  userId: asString(row.USUARIO_ID),
+  userName: asString(row.USUARIO_NOME) || "Usuário não informado",
+  occurredAt: asString(row.DATA_HORA),
+  detail: asString(row.DETALHES),
+  change: asString(row.ALTERACAO),
+  company: asNumber(row.NROEMPRESA),
 });
 
 const mapTestDiscard = (row: ApiRow): TestDiscard => ({
@@ -431,6 +444,12 @@ export const rendimentoApi = {
       `/rendimento/testes?nroempresa=${company()}&detalhado=true`,
     );
     return data.TESTES.map(mapYieldTest).sort((a, b) => b.number - a.number);
+  },
+  async listTestHistory(limit = 300) {
+    const data = await request<{ OCORRENCIAS: ApiRow[] }>(
+      `/rendimento/ocorrencias?nroempresa=${company()}&limite=${Math.min(Math.max(1, limit), 1000)}`,
+    );
+    return (data.OCORRENCIAS || []).map(mapTestHistoryEntry);
   },
   async getTest(id: string) {
     const data = await request<{ TESTE: ApiRow }>(

@@ -6,6 +6,7 @@ import { PageHeader } from "../components/PageHeader";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ReportExportDialog } from "../components/ReportExportDialog";
 import { StatusBadge } from "../components/StatusBadge";
+import { TestHistoryPanel } from "../components/TestHistoryPanel";
 import { Button, EmptyState } from "../components/ui";
 import { testService } from "../services/testService";
 import { useRendimentoData } from "../context/RendimentoDataContext";
@@ -14,7 +15,7 @@ import type { TestStatus } from "../types/domain";
 import { formatDate, formatDateTime, formatWeight } from "../utils/format";
 import { isBranchedFlow } from "../utils/flowTree";
 
-type TestTab = "pending" | "finished" | "inactive";
+type TestTab = "pending" | "finished" | "inactive" | "history";
 interface PendingConfirmation { title: string; description: string; label: string; danger?: boolean; action: () => Promise<void> }
 
 export function TestsPage({ onNavigate }: { onNavigate: (target: NavigationTarget) => void }) {
@@ -83,8 +84,9 @@ export function TestsPage({ onNavigate }: { onNavigate: (target: NavigationTarge
       <button className={tab === "pending" ? "active" : ""} onClick={() => selectTab("pending")}>Pendentes <span>{tests.filter((item) => ["RASCUNHO", "ABERTO", "EM_EXECUCAO"].includes(item.status)).length}</span></button>
       <button className={tab === "finished" ? "active" : ""} onClick={() => selectTab("finished")}>Finalizados <span>{tests.filter((item) => item.status === "FINALIZADO").length}</span></button>
       <button className={tab === "inactive" ? "active" : ""} onClick={() => selectTab("inactive")}>Inativos <span>{tests.filter((item) => item.status === "CANCELADO").length}</span></button>
+      <button className={tab === "history" ? "active" : ""} onClick={() => selectTab("history")}>Histórico</button>
     </div>
-    <section className="table-panel tests-panel">
+    {tab === "history" ? <TestHistoryPanel /> : <section className="table-panel tests-panel">
       <header className="table-toolbar"><label className="search-box"><Search size={17} /><input placeholder="Buscar por data, número, produto, corte ou status..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><div className="table-toolbar-actions"><label className="select-filter"><Filter size={15} /><select value={status} onChange={(event) => setStatus(event.target.value as TestStatus | "")}><option value="">Todos os status</option>{tab === "pending" ? <><option value="RASCUNHO">Rascunho</option><option value="ABERTO">Aberto</option><option value="EM_EXECUCAO">Em andamento</option></> : tab === "finished" ? <option value="FINALIZADO">Finalizado</option> : <option value="CANCELADO">Inativo</option>}</select></label>{tab === "inactive" && tests.some((item) => item.status === "CANCELADO") && <button type="button" className="cleanup-inactive-button" onClick={clearInactive}><Trash2 size={15} /> Limpar inativos</button>}</div></header>
       {!rows.length ? <EmptyState title="Nenhum teste encontrado" description="Ajuste a busca ou os filtros para visualizar outros resultados." /> : tab === "pending" ? <>
         <div className="pending-cards-heading"><div><span className="pending-heading-icon"><Clock3 size={19} /></span><div><h2>Testes pendentes</h2><p>Escolha um card para continuar de onde parou.</p></div><strong>{rows.length} {rows.length === 1 ? "pendente" : "pendentes"}</strong></div></div>
@@ -109,7 +111,7 @@ export function TestsPage({ onNavigate }: { onNavigate: (target: NavigationTarge
         const confirmedCount = test.flows.flatMap((flow) => isBranchedFlow(flow.steps) ? flow.steps : flow.steps.slice(0, -1)).filter((step) => step.confirmed).length;
         return <tr key={test.id}><td><strong className="date-primary">{test.date ? formatDate(test.date) : "Data não informada"}</strong><small>Teste {test.number}</small></td><td><strong>{test.name || `Teste ${test.number}`}</strong><small>{flowNames(test)}</small></td><td>{test.inputWeightKg ? formatWeight(test.inputWeightKg) : "SEM ENTRADA"}</td><td><strong>{test.flows.length}</strong><small>{test.flows.length === 1 ? "produto" : "produtos"}</small></td><td>{confirmedCount}</td><td><strong>{test.finalizedBy || "Não informado"}</strong></td><td>{formatDateTime(tab === "finished" ? test.finalizedAt : test.updatedAt)}</td><td><div className="row-actions"><button className="icon-button" title="Visualizar" onClick={() => onNavigate({ route: "detail", id: test.id })}><Eye size={17} /></button>{tab === "finished" ? <><button className="table-action-button" title="Reabrir e editar todos os valores" onClick={() => reopenFinished(test.id, test.number)}><SquarePen size={15} /> Editar valores</button><button className="table-action-button" title="Escolher formato do relatório" onClick={() => setReportTestId(test.id)}><FileDown size={15} /> Relatório</button><button className="table-action-button table-action-button--danger" title="Inativar teste" onClick={() => inactivateFinished(test.id, test.number)}><PowerOff size={15} /> Inativar</button></> : <button className="table-action-button" title="Reativar teste" onClick={() => restoreInactive(test.id)}><RotateCcw size={15} /> Reativar</button>}</div></td></tr>;
       })}</tbody></table></div>}
-    </section>
+    </section>}
     <ConfirmDialog open={confirmation !== null} title={confirmation?.title || "Confirmar ação"} description={confirmation?.description || ""} confirmLabel={confirmation?.label} danger={confirmation?.danger} onCancel={() => setConfirmation(null)} onConfirm={async () => { const action = confirmation?.action; setConfirmation(null); await action?.(); }} />
     <ReportExportDialog open={reportTestId !== null} test={tests.find((item) => item.id === reportTestId)} products={products} onClose={() => setReportTestId(null)} />
   </>;

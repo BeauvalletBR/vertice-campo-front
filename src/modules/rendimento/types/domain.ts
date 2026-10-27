@@ -8,6 +8,19 @@ export const UNCLASSIFIED_WEIGHT_BAND_ID = "__SEM_FAIXA__";
 export type ProductType = "ENTRADA" | "PRODUTO";
 export type TestStatus =
   "RASCUNHO" | "ABERTO" | "EM_EXECUCAO" | "FINALIZADO" | "CANCELADO";
+export type TestHistoryAction = "INSERT" | "UPDATE" | "STATUS" | "DELETE" | string;
+
+export interface TestHistoryEntry {
+  id: string;
+  testId: string;
+  action: TestHistoryAction;
+  userId: string;
+  userName: string;
+  occurredAt: string;
+  detail: string;
+  change: string;
+  company: number;
+}
 export type FlowStatus = "PENDENTE" | "EM_EXECUCAO" | "FINALIZADO";
 export type ExecutionMode = "consolidated" | "traceable";
 export type AuditAction =
