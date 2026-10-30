@@ -52,12 +52,14 @@ export interface Product extends AuditFields {
   erpProductSeq?: number | null;
   erpProductDescription?: string;
   erpYieldTarget?: number | null;
+  erpCutProportion?: number | null;
 }
 
 export interface ErpProduct {
   seqProduct: number;
   description: string;
   yieldTarget: number | null;
+  cutProportion: number | null;
 }
 
 export interface DiscardType extends AuditFields {

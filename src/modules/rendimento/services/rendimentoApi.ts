@@ -84,6 +84,7 @@ const mapProduct = (row: ApiRow): Product => ({
   erpProductSeq: row.SEQPRODUTO_ERP == null ? null : asNumber(row.SEQPRODUTO_ERP),
   erpProductDescription: asString(row.DESCRICAO_PRODUTO_ERP),
   erpYieldTarget: row.BOI_METAREND == null ? null : asNumber(row.BOI_METAREND),
+  erpCutProportion: row.PROPORCAO_CORTE == null ? null : asNumber(row.PROPORCAO_CORTE),
   createdBy: asString(row.CRIADO_POR_NOME || row.CRIADO_POR_ID),
   createdAt: asString(row.CRIADO_EM),
   updatedBy: asString(
@@ -398,6 +399,7 @@ export const rendimentoApi = {
       seqProduct: asNumber(row.SEQPRODUTO),
       description: asString(row.DESCRICAO),
       yieldTarget: row.BOI_METAREND == null ? null : asNumber(row.BOI_METAREND),
+      cutProportion: row.PROPORCAO_CORTE == null ? null : asNumber(row.PROPORCAO_CORTE),
     }));
   },
   async saveDiscard(discard: Partial<DiscardType> & Pick<DiscardType, "name">) {
