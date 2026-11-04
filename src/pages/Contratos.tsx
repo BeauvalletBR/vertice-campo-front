@@ -107,6 +107,54 @@ type StockSortKey = keyof Pick<
   | "ESTOQUE_SEM_VENDA"
 >;
 type SortDirection = "asc" | "desc";
+type ContractSortKey =
+  | "ITEM_COUNT"
+  | "NROCONTRATO"
+  | "NOMERAZAO"
+  | "PAISDESTINO"
+  | "PRIORIDADE"
+  | "DTA_EMBARQUE_PLANEJADA"
+  | "PRAZO_DIAS"
+  | "PESO_TOTAL"
+  | "STATUS_OPERACIONAL";
+
+const priorityOrder: Record<string, number> = {
+  BAIXA: 1,
+  MEDIA: 2,
+  ALTA: 3,
+  URGENTE: 4,
+};
+
+const contractSortValue = (contract: ExportContract, key: ContractSortKey): string | number | null => {
+  if (key === "ITEM_COUNT") return contract.PRODUTOS.length;
+  if (key === "PRIORIDADE") return priorityOrder[contract.PRIORIDADE] || 0;
+  if (key === "DTA_EMBARQUE_PLANEJADA") {
+    if (!contract.DTA_EMBARQUE_PLANEJADA) return null;
+    const timestamp = new Date(contract.DTA_EMBARQUE_PLANEJADA).getTime();
+    return Number.isNaN(timestamp) ? null : timestamp;
+  }
+  if (key === "STATUS_OPERACIONAL") return contract.EM_EXPEDICAO ? "EM_EXPEDICAO" : contract.STATUS_OPERACIONAL;
+  if (key === "PRAZO_DIAS") return contract.PRAZO_DIAS == null ? null : Number(contract.PRAZO_DIAS);
+  if (key === "PESO_TOTAL") return Number(contract.PESO_TOTAL || 0);
+  return String(contract[key] || "");
+};
+
+const compareContracts = (
+  first: ExportContract,
+  second: ExportContract,
+  sort: { key: ContractSortKey; direction: SortDirection },
+) => {
+  const firstValue = contractSortValue(first, sort.key);
+  const secondValue = contractSortValue(second, sort.key);
+  const firstMissing = firstValue == null || firstValue === "";
+  const secondMissing = secondValue == null || secondValue === "";
+  if (firstMissing !== secondMissing) return firstMissing ? 1 : -1;
+  if (firstMissing && secondMissing) return 0;
+  const comparison = typeof firstValue === "number" && typeof secondValue === "number"
+    ? firstValue - secondValue
+    : String(firstValue).localeCompare(String(secondValue), "pt-BR", { numeric: true, sensitivity: "base" });
+  return sort.direction === "asc" ? comparison : -comparison;
+};
 
 export default function Contratos() {
   const [data, setData] = useState<ContractsPanelResponse | null>(null);
@@ -120,6 +168,7 @@ export default function Contratos() {
   const [contractTab, setContractTab] = useState<"ATIVOS" | "DESCONSIDERADOS">("ATIVOS");
   const [stockSearch, setStockSearch] = useState("");
   const [onlySurplus, setOnlySurplus] = useState(false);
+  const [contractSort, setContractSort] = useState<{ key: ContractSortKey; direction: SortDirection }>({ key: "NROCONTRATO", direction: "asc" });
   const [stockSort, setStockSort] = useState<{ key: StockSortKey; direction: SortDirection }>({ key: "PESODISPONIVEL", direction: "desc" });
   const [reservationInputs, setReservationInputs] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState<Record<number, string>>({});
@@ -174,7 +223,14 @@ export default function Contratos() {
       normalizeSearch(contract.PAISDESTINO).includes(contractSearchTerm) ||
       productMatches;
     return matchesSearch && (country === "TODOS" || contract.PAISDESTINO === country);
-  });
+  }).sort((first, second) => compareContracts(first, second, contractSort));
+
+  const changeContractSort = (key: ContractSortKey) => {
+    setContractSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  };
 
   const stock = (data?.estoque || []).filter((item) => {
     const term = normalizeSearch(stockSearch);
@@ -264,7 +320,8 @@ export default function Contratos() {
     }
     const key = `${contract.SEQCONTRATO}-${product.SEQPRODUTO}`;
     const raw = reservationInputs[key] ?? "";
-    const weight = Number(raw.replace(",", "."));
+    const suggestedWeight = suggestedReservationWeight(product);
+    const weight = raw.trim() ? Number(raw.replace(",", ".")) : suggestedWeight;
     if (!Number.isFinite(weight) || weight < 0) {
       toast.error("Informe um peso válido.");
       return;
@@ -343,7 +400,7 @@ export default function Contratos() {
           RECOMENDACOES: ranked,
           RESUMO: {
             CONTRATOS_ANALISADOS: ranked.length,
-            CONTRATOS_CRITICOS: ranked.filter((item) => ["CRITICO", "SEGURAR"].includes(item.DECISAO)).length,
+            CONTRATOS_CRITICOS: ranked.filter((item) => item.DECISAO === "CRITICO" || item.ESTOQUE_PROJETADO_SITUACAO === "LIMITE").length,
             PESO_FALTANTE: ranked.reduce((sum, item) => sum + Number(item.FALTANTE_PRODUZIR || 0), 0),
             EXCESSO_PROJETADO: ranked.reduce((sum, item) => sum + Number(item.EXCESSO_PROJETADO || 0), 0),
           },
@@ -433,6 +490,7 @@ export default function Contratos() {
               ["ESTOQUE", "Estoque"],
               ["IMPORTACAO", "Importar planilha"],
               ["CONFIGURACAO", "Configuração da desossa"],
+              ["MANUAL", "Manual"],
             ] as const).map(([value, label]) => (
               <button key={value} type="button" onClick={() => setWorkspaceView(value)} className={`rounded-lg px-4 py-2.5 text-xs font-black transition-colors ${workspaceView === value ? "bg-[#173D6E] text-white shadow-sm" : "text-[#47627D] hover:bg-[#EDF3F7]"}`}>
                 {label}
@@ -485,7 +543,7 @@ export default function Contratos() {
             </div>
             <div className="overflow-x-auto">
               <Table className="w-full min-w-[980px] table-fixed [&_td]:px-2 [&_th]:px-2">
-                <TableHeader className="bg-[#EDF3F7]"><TableRow><Header className="w-[64px] text-center">Itens</Header><Header className="w-[105px]">Nº contrato</Header><Header>Cliente</Header><Header className="w-[90px]">País</Header><Header className="w-[92px]">Prioridade</Header><Header className="w-[158px]">Embarque planejado</Header><Header className="w-[82px]">Prazo</Header><Header className="w-[120px] text-right">Peso total</Header><Header className="w-[132px]">Status</Header><Header className="w-[124px] text-center">Ação</Header></TableRow></TableHeader>
+                <TableHeader className="bg-[#EDF3F7]"><TableRow><SortableContractHeader label="Itens" sortKey="ITEM_COUNT" activeSort={contractSort} onSort={changeContractSort} centered className="w-[64px]" /><SortableContractHeader label="Nº contrato" sortKey="NROCONTRATO" activeSort={contractSort} onSort={changeContractSort} className="w-[105px]" /><SortableContractHeader label="Cliente" sortKey="NOMERAZAO" activeSort={contractSort} onSort={changeContractSort} /><SortableContractHeader label="País" sortKey="PAISDESTINO" activeSort={contractSort} onSort={changeContractSort} className="w-[90px]" /><SortableContractHeader label="Prioridade" sortKey="PRIORIDADE" activeSort={contractSort} onSort={changeContractSort} className="w-[92px]" /><SortableContractHeader label="Embarque planejado" sortKey="DTA_EMBARQUE_PLANEJADA" activeSort={contractSort} onSort={changeContractSort} className="w-[158px]" /><SortableContractHeader label="Prazo" sortKey="PRAZO_DIAS" activeSort={contractSort} onSort={changeContractSort} className="w-[82px]" /><SortableContractHeader label="Peso total" sortKey="PESO_TOTAL" activeSort={contractSort} onSort={changeContractSort} numeric className="w-[120px]" /><SortableContractHeader label="Status" sortKey="STATUS_OPERACIONAL" activeSort={contractSort} onSort={changeContractSort} className="w-[132px]" /><Header className="w-[124px] text-center">Ação</Header></TableRow></TableHeader>
                 <TableBody>
                   {contracts.length === 0 && (
                     <TableRow>
@@ -515,7 +573,7 @@ export default function Contratos() {
                         <TableCell><Input type="date" disabled={!data?.estrutura_configurada || saving === `config-${contract.SEQCONTRATO}`} value={inputDate(contract.DTA_EMBARQUE_PLANEJADA)} onChange={(event) => void saveConfig(contract, { DTA_EMBARQUE_PLANEJADA: event.target.value })} className="h-8 w-full min-w-[140px] px-2 text-[11px] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-100" /></TableCell>
                         <TableCell><Deadline days={contract.PRAZO_DIAS} /></TableCell>
                         <TableCell className="text-right"><p className="whitespace-nowrap text-xs font-black text-[#173D6E]">{formatKg(contract.PESO_TOTAL)}</p><div className="mt-1 flex items-center justify-end gap-1"><Progress value={coverage} className={`h-1.5 w-12 ${coverageComplete ? "[&>div]:bg-emerald-600" : ""}`} /><span className={`text-[9px] font-bold ${coverageComplete ? "text-emerald-700" : "text-[#6B7F92]"}`}>{coverage.toFixed(0)}%</span></div></TableCell>
-                        <TableCell><select disabled={!data?.estrutura_configurada || saving === `config-${contract.SEQCONTRATO}`} value={contract.STATUS_OPERACIONAL} onChange={(event) => void saveConfig(contract, { STATUS_OPERACIONAL: event.target.value as ExportContract["STATUS_OPERACIONAL"] })} className="h-8 w-full min-w-0 rounded-md border border-[#B9C9D7] bg-white px-1 text-[11px] font-bold text-[#244B70]"><option value="PENDENTE">Pendente</option><option value="PROGRAMADO">Programado</option><option value="EM_SEPARACAO">Em separação</option><option value="PRONTO">Pronto</option><option value="EMBARCADO">Embarcado</option></select></TableCell>
+                        <TableCell>{contract.EM_EXPEDICAO ? <span className="inline-flex whitespace-nowrap rounded-full border border-cyan-300 bg-cyan-50 px-2 py-1 text-[10px] font-black uppercase text-cyan-800">Em expedição</span> : <select disabled={!data?.estrutura_configurada || saving === `config-${contract.SEQCONTRATO}`} value={contract.STATUS_OPERACIONAL} onChange={(event) => void saveConfig(contract, { STATUS_OPERACIONAL: event.target.value as ExportContract["STATUS_OPERACIONAL"] })} className="h-8 w-full min-w-0 rounded-md border border-[#B9C9D7] bg-white px-1 text-[11px] font-bold text-[#244B70]"><option value="PENDENTE">Pendente</option><option value="PROGRAMADO">Programado</option><option value="EM_SEPARACAO">Em separação</option><option value="PRONTO">Pronto</option><option value="EMBARCADO">Embarcado</option></select>}</TableCell>
                         <TableCell className="text-center">{contract.DESCONSIDERADO ? <Button type="button" variant="outline" size="sm" disabled={!data?.estrutura_configurada || saving === `restore-${contract.SEQCONTRATO}`} onClick={() => void restoreContract(contract)} className="h-8 border-emerald-300 px-2 text-[10px] font-bold text-emerald-700"><RotateCcw className="mr-1 h-3.5 w-3.5" />Restaurar</Button> : <Button type="button" variant="outline" size="sm" disabled={!data?.estrutura_configurada} onClick={() => openDisregard(contract)} className="h-8 border-amber-300 px-2 text-[10px] font-bold text-amber-800"><ArchiveX className="mr-1 h-3.5 w-3.5" />Desconsiderar</Button>}</TableCell>
                       </TableRow>,
                       isOpen ? <TableRow key={`detail-${contract.SEQCONTRATO}`} className="bg-[#F6F9FB] hover:bg-[#F6F9FB]"><TableCell colSpan={10} className="p-0"><ContractDetails contract={contract} configured={Boolean(data?.estrutura_configurada)} saving={saving} reservationInputs={reservationInputs} setReservationInputs={setReservationInputs} notes={notes} setNotes={setNotes} onSaveReservation={saveReservation} onSaveConfig={saveConfig} /></TableCell></TableRow> : null,
@@ -637,7 +695,7 @@ function ContractDetails({ contract, configured, saving, reservationInputs, setR
   return (
     <div className="border-l-4 border-[#315F88] p-4">
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div><p className="text-xs font-black uppercase tracking-wider text-[#315F88]">Produtos do contrato</p><p className="mt-1 text-xs text-[#667B90]">O sistema impede travas acima do contrato ou do estoque livre.</p></div>
+        <div><p className="text-xs font-black uppercase tracking-wider text-[#315F88]">Produtos do contrato</p><p className="mt-1 text-xs text-[#667B90]">{contract.EM_EXPEDICAO ? "Contrato em expedição: a cobertura considera somente o peso carregado e novas travas ficam bloqueadas." : "Digite um peso ou clique em Travar máximo para usar automaticamente todo o saldo disponível."}</p></div>
         <div className="flex w-full max-w-xl gap-2"><Textarea value={notes[contract.SEQCONTRATO] ?? contract.OBSERVACAO ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [contract.SEQCONTRATO]: event.target.value }))} placeholder="Observação operacional" className="min-h-16 text-xs" disabled={!configured} /><Button variant="outline" disabled={!configured || saving === `config-${contract.SEQCONTRATO}`} onClick={() => void onSaveConfig(contract, { OBSERVACAO: notes[contract.SEQCONTRATO] ?? contract.OBSERVACAO ?? "" })}>Salvar nota</Button></div>
       </div>
       <div className="overflow-x-auto rounded-md border border-[#D5E0E9]">
@@ -658,14 +716,14 @@ function ContractDetails({ contract, configured, saving, reservationInputs, setR
                 <TableCell className="text-right">
                   <button type="button" onClick={() => setDetailProduct(product)} className="ml-auto block rounded-md border border-[#B9CAD8] bg-white/80 px-2 py-1 text-right hover:border-[#315F88] hover:bg-white" title="Ver origem do peso atrelado">
                     <span className="block whitespace-nowrap text-xs font-black text-[#173D6E]">{formatKg(product.PESO_ATRELADO_TOTAL)}</span>
-                    <span className="block whitespace-nowrap text-[9px] font-bold text-[#3A6F9B]">OP {formatKg(product.PESO_ATRELADO_ORDEM)}</span>
+                    {product.EM_EXPEDICAO ? <span className="block whitespace-nowrap text-[9px] font-bold text-cyan-700">Expedido {formatKg(product.PESO_EXPEDIDO)}</span> : <span className="block whitespace-nowrap text-[9px] font-bold text-[#3A6F9B]">OP {formatKg(product.PESO_ATRELADO_ORDEM)}</span>}
                     {hasManualReservation && <span className="block whitespace-nowrap text-[9px] font-bold text-amber-700">{product.ORIGEM_RESERVA === "PLANILHA" ? "Planilha" : "Manual"} {formatKg(product.PESO_RESERVADO_MANUAL)}</span>}
                   </button>
                   {otherLocks > 0 && <p className="mt-1 whitespace-nowrap text-[9px] text-[#6B7F92]">Outros contratos: {formatKg(otherLocks)}</p>}
                 </TableCell>
                 <NumberCell value={product.SALDO_CONTRATO} />
-                <TableCell className="text-right"><Input type="number" min="0" step="0.001" max={suggestedWeight} title={`Sugestão manual máxima: ${formatKg(suggestedWeight)}`} placeholder={`Máx. ${kgFormatter.format(suggestedWeight)}`} disabled={!configured} value={reservationInput} onChange={(event) => setReservationInputs((current) => ({ ...current, [key]: event.target.value }))} className="ml-auto h-8 w-24 px-2 text-right text-xs" /></TableCell>
-                <TableCell className="text-center"><Button size="sm" disabled={!configured || saving === key || !reservationInput.trim() || (suggestedWeight <= 0 && !hasManualReservation)} onClick={() => void onSaveReservation(contract, product)} className="h-8 px-2 text-xs bg-[#244B70] hover:bg-[#193B5C]"><LockKeyhole className="mr-1 h-3.5 w-3.5" />{hasManualReservation ? "Atualizar" : "Travar"}</Button></TableCell>
+                <TableCell className="text-right"><Input type="number" min="0" step="0.001" max={suggestedWeight} title={product.EM_EXPEDICAO ? "Contrato em expedição" : `Sugestão manual máxima: ${formatKg(suggestedWeight)}`} placeholder={product.EM_EXPEDICAO ? "Expedido" : `Máx. ${kgFormatter.format(suggestedWeight)}`} disabled={!configured || product.EM_EXPEDICAO} value={reservationInput} onChange={(event) => setReservationInputs((current) => ({ ...current, [key]: event.target.value }))} className="ml-auto h-8 w-24 px-2 text-right text-xs" /></TableCell>
+                <TableCell className="text-center"><Button size="sm" disabled={!configured || product.EM_EXPEDICAO || saving === key || (suggestedWeight <= 0 && !hasManualReservation)} onClick={() => void onSaveReservation(contract, product)} title={product.EM_EXPEDICAO ? "Contrato em expedição" : !reservationInput.trim() && suggestedWeight > 0 ? `Atrelar o máximo disponível: ${formatKg(suggestedWeight)}` : undefined} className="h-8 px-2 text-xs bg-[#244B70] hover:bg-[#193B5C]"><LockKeyhole className="mr-1 h-3.5 w-3.5" />{product.EM_EXPEDICAO ? "Expedido" : hasManualReservation ? "Atualizar" : reservationInput.trim() ? "Travar" : "Travar máximo"}</Button></TableCell>
               </TableRow>
             );
           })}</TableBody>
@@ -681,26 +739,26 @@ function ContractDetails({ contract, configured, saving, reservationInputs, setR
           {detailProduct && (
             <div className="space-y-4">
               <div className={`grid gap-2 ${Number(detailProduct.PESO_RESERVADO_MANUAL) > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
-                <AllocationSummary label="Total atrelado" value={detailProduct.PESO_ATRELADO_TOTAL} className="border-[#AFC4D6] bg-[#F3F7FA] text-[#173D6E]" />
-                <AllocationSummary label="Ordens de produção" value={detailProduct.PESO_ATRELADO_ORDEM} className="border-blue-200 bg-blue-50 text-blue-800" />
+                <AllocationSummary label={detailProduct.EM_EXPEDICAO ? "Cobertura expedida" : "Total atrelado"} value={detailProduct.PESO_ATRELADO_TOTAL} className="border-[#AFC4D6] bg-[#F3F7FA] text-[#173D6E]" />
+                <AllocationSummary label={detailProduct.EM_EXPEDICAO ? "Peso carregado" : "Ordens de produção"} value={detailProduct.EM_EXPEDICAO ? Number(detailProduct.PESO_EXPEDIDO || 0) : detailProduct.PESO_ATRELADO_ORDEM} className={detailProduct.EM_EXPEDICAO ? "border-cyan-200 bg-cyan-50 text-cyan-800" : "border-blue-200 bg-blue-50 text-blue-800"} />
                 {Number(detailProduct.PESO_RESERVADO_MANUAL) > 0 && <AllocationSummary label={detailProduct.ORIGEM_RESERVA === "PLANILHA" ? "Planilha" : "Manual"} value={detailProduct.PESO_RESERVADO_MANUAL} className="border-amber-200 bg-amber-50 text-amber-800" />}
               </div>
               <div className="max-h-[430px] space-y-2 overflow-y-auto pr-1">
                 {detailProduct.DETALHES_ATRELAMENTO.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-[#BCCAD6] p-6 text-center text-sm text-[#6B7F92]">Nenhum peso atrelado a este produto.</div>
                 ) : detailProduct.DETALHES_ATRELAMENTO.map((detail, index) => (
-                  <div key={`${detail.ORIGEM}-${detail.NUMERO_ORDEM || "manual"}-${index}`} className={`rounded-lg border p-3 ${detail.ORIGEM === "ORDEM_PRODUCAO" ? "border-blue-200 bg-blue-50/60" : "border-amber-200 bg-amber-50/60"}`}>
+                  <div key={`${detail.ORIGEM}-${detail.NUMERO_ORDEM || detail.NROPEDIDO || "manual"}-${index}`} className={`rounded-lg border p-3 ${detail.ORIGEM === "EXPEDICAO" ? "border-cyan-200 bg-cyan-50/60" : detail.ORIGEM === "ORDEM_PRODUCAO" ? "border-blue-200 bg-blue-50/60" : "border-amber-200 bg-amber-50/60"}`}>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-2">
                         {detail.ORIGEM === "ORDEM_PRODUCAO" ? <Factory className="h-4 w-4 text-blue-700" /> : <LockKeyhole className="h-4 w-4 text-amber-700" />}
-                        <div><p className="text-xs font-black text-[#173D6E]">{detail.ORIGEM === "ORDEM_PRODUCAO" ? `Ordem de produção ${detail.NUMERO_ORDEM}` : detail.ORIGEM === "PLANILHA" ? "Reserva importada da planilha" : "Lançamento manual sem vínculo de ordem"}</p><p className="text-[10px] text-[#6B7F92]">{detail.ORIGEM === "ORDEM_PRODUCAO" ? `Contrato industrial ${detail.CODCONTRATO} • vínculo protegido` : `Incluído por ${detail.USUARIO || "usuário não informado"}`}</p></div>
+                        <div><p className="text-xs font-black text-[#173D6E]">{detail.ORIGEM === "EXPEDICAO" ? `Pedido ${detail.NROPEDIDO || "não informado"}` : detail.ORIGEM === "ORDEM_PRODUCAO" ? `Ordem de produção ${detail.NUMERO_ORDEM}` : detail.ORIGEM === "PLANILHA" ? "Reserva importada da planilha" : "Lançamento manual sem vínculo de ordem"}</p><p className="text-[10px] text-[#6B7F92]">{detail.ORIGEM === "EXPEDICAO" ? `Carga ${detail.NROCARGA || "não informada"} • peso efetivamente expedido` : detail.ORIGEM === "ORDEM_PRODUCAO" ? `Contrato industrial ${detail.CODCONTRATO} • vínculo protegido` : `Incluído por ${detail.USUARIO || "usuário não informado"}`}</p></div>
                       </div>
                       <p className="whitespace-nowrap text-sm font-black text-[#173D6E]">{formatKg(detail.PESO)}</p>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-[#526A80] sm:grid-cols-3">
                       <p><span className="block font-black uppercase">Início produção</span>{formatDate(detail.DATA_INICIO)}</p>
                       <p><span className="block font-black uppercase">Data rendimento</span>{formatDate(detail.DATA_RENDIMENTO)}</p>
-                      <p><span className="block font-black uppercase">Origem</span>{detail.ORIGEM === "ORDEM_PRODUCAO" ? "Automática pelo ERP" : detail.ORIGEM === "PLANILHA" ? "Planilha de contratos" : "Manual no Vértice"}</p>
+                      <p><span className="block font-black uppercase">Origem</span>{detail.ORIGEM === "EXPEDICAO" ? "Expedição no ERP" : detail.ORIGEM === "ORDEM_PRODUCAO" ? "Automática pelo ERP" : detail.ORIGEM === "PLANILHA" ? "Planilha de contratos" : "Manual no Vértice"}</p>
                     </div>
                   </div>
                 ))}
@@ -723,6 +781,33 @@ function MetricCard({ icon: Icon, label, value }: { icon: typeof FileSignature; 
 
 function Header({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <TableHead className={`whitespace-nowrap text-[10px] font-black uppercase tracking-wider text-[#47627D] ${className}`}>{children}</TableHead>;
+}
+
+function SortableContractHeader({
+  label,
+  sortKey,
+  activeSort,
+  onSort,
+  numeric = false,
+  centered = false,
+  className = "",
+}: {
+  label: string;
+  sortKey: ContractSortKey;
+  activeSort: { key: ContractSortKey; direction: SortDirection };
+  onSort: (key: ContractSortKey) => void;
+  numeric?: boolean;
+  centered?: boolean;
+  className?: string;
+}) {
+  const active = activeSort.key === sortKey;
+  const Icon = !active ? ArrowUpDown : activeSort.direction === "asc" ? ArrowUp : ArrowDown;
+  const alignment = centered ? "justify-center text-center" : numeric ? "justify-end text-right" : "justify-start text-left";
+  return <TableHead aria-sort={active ? (activeSort.direction === "asc" ? "ascending" : "descending") : "none"} className={`whitespace-nowrap p-0 text-[10px] font-black uppercase tracking-wider text-[#47627D] ${className}`}>
+    <button type="button" onClick={() => onSort(sortKey)} className={`flex h-full w-full items-center gap-1.5 px-2 py-3 transition-colors hover:bg-[#DDE9F2] hover:text-[#173D6E] ${alignment}`} title={`Ordenar por ${label}`}>
+      <span>{label}</span><Icon className={`h-3.5 w-3.5 shrink-0 ${active ? "text-[#173D6E]" : "text-[#8A9BAA]"}`} />
+    </button>
+  </TableHead>;
 }
 
 function SortableStockHeader({

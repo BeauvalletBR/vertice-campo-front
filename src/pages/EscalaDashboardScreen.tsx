@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   BadgeCheck,
@@ -6,11 +6,13 @@ import {
   CalendarRange,
   CircleDollarSign,
   ClipboardList,
+  FileDown,
   Loader2,
   ShieldCheck,
   TrendingUp,
   UserRound,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Bar,
   BarChart,
@@ -25,6 +27,7 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Card,
@@ -396,7 +399,9 @@ export default function EscalaDashboardScreen() {
     String(new Date().getMonth() + 1).padStart(2, "0"),
   );
   const [loading, setLoading] = useState(true);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [yearLines, setYearLines] = useState<EscalaLinha[]>([]);
+  const reportRef = useRef<HTMLDivElement | null>(null);
 
   const nroempresa = getEmpresaLogada(user);
 
@@ -590,9 +595,111 @@ export default function EscalaDashboardScreen() {
     },
   ];
 
+  const handleExportPdf = async () => {
+    const report = reportRef.current;
+    if (!report || loading || exportingPdf || dailyAggregates.length === 0) return;
+
+    setExportingPdf(true);
+    try {
+      await document.fonts?.ready;
+      const [{ default: html2canvas }, { default: JsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+      const captureWidth = Math.max(report.scrollWidth, 1480);
+      const captureScale = Math.min(3, Math.max(2.25, window.devicePixelRatio * 1.5));
+      const captureSection = (section: "overview" | "buyers") =>
+        html2canvas(report, {
+          scale: captureScale,
+          useCORS: true,
+          logging: false,
+          backgroundColor: "#F5F8FB",
+          width: captureWidth,
+          windowWidth: captureWidth,
+          onclone: (clonedDocument) => {
+            const clonedReport = clonedDocument.getElementById("escala-dashboard-report");
+            if (clonedReport) {
+              clonedReport.style.width = `${captureWidth}px`;
+              clonedReport.style.maxWidth = "none";
+            }
+            clonedDocument
+              .querySelectorAll<HTMLElement>("[data-dashboard-pdf-section]")
+              .forEach((element) => {
+                if (element.dataset.dashboardPdfSection !== section) {
+                  element.style.display = "none";
+                }
+              });
+            clonedDocument
+              .querySelectorAll<HTMLElement>(".overflow-x-auto")
+              .forEach((element) => {
+                element.style.overflow = "visible";
+              });
+          },
+        });
+
+      const overviewCanvas = await captureSection("overview");
+      const buyersCanvas = await captureSection("buyers");
+      const pdf = new JsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+        compress: true,
+      });
+      pdf.setProperties({
+        title: `Dashboard da Escala - ${rangeDescription}`,
+        subject: "Indicadores mensais da Escala",
+        creator: "Vértice",
+      });
+      const margin = 5;
+      const footerHeight = 5;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const printableWidth = pageWidth - margin * 2;
+      const printableHeight = pageHeight - margin * 2 - footerHeight;
+
+      const addCanvasPage = (canvas: HTMLCanvasElement, pageNumber: number) => {
+        if (pageNumber > 1) pdf.addPage("a4", "landscape");
+        const scale = Math.min(
+          printableWidth / canvas.width,
+          printableHeight / canvas.height,
+        );
+        const imageWidth = canvas.width * scale;
+        const imageHeight = canvas.height * scale;
+        const x = (pageWidth - imageWidth) / 2;
+        pdf.addImage(
+          canvas.toDataURL("image/png"),
+          "PNG",
+          x,
+          margin,
+          imageWidth,
+          imageHeight,
+          undefined,
+          "SLOW",
+        );
+        pdf.setFontSize(8);
+        pdf.setTextColor(96, 117, 138);
+        pdf.text(`Vértice · Dashboard da Escala · página ${pageNumber}/2`, pageWidth / 2, pageHeight - 3, { align: "center" });
+      };
+
+      addCanvasPage(overviewCanvas, 1);
+      addCanvasPage(buyersCanvas, 2);
+      pdf.save(`dashboard-escala-${selectedYear}-${selectedMonth}.pdf`);
+      toast.success("PDF do Dashboard da Escala gerado com sucesso.");
+    } catch (exportError) {
+      console.error("Falha ao exportar o Dashboard da Escala em PDF:", exportError);
+      toast.error("Não foi possível gerar o PDF do Dashboard da Escala.");
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F5F8FB] p-3 sm:p-5 lg:p-8">
-      <div className="mx-auto max-w-[1680px] space-y-4 sm:space-y-6">
+      <div
+        id="escala-dashboard-report"
+        ref={reportRef}
+        className="mx-auto max-w-[1680px] space-y-4 sm:space-y-6"
+      >
         <header className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#E27A1D]">
@@ -607,8 +714,24 @@ export default function EscalaDashboardScreen() {
             </p>
           </div>
 
-          <div className="w-full rounded-2xl border border-[#D6E1EB] bg-white px-4 py-3 text-xs font-semibold text-[#60758A] shadow-sm xl:w-auto">
-            {rangeDescription}
+          <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
+            <div className="flex items-center rounded-2xl border border-[#D6E1EB] bg-white px-4 py-3 text-xs font-semibold text-[#60758A] shadow-sm">
+              {rangeDescription}
+            </div>
+            <Button
+              type="button"
+              data-html2canvas-ignore
+              disabled={loading || dailyAggregates.length === 0 || exportingPdf}
+              onClick={() => void handleExportPdf()}
+              className="h-11 gap-2 rounded-xl bg-[#173D6E] px-4 font-black text-white shadow-sm hover:bg-[#214F84]"
+            >
+              {exportingPdf ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileDown className="h-4 w-4" />
+              )}
+              {exportingPdf ? "Gerando PDF..." : "Exportar PDF"}
+            </Button>
           </div>
         </header>
 
@@ -680,13 +803,13 @@ export default function EscalaDashboardScreen() {
           </Card>
         ) : (
           <>
-            <div className="-mx-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-3 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:px-0 lg:grid-cols-4 xl:grid-cols-8">
+            <div data-dashboard-pdf-section="overview" className="-mx-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-3 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:px-0 lg:grid-cols-4 xl:grid-cols-8">
               {cards.map((card) => (
                 <MetricCard key={card.title} {...card} />
               ))}
             </div>
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.55fr_1fr]">
+            <div data-dashboard-pdf-section="overview" className="grid grid-cols-1 gap-4 xl:grid-cols-[1.55fr_1fr]">
               <Card className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_4px_18px_rgba(23,61,110,0.05)]">
                 <CardHeader className="border-b border-[#E3EAF1] bg-[#F8FBFD]">
                   <CardTitle className="text-lg font-black text-[#173D6E]">
@@ -824,7 +947,7 @@ export default function EscalaDashboardScreen() {
               </Card>
             </div>
 
-            <Card className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_4px_18px_rgba(23,61,110,0.05)]">
+            <Card data-dashboard-pdf-section="buyers" className="overflow-hidden rounded-2xl border border-[#D3DEE9] bg-white shadow-[0_4px_18px_rgba(23,61,110,0.05)]">
               <CardHeader className="border-b border-[#E3EAF1] bg-[#F8FBFD]">
                 <CardTitle className="text-lg font-black text-[#173D6E]">
                   Compradores no recorte

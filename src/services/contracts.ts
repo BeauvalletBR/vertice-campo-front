@@ -1,8 +1,10 @@
 import { getAuthHeaders, getBackendUrl } from "@/services/api";
 
 export interface ContractAllocationDetail {
-  ORIGEM: "ORDEM_PRODUCAO" | "MANUAL" | "PLANILHA";
+  ORIGEM: "ORDEM_PRODUCAO" | "MANUAL" | "PLANILHA" | "EXPEDICAO";
   NUMERO_ORDEM?: number | string | null;
+  NROCARGA?: number | string | null;
+  NROPEDIDO?: number | string | null;
   SEQCONTRATO_INDUSTRIA?: number | null;
   CODCONTRATO?: string | null;
   DATA_INICIO?: string | null;
@@ -18,6 +20,7 @@ export interface ContractProduct {
   PESO_DISPONIVEL_ERP: number; PESO_RESERVADO_TOTAL_VERTICE: number;
   PESO_RESERVADO_CONTRATO: number; PESO_RESERVADO_MANUAL: number;
   PESO_ATRELADO_ORDEM: number; PESO_ATRELADO_TOTAL: number;
+  PESO_EXPEDIDO?: number; EM_EXPEDICAO?: boolean;
   DETALHES_ATRELAMENTO: ContractAllocationDetail[]; PESO_LIVRE_VERTICE: number;
   LIMITE_RESERVA: number; SALDO_CONTRATO: number; VERSAO_RESERVA?: number | null;
   ORIGEM_RESERVA?: "MANUAL" | "PLANILHA"; SUBGRUPO_GER_REND?: string | null;
@@ -31,10 +34,11 @@ export interface ExportContract {
   STATUS_ERP: string; PAISDESTINO?: string | null;
   PRIORIDADE: "BAIXA" | "MEDIA" | "ALTA" | "URGENTE";
   DTA_EMBARQUE_PLANEJADA?: string | null;
-  STATUS_OPERACIONAL: "PENDENTE" | "PROGRAMADO" | "EM_SEPARACAO" | "PRONTO" | "EMBARCADO";
+  STATUS_OPERACIONAL: "PENDENTE" | "PROGRAMADO" | "EM_SEPARACAO" | "PRONTO" | "EMBARCADO" | "EM_EXPEDICAO";
   OBSERVACAO?: string | null; DESCONSIDERADO: boolean;
   OBSERVACAO_DESCONSIDERACAO?: string | null; VERSAO_CONFIG?: number | null;
   PESO_TOTAL: number; PESO_RESERVADO: number; SALDO_TOTAL: number;
+  PESO_EXPEDIDO?: number; EM_EXPEDICAO?: boolean; COBERTURA_EXPEDICAO_PCT?: number;
   PRAZO_DIAS?: number | null; PRODUTOS: ContractProduct[];
 }
 
@@ -49,6 +53,8 @@ export interface PcpConfig {
   ID_PCP_CONFIG?: number | null; VIGENCIA?: string | null;
   ARROBA_MEDIA: number; QTD_ANIMAIS_DIA: number; QUEBRA_FRIO_PCT: number;
   PCT_TRASEIRO: number; PCT_DIANTEIRO: number; PCT_PONTA_AGULHA: number;
+  PCT_EXPORTACAO: number;
+  PCT_PRODUCAO_CONGELADO: number; PCT_PRODUCAO_RESFRIADO: number;
   ALERTA_CONGELADO_KG: number; LIMITE_CONGELADO_KG: number;
   ALERTA_RESFRIADO_KG: number; LIMITE_RESFRIADO_KG: number; VERSAO?: number | null;
 }
@@ -57,26 +63,59 @@ export interface PcpProductProjection extends ContractProduct {
   FALTANTE_PRODUZIR: number; ENTRADA_MATERIA_PRIMA_DIA: number;
   PRODUCAO_DIA: number; DIAS_PRODUCAO?: number | null; TIPO_ESTOQUE: string;
   ESPERA_DIAS?: number | null; EXCESSO_PROJETADO: number;
+  PENDENCIAS_DADOS?: string[];
+}
+
+export interface PcpDataIssue {
+  ESCOPO: "CONFIGURACAO" | "PRODUTO"; SEQPRODUTO?: number | null;
+  DESCRICAO: string; CAMPOS: string[]; MENSAGEM: string;
 }
 
 export interface PcpRecommendation {
   SEQCONTRATO: number; NROCONTRATO: string; CLIENTE: string; PAIS?: string | null;
-  PRIORIDADE: string; DATA_EMBARQUE?: string | null; PRAZO_DIAS?: number | null;
+  PRIORIDADE: string; STATUS_OPERACIONAL?: string | null;
+  DATA_EMBARQUE?: string | null; PRAZO_DIAS?: number | null;
   PESO_TOTAL: number; PESO_COBERTO: number; PESO_ATRELADO_BRUTO: number;
   PESO_EXCEDENTE_VINCULADO: number; FALTANTE_PRODUZIR: number;
   COBERTURA_PCT: number; DIAS_ESTIMADOS?: number | null;
   CONCLUSAO_INDIVIDUAL?: string | null; ATRASO_DIAS: number;
   PRODUTO_GARGALO?: string | null; EXCESSO_PROJETADO: number;
-  DECISAO: "INICIAR" | "PROXIMO" | "PROGRAMAR" | "CRITICO" | "SEGURAR" | "COBERTO" | "REVISAR_DADOS";
+  DECISAO: "INICIAR" | "PROXIMO" | "ENCAMINHADO" | "PROGRAMAR" | "CRITICO" | "AGUARDAR_ESTOQUE" | "COBERTO" | "REVISAR_DADOS" | "EM_EXPEDICAO";
   MOTIVO: string; ALERTAS: string[]; POSICAO: number;
+  PENDENCIAS_DADOS?: PcpDataIssue[];
   INICIO_SEQUENCIA?: string | null; FIM_SEQUENCIA?: string | null;
   EXCESSO_CONGELADO: number; EXCESSO_RESFRIADO: number; SCORE: number;
+  ESTOQUE_PROJETADO_TIPO?: string | null;
+  ESTOQUE_PROJETADO_SITUACAO?: "NORMAL" | "ALERTA" | "LIMITE";
+  ESTOQUE_PROJETADO_PCT?: number; ESTOQUE_PROJETADO_DATA?: string | null;
+  ENTRADA_EXPORTAVEL_DIA?: number;
+  DIAS_DESCOMPASSO?: number;
+  MEDIA_ESPERA_PRODUTOS_DIAS?: number;
+  ESTOQUE_GATILHO_PRODUTO?: string | null;
+  ESTOQUE_GATILHO_ATUAL_KG?: number;
+  ESTOQUE_GATILHO_KG?: number;
+  FALTA_PARA_GATILHO_KG?: number;
+  DIAS_ESPERA_GARGALO?: number;
+  DATA_RECOMENDADA_INICIO?: string | null;
   PRODUTOS: PcpProductProjection[];
+}
+
+export interface PcpStockProjection {
+  DATA: string; DIA_UTIL: boolean; CONTRATO_PRODUCAO?: string | null;
+  ENTRADA_EXPORTAVEL_KG: number; MOTIVO_ENTRADA?: string; CONTRATOS_EXPEDIDOS: string[];
+  CONTRATOS_EXPEDIDOS_CONGELADO?: string[]; CONTRATOS_EXPEDIDOS_RESFRIADO?: string[];
+  SALDO_ANTERIOR_CONGELADO_KG: number; ENTRADA_CONGELADO_KG: number;
+  SAIDA_CONGELADO_KG: number; SALDO_CONGELADO_KG: number;
+  PERCENTUAL_CONGELADO: number; SITUACAO_CONGELADO: "NORMAL" | "ALERTA" | "LIMITE";
+  SALDO_ANTERIOR_RESFRIADO_KG: number; ENTRADA_RESFRIADO_KG: number;
+  SAIDA_RESFRIADO_KG: number; SALDO_RESFRIADO_KG: number;
+  PERCENTUAL_RESFRIADO: number; SITUACAO_RESFRIADO: "NORMAL" | "ALERTA" | "LIMITE";
 }
 
 export interface PcpPlanning {
   CONFIGURADO: boolean; ENTRADA_DESOSSA: Record<string, number>;
   OCUPACAO: Array<{ TIPO: string; PESO_ATUAL: number; ALERTA: number; LIMITE: number; PERCENTUAL: number; SITUACAO: string }>;
+  PROJECAO_ESTOQUE: PcpStockProjection[];
   RECOMENDACOES: PcpRecommendation[];
   RESUMO: { CONTRATOS_ANALISADOS: number; CONTRATOS_CRITICOS: number; PESO_FALTANTE: number; EXCESSO_PROJETADO: number };
 }
@@ -85,6 +124,7 @@ export interface ContractsPanelResponse {
   estrutura_configurada: boolean; pcp_estrutura_configurada: boolean;
   contratos: ExportContract[]; estoque: ContractStock[]; pcp_config: PcpConfig;
   planejamento: PcpPlanning; atualizado_em: string;
+  expedicao_configurada?: boolean;
 }
 
 export interface ContractConfigPayload {
@@ -125,6 +165,9 @@ export const contractsApi = {
       qtd_animais_dia: payload.QTD_ANIMAIS_DIA, quebra_frio_pct: payload.QUEBRA_FRIO_PCT,
       pct_traseiro: payload.PCT_TRASEIRO, pct_dianteiro: payload.PCT_DIANTEIRO,
       pct_ponta_agulha: payload.PCT_PONTA_AGULHA,
+      pct_exportacao: payload.PCT_EXPORTACAO,
+      pct_producao_congelado: payload.PCT_PRODUCAO_CONGELADO,
+      pct_producao_resfriado: payload.PCT_PRODUCAO_RESFRIADO,
       alerta_congelado_kg: payload.ALERTA_CONGELADO_KG, limite_congelado_kg: payload.LIMITE_CONGELADO_KG,
       alerta_resfriado_kg: payload.ALERTA_RESFRIADO_KG, limite_resfriado_kg: payload.LIMITE_RESFRIADO_KG,
       versao: payload.VERSAO,
