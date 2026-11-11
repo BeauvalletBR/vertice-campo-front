@@ -4,6 +4,7 @@ export interface AccessRule {
   allowedSystems?: string[];
   allowedRoles?: string[];
   allowedModules?: string[];
+  requireAllowedModule?: boolean;
   minNivel?: number;
 }
 
@@ -40,6 +41,11 @@ export const APP_ROUTE_ACCESS = {
   contratos: {
     allowedSystems: ["VERTICEPCP"],
   },
+  pedidosMi: {
+    allowedSystems: ["VERTICEMI"],
+    allowedModules: ["PEDIDOS"],
+    requireAllowedModule: true,
+  },
   rendimento: {
     allowedSystems: ["VERTICECONTR"],
     allowedModules: ["RENDIMENTO"],
@@ -54,6 +60,7 @@ const DESKTOP_DEFAULT_ROUTE_ORDER = [
   "/agendamento",
   "/escala",
   "/contratos",
+  "/pedidos-mi",
   "/rendimento/testes",
 ] as const;
 
@@ -65,6 +72,7 @@ const MOBILE_DEFAULT_ROUTE_ORDER = [
   "/agendamento",
   "/escala",
   "/contratos",
+  "/pedidos-mi",
   "/rendimento/testes",
 ] as const;
 
@@ -77,6 +85,7 @@ const ACCESS_BY_PATH: Record<string, AccessRule> = {
   "/agendamento": APP_ROUTE_ACCESS.agendamento,
   "/escala": APP_ROUTE_ACCESS.escala,
   "/contratos": APP_ROUTE_ACCESS.contratos,
+  "/pedidos-mi": APP_ROUTE_ACCESS.pedidosMi,
   "/rendimento/testes": APP_ROUTE_ACCESS.rendimento,
 };
 
@@ -130,6 +139,13 @@ export function hasAccessToRule(
   const userModules = getUserModules(user, relevantSystems);
   const userNivel = Number(user.nivel || 0);
   const isAdmin = userRole === "ADMIN" || userModules.includes("ADMIN");
+
+  if (rule.requireAllowedModule) {
+    const allowedModules = (rule.allowedModules || []).map(normalize);
+    if (!allowedModules.some((module) => userModules.includes(module))) {
+      return false;
+    }
+  }
 
   if (isAdmin) return true;
 

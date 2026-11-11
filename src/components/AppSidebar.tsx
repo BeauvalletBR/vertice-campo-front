@@ -4,6 +4,7 @@ import {
   CalendarDays,
   CalendarPlus,
   CalendarRange,
+  CheckCircle2,
   ChevronDown,
   FileSignature,
   FlaskConical,
@@ -16,11 +17,14 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PlusCircle,
+  Settings2,
   ShieldCheck,
   TrendingUp,
   Trash2,
   UserCog,
   Users,
+  Upload,
+  Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useLocation } from "react-router-dom";
@@ -88,11 +92,14 @@ export function AppSidebar() {
   const isUsuariosActive = location.pathname.startsWith("/admin/usuarios");
   const isEscalaActive = location.pathname.startsWith("/escala");
   const isContratosActive = location.pathname.startsWith("/contratos");
+  const isPedidosMiActive = location.pathname.startsWith("/pedidos-mi");
   const isRendimentoActive = location.pathname.startsWith("/rendimento");
   const activeGroupId = isUsuariosActive
     ? "gerenciamento"
     : isEscalaActive
       ? "escala"
+      : isPedidosMiActive
+        ? "pedidos-mi"
       : isContratosActive
         ? "contratos"
         : isRendimentoActive
@@ -104,11 +111,13 @@ export function AppSidebar() {
     campo: activeGroupId === "campo",
     escala: activeGroupId === "escala",
     contratos: activeGroupId === "contratos",
+    "pedidos-mi": activeGroupId === "pedidos-mi",
     rendimento: activeGroupId === "rendimento",
   });
 
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
     agendamentos: isAgendamentoActive,
+    contratosConfiguracao: location.pathname.startsWith("/contratos/configuracao"),
     rendimentoCadastros: location.pathname.startsWith("/rendimento/cadastros"),
   });
 
@@ -141,7 +150,14 @@ export function AppSidebar() {
       }
     }
 
-  }, [activeGroupId, collapsed, isAgendamentoActive, isRendimentoActive, location.pathname]);
+    if (isContratosActive && location.pathname.startsWith("/contratos/configuracao")) {
+      setOpenSubmenus((previous) => ({
+        ...previous,
+        contratosConfiguracao: true,
+      }));
+    }
+
+  }, [activeGroupId, collapsed, isAgendamentoActive, isContratosActive, isRendimentoActive, location.pathname]);
 
   const toggleGroup = (groupId: string) => {
     if (collapsed) return;
@@ -282,11 +298,91 @@ export function AppSidebar() {
       icon: FileSignature,
       items: [
         {
+          id: "contratos-visao-geral",
+          title: "Visão geral",
+          url: "/contratos/visao-geral",
+          icon: LayoutDashboard,
+          access: APP_ROUTE_ACCESS.contratos,
+        },
+        {
           id: "contratos-inicio",
           title: "Contratos",
           url: "/contratos",
           icon: FileSignature,
           access: APP_ROUTE_ACCESS.contratos,
+        },
+        {
+          id: "contratos-alocacao",
+          title: "Alocação de estoque",
+          url: "/contratos/alocacao",
+          icon: Boxes,
+          access: APP_ROUTE_ACCESS.contratos,
+        },
+        {
+          id: "contratos-alocados",
+          title: "Já alocado",
+          url: "/contratos/alocados",
+          icon: CheckCircle2,
+          access: APP_ROUTE_ACCESS.contratos,
+        },
+        {
+          id: "contratos-revisao-datas",
+          title: "Revisão de datas",
+          url: "/contratos/revisao-datas",
+          icon: CalendarRange,
+          access: APP_ROUTE_ACCESS.contratos,
+        },
+        {
+          id: "contratosConfiguracao",
+          title: "Configuração PCP",
+          icon: Settings2,
+          access: APP_ROUTE_ACCESS.contratos,
+          subItems: [
+            {
+              title: "Configuração desossa",
+              url: "/contratos/configuracao/desossa",
+              icon: Settings2,
+              access: APP_ROUTE_ACCESS.contratos,
+            },
+            {
+              title: "Importar planilha",
+              url: "/contratos/configuracao/importacao",
+              icon: Upload,
+              access: APP_ROUTE_ACCESS.contratos,
+            },
+            {
+              title: "Calendário embarques",
+              url: "/contratos/configuracao/calendario",
+              icon: CalendarDays,
+              access: APP_ROUTE_ACCESS.contratos,
+            },
+            {
+              title: "Recomendação PCP",
+              url: "/contratos/configuracao/recomendacao",
+              icon: Wrench,
+              access: APP_ROUTE_ACCESS.contratos,
+            },
+            {
+              title: "Ocupação do estoque",
+              url: "/contratos/configuracao/ocupacao",
+              icon: Wrench,
+              access: APP_ROUTE_ACCESS.contratos,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: "pedidos-mi",
+      title: "Pedidos MI",
+      icon: ListTodo,
+      items: [
+        {
+          id: "pedidos-mi-planejamento",
+          title: "Planejamento",
+          url: "/pedidos-mi",
+          icon: ListTodo,
+          access: APP_ROUTE_ACCESS.pedidosMi,
         },
       ],
     },

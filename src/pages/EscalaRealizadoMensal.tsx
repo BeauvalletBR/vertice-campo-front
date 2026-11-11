@@ -313,9 +313,10 @@ export default function EscalaRealizadoMensal() {
       const [{ default: html2canvas }, { default: JsPDF }] =
         await Promise.all([import("html2canvas"), import("jspdf")]);
       const captureWidth = Math.max(report.scrollWidth, 1480);
+      const captureScale = Math.min(3, Math.max(2.25, window.devicePixelRatio * 1.5));
       const captureSection = (section: "summary" | "closing") =>
         html2canvas(report, {
-          scale: 1.5,
+          scale: captureScale,
           useCORS: true,
           logging: false,
           backgroundColor: "#F3F7FA",
@@ -337,13 +338,16 @@ export default function EscalaRealizadoMensal() {
                   element.style.display = "none";
                 }
               });
+            clonedDocument
+              .querySelectorAll<HTMLElement>(".overflow-x-auto")
+              .forEach((element) => {
+                element.style.overflow = "visible";
+              });
           },
         });
 
-      const [summaryCanvas, closingCanvas] = await Promise.all([
-        captureSection("summary"),
-        captureSection("closing"),
-      ]);
+      const summaryCanvas = await captureSection("summary");
+      const closingCanvas = await captureSection("closing");
 
       const pdf = new JsPDF({
         orientation: "landscape",
@@ -352,31 +356,52 @@ export default function EscalaRealizadoMensal() {
         compress: true,
       });
       const margin = 3;
+      const footerHeight = 5;
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       const printableWidth = pageWidth - margin * 2;
-      const printableHeight = pageHeight - margin * 2;
+      const printableHeight = pageHeight - margin * 2 - footerHeight;
 
       const addCanvasPage = (
         canvas: HTMLCanvasElement,
         addPage: boolean,
+        pageNumber: number,
       ) => {
         if (addPage) pdf.addPage("a4", "landscape");
-
+        const scale = Math.min(
+          printableWidth / canvas.width,
+          printableHeight / canvas.height,
+        );
+        const imageWidth = canvas.width * scale;
+        const imageHeight = canvas.height * scale;
+        const x = (pageWidth - imageWidth) / 2;
         pdf.addImage(
-          canvas.toDataURL("image/jpeg", 0.92),
-          "JPEG",
+          canvas.toDataURL("image/png"),
+          "PNG",
+          x,
           margin,
-          margin,
-          printableWidth,
-          printableHeight,
+          imageWidth,
+          imageHeight,
           undefined,
-          "FAST",
+          "SLOW",
+        );
+        pdf.setFontSize(8);
+        pdf.setTextColor(96, 117, 138);
+        pdf.text(
+          `Vértice · Realizado mensal ${selectedYear} · página ${pageNumber}/2`,
+          pageWidth / 2,
+          pageHeight - 2,
+          { align: "center" },
         );
       };
 
-      addCanvasPage(summaryCanvas, false);
-      addCanvasPage(closingCanvas, true);
+      pdf.setProperties({
+        title: `Realizado mensal ${selectedYear}`,
+        subject: "Desempenho industrial da Escala",
+        creator: "Vértice",
+      });
+      addCanvasPage(summaryCanvas, false, 1);
+      addCanvasPage(closingCanvas, true, 2);
 
       pdf.save(`realizado-mensal-${selectedYear}.pdf`);
     } catch (exportError) {

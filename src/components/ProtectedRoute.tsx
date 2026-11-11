@@ -11,6 +11,7 @@ interface ProtectedRouteProps {
   allowedSystems?: string[];
   allowedRoles?: string[];
   allowedModules?: string[];
+  requireAllowedModule?: boolean;
   minNivel?: number;
   redirectTo?: string;
 }
@@ -19,11 +20,34 @@ export function ProtectedRoute({
   allowedSystems = [],
   allowedRoles = [],
   allowedModules = [],
+  requireAllowedModule = false,
   minNivel,
   redirectTo,
 }: ProtectedRouteProps) {
   const { user, isAuthenticated } = useAuth();
   const location = useLocation();
+  const hasAccess = Boolean(
+    isAuthenticated &&
+      user &&
+      hasAccessToRule(user, {
+        allowedSystems,
+        allowedRoles,
+        allowedModules,
+        requireAllowedModule,
+        minNivel,
+      }),
+  );
+  const fallbackRoute = user
+    ? redirectTo || getDefaultAuthorizedRoute(user) || "/login"
+    : "/login";
+
+  useEffect(() => {
+    if (isAuthenticated && user && !hasAccess) {
+      toast.error("Acesso Negado: Voce nao tem permissao para acessar esta area.", {
+        id: "rota-sem-permissao",
+      });
+    }
+  }, [hasAccess, isAuthenticated, user]);
 
   if (!isAuthenticated || !user) {
     return (
@@ -36,22 +60,6 @@ export function ProtectedRoute({
       />
     );
   }
-
-  const hasAccess = hasAccessToRule(user, {
-    allowedSystems,
-    allowedRoles,
-    allowedModules,
-    minNivel,
-  });
-  const fallbackRoute = redirectTo || getDefaultAuthorizedRoute(user) || "/login";
-
-  useEffect(() => {
-    if (!hasAccess) {
-      toast.error("Acesso Negado: Voce nao tem permissao para acessar esta area.", {
-        id: "rota-sem-permissao",
-      });
-    }
-  }, [hasAccess]);
 
   if (!hasAccess) {
     return <Navigate to={fallbackRoute} replace />;

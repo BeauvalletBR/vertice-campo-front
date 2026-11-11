@@ -1,17 +1,36 @@
 import { getAuthHeaders, getBackendUrl } from "@/services/api";
 
 export interface ContractAllocationDetail {
-  ORIGEM: "ORDEM_PRODUCAO" | "MANUAL" | "PLANILHA" | "EXPEDICAO";
+  ORIGEM: "ORDEM_PRODUCAO" | "RESERVA_PEDIDO" | "MANUAL" | "PLANILHA" | "EXPEDICAO" | "MAIS_6_MESES";
   NUMERO_ORDEM?: number | string | null;
   NROCARGA?: number | string | null;
   NROPEDIDO?: number | string | null;
+  SEQPEDIDO?: number | string | null;
   SEQCONTRATO_INDUSTRIA?: number | null;
   CODCONTRATO?: string | null;
   DATA_INICIO?: string | null;
   DATA_RENDIMENTO?: string | null;
+  DATA_EMBARQUE?: string | null;
+  STATUS_PEDIDO?: number | string | null;
+  QUANTIDADE?: number | null;
   PESO: number;
   USUARIO?: string | null;
   EDITAVEL: boolean;
+}
+
+export interface ContractStockLot {
+  SEQPRODUTO: number; DESCRPRODUTO?: string | null;
+  DTAPRODUCAO?: string | null; LOTE?: string | null; SEQEMBALAGEM?: number | null;
+  QUANTIDADE: number; PESO_FISICO: number; PESO_DISPONIVEL_ESTIMADO: number;
+  PESO_LIVRE_ESTIMADO?: number;
+  SITUACAO_VALIDADE?: "ELEGIVEL" | "ATENCAO" | "INCOMPATIVEL" | "SEM_REGRA" | "SEM_DATA";
+  MARGEM_DIAS?: number | null;
+  CHAVE_LOTE?: string;
+  DECISAO_LOTE?: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR" | null;
+  DTA_REPROCESSO_LOTE?: string | null; OBSERVACAO_LOTE?: string | null;
+  VERSAO_DECISAO_LOTE?: number | null; DECISAO_ATUALIZADA_POR?: string | null;
+  DECISAO_ATUALIZADA_EM?: string | null;
+  SINTETICO_SEM_RASTREIO?: boolean;
 }
 
 export interface ContractProduct {
@@ -19,17 +38,32 @@ export interface ContractProduct {
   VLRUNITARIO?: number | null; PTAX?: number | null; VLRUNITREAL?: number | null;
   PESO_DISPONIVEL_ERP: number; PESO_RESERVADO_TOTAL_VERTICE: number;
   PESO_RESERVADO_CONTRATO: number; PESO_RESERVADO_MANUAL: number;
-  PESO_ATRELADO_ORDEM: number; PESO_ATRELADO_TOTAL: number;
+  PESO_RESERVADO_6_MESES?: number;
+  PESO_ATRELADO_ORDEM: number; PESO_RESERVADO_PEDIDO?: number;
+  PESO_RESERVADO_PEDIDO_LIQUIDO?: number; PESO_SOBREPOSTO_ORDEM_PEDIDO?: number;
+  PESO_BLOQUEADO_ERP?: number; QTD_BLOQUEADA_ERP?: number;
+  PESO_ATRELADO_TOTAL: number;
+  PESO_TRANSBORDADO?: number;
+  ORIGENS_TRANSBORDO?: Array<"ORDEM_PRODUCAO" | "RESERVA_PEDIDO" | "MANUAL" | "MAIS_6_MESES">;
   PESO_EXPEDIDO?: number; EM_EXPEDICAO?: boolean;
   DETALHES_ATRELAMENTO: ContractAllocationDetail[]; PESO_LIVRE_VERTICE: number;
   LIMITE_RESERVA: number; SALDO_CONTRATO: number; VERSAO_RESERVA?: number | null;
+  VERSAO_RESERVA_6_MESES?: number | null;
+  PESO_MAIS_6_MESES_ERP?: number; PESO_DISPONIVEL_REGULAR?: number;
   ORIGEM_RESERVA?: "MANUAL" | "PLANILHA"; SUBGRUPO_GER_REND?: string | null;
   MAT_PRIMA?: string | null; RESFCONG?: string | null; PROPORCAO_CORTE?: number | null;
   META_PRODUTO?: number | null;
+  VALIDADE?: number | null; TIPOVALIDADE?: "D" | "M" | "A" | null;
+  DATA_REFERENCIA_VALIDADE?: string | null; DATA_MINIMA_PRODUCAO?: string | null;
+  PESO_ESTOQUE_ELEGIVEL?: number; PESO_ESTOQUE_ATENCAO?: number;
+  PESO_ESTOQUE_INCOMPATIVEL?: number; PESO_ESTOQUE_SEM_RASTREIO?: number;
+  REGRA_VALIDADE_CONFIGURADA?: boolean;
+  LOTES_ESTOQUE?: ContractStockLot[];
 }
 
 export interface ExportContract {
   SEQCONTRATO: number; NROCONTRATO: string; DTACONTRATO: string;
+  DTA_EMBARQUE_ERP?: string | null;
   SEQCLIENTE?: number | null; NOMERAZAO: string; SITUACAO?: number | null;
   STATUS_ERP: string; PAISDESTINO?: string | null;
   PRIORIDADE: "BAIXA" | "MEDIA" | "ALTA" | "URGENTE";
@@ -39,14 +73,29 @@ export interface ExportContract {
   OBSERVACAO_DESCONSIDERACAO?: string | null; VERSAO_CONFIG?: number | null;
   PESO_TOTAL: number; PESO_RESERVADO: number; SALDO_TOTAL: number;
   PESO_EXPEDIDO?: number; EM_EXPEDICAO?: boolean; COBERTURA_EXPEDICAO_PCT?: number;
-  PRAZO_DIAS?: number | null; PRODUTOS: ContractProduct[];
+  PRAZO_DIAS?: number | null; PREVISAO_TERMINO_PRODUCAO?: string | null;
+  DIAS_PREVISTOS_PRODUCAO?: number | null; PRODUTOS: ContractProduct[];
 }
 
 export interface ContractStock {
   SEQPRODUTO: number; DESCRPRODUTO: string; PESODISPONIVEL: number;
+  PESODISPONIVEL6MESES?: number; PESO_DISPONIVEL_REGULAR?: number;
   PESO_VENDIDO_ATIVO: number; PESO_RESERVADO_VERTICE: number;
-  PESO_ATRELADO_ORDEM: number; PESO_ATRELADO_TOTAL: number;
+  PESO_RESERVADO_6_MESES?: number;
+  PESO_ATRELADO_ORDEM: number; PESO_RESERVADO_PEDIDO?: number;
+  PESO_RESERVADO_PEDIDO_LIQUIDO?: number; PESO_SOBREPOSTO_ORDEM_PEDIDO?: number;
+  PESO_ATRELADO_TOTAL: number;
+  PESO_BLOQUEADO_ERP?: number; QTD_BLOQUEADA_ERP?: number;
   PESO_LIVRE_VERTICE: number; ESTOQUE_SEM_VENDA: number;
+  PESO_MAIS_6_MESES?: number; PESO_MAIS_6_MESES_LIVRE?: number;
+  SITUACAO_6_MESES?: "SEPARADO" | "DISPONIVEL" | "REPROCESSO";
+  DTA_REPROCESSO?: string | null; SEM_VENDA?: boolean;
+  VERSAO_TRATAMENTO?: number | null;
+  LOTES_ESTOQUE?: ContractStockLot[]; QTD_LOTES_ESTOQUE?: number;
+  LOTES_LIVRES?: ContractStockLot[]; QTD_LOTES_LIVRES?: number;
+  PESO_LIVRE_COM_DATA?: number; PESO_LIVRE_SEM_DATA?: number;
+  PESO_LIVRE_SEM_RASTREIO?: number;
+  DTA_PRODUCAO_MAIS_ANTIGA?: string | null; DTA_PRODUCAO_MAIS_RECENTE?: string | null;
 }
 
 export interface PcpConfig {
@@ -61,6 +110,7 @@ export interface PcpConfig {
 
 export interface PcpProductProjection extends ContractProduct {
   FALTANTE_PRODUZIR: number; ENTRADA_MATERIA_PRIMA_DIA: number;
+  PESO_DISPONIVEL_CONSIDERADO?: number; PESO_COBERTO_PREVISAO?: number;
   PRODUCAO_DIA: number; DIAS_PRODUCAO?: number | null; TIPO_ESTOQUE: string;
   ESPERA_DIAS?: number | null; EXCESSO_PROJETADO: number;
   PENDENCIAS_DADOS?: string[];
@@ -122,9 +172,13 @@ export interface PcpPlanning {
 
 export interface ContractsPanelResponse {
   estrutura_configurada: boolean; pcp_estrutura_configurada: boolean;
+  estoque_6m_configurado?: boolean;
+  estoque_lote_acao_configurado?: boolean;
   contratos: ExportContract[]; estoque: ContractStock[]; pcp_config: PcpConfig;
   planejamento: PcpPlanning; atualizado_em: string;
   expedicao_configurada?: boolean;
+  reservas_pedidos_configurada?: boolean;
+  pesos_analiticos_configurados?: boolean;
 }
 
 export interface ContractConfigPayload {
@@ -138,7 +192,7 @@ export interface SpreadsheetImportResult {
   success: boolean; aplicado: boolean; nome_arquivo: string; hash_arquivo: string;
   id_importacao?: number;
   RESUMO: { LINHAS_LIDAS: number; LINHAS_SEM_ESTOQUE: number; RESERVAS_APLICAVEIS: number; PESO_APLICAVEL: number; DATAS_APLICAVEIS: number; IGNORADOS: number; RESERVAS_SUBSTITUIDAS: number };
-  ITENS: Array<{ LINHA: number; NROCONTRATO: string; SEQCONTRATO?: number; SEQPRODUTO: number; DESCRICAO?: string; PESO_ESTOQUE_PLANILHA: number; PESO_APLICADO: number; SITUACAO: string; MENSAGEM: string }>;
+  ITENS: Array<{ LINHA: number; NROCONTRATO: string; SEQCONTRATO?: number; SEQPRODUTO: number; DESCRICAO?: string; PESO_ESTOQUE_PLANILHA: number; PESO_ORDEM_PRODUCAO?: number; PESO_RESERVA_ANTERIOR?: number; PESO_COMPLEMENTO_NECESSARIO?: number; PESO_MOVIMENTADO_ESTOQUE?: number; PESO_APLICADO: number; SITUACAO: string; MENSAGEM: string }>;
   DATAS: Array<{ NROCONTRATO: string; SEQCONTRATO?: number; DATA_ATUAL?: string | null; DATA_IMPORTADA?: string | null; SITUACAO: string }>;
 }
 
@@ -181,4 +235,7 @@ export const contractsApi = {
   },
   setDisregarded: (payload: { seqcontrato: number; desconsiderado: boolean; observacao?: string | null; versao: number | null }) => request<{ success: boolean; message: string }>("/contratos/desconsiderar", { method: "PUT", body: JSON.stringify(payload) }),
   saveReservation: (payload: { seqcontrato: number; seqproduto: number; peso_reservado: number; versao: number | null }) => request<{ success: boolean; message: string }>("/contratos/reserva", { method: "PUT", body: JSON.stringify(payload) }),
+  saveAgedReservation: (payload: { seqcontrato: number; seqproduto: number; peso_reservado: number; versao: number | null }) => request<{ success: boolean; message: string }>("/contratos/reserva-6-meses", { method: "PUT", body: JSON.stringify(payload) }),
+  saveStockTreatment: (payload: { seqproduto: number; situacao?: "SEPARADO" | "DISPONIVEL" | "REPROCESSO"; data_reprocesso?: string | null; sem_venda?: boolean; versao?: number | null }) => request<{ success: boolean; message: string }>("/contratos/estoque/tratamento", { method: "PUT", body: JSON.stringify(payload) }),
+  saveStockLotTreatment: (payload: { seqproduto: number; data_producao: string; lote?: string | null; seqembalagem?: string | number | null; peso_referencia: number; situacao: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR"; data_reprocesso?: string | null; observacao?: string | null; versao?: number | null }) => request<{ success: boolean; message: string; chave_lote: string }>("/contratos/estoque/lote/tratamento", { method: "PUT", body: JSON.stringify(payload) }),
 };

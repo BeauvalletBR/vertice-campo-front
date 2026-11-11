@@ -76,6 +76,13 @@ const START_OPTIONS: StartOption[] = [
     access: APP_ROUTE_ACCESS.contratos,
   },
   {
+    title: "Pedidos MI",
+    description: "Planejamento das cargas e comparação com os pedidos do ERP.",
+    route: "/pedidos-mi",
+    icon: FileSignature,
+    access: APP_ROUTE_ACCESS.pedidosMi,
+  },
+  {
     title: "Teste rendimento",
     description: "Execução de testes e cadastros de produtos, cortes e descartes.",
     route: "/rendimento/testes",

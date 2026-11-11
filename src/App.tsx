@@ -49,6 +49,7 @@ import EscalaTVScreen from "./pages/EscalaTVScreen";
 import StartPage from "./pages/StartPage";
 import VisitaLocalizacaoPublica from "./pages/VisitaLocalizacaoPublica";
 import Contratos from "./pages/Contratos";
+import PedidosMi from "./pages/PedidosMi";
 import UserManagement from "./pages/UserManagement";
 import RendimentoModule from "./modules/rendimento/RendimentoModule";
 
@@ -186,7 +187,11 @@ function ProtectedLayout() {
               </Route>
 
               <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.contratos} />}>
-                <Route path="/contratos" element={<Contratos />} />
+                <Route path="/contratos/*" element={<Contratos />} />
+              </Route>
+
+              <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.pedidosMi} />}>
+                <Route path="/pedidos-mi" element={<PedidosMi />} />
               </Route>
 
               <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.rendimento} />}>

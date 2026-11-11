@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ChevronRight, Factory, FileSpreadsheet, PackageCheck, Save, Settings2, ShieldAlert, Upload, Warehouse } from "lucide-react";
+import { AlertTriangle, CalendarRange, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Factory, FileSpreadsheet, PackageCheck, Save, Settings2, ShieldAlert, Upload, Warehouse } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,9 +7,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { contractsApi, type ContractsPanelResponse, type PcpConfig, type PcpPlanning, type PcpRecommendation, type PcpStockProjection, type SpreadsheetImportResult } from "@/services/contracts";
+import { contractsApi, type ContractsPanelResponse, type ExportContract, type PcpConfig, type PcpPlanning, type PcpRecommendation, type PcpStockProjection, type SpreadsheetImportResult } from "@/services/contracts";
 
-export type PcpView = "RECOMENDACAO" | "LINHA_TEMPO" | "IMPORTACAO" | "CONFIGURACAO" | "MANUAL";
+export type PcpView = "RECOMENDACAO" | "LINHA_TEMPO" | "CALENDARIO_EMBARQUE" | "IMPORTACAO" | "CONFIGURACAO" | "MANUAL";
 const kg = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
 const decimal = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 const shortDate = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" });
@@ -42,14 +42,127 @@ const recommendationHeadline = (recommendation: PcpRecommendation) => ({
 }[recommendation.DECISAO]);
 
 export function PcpWorkspace({ view, data, reload }: { view: PcpView | "CONTRATOS" | "ESTOQUE"; data: ContractsPanelResponse; reload: () => Promise<void> }) {
+  const isMaintenanceView = view === "RECOMENDACAO" || view === "LINHA_TEMPO";
+
+  if (isMaintenanceView) {
+    const title = view === "RECOMENDACAO" ? "Recomendação PCP" : "Calendário de ocupação do estoque";
+    return <Card className="overflow-hidden border-amber-300 bg-white shadow-sm"><CardContent className="p-0"><div className="flex min-h-[360px] flex-col items-center justify-center bg-[radial-gradient(circle_at_top,#FFF7DF_0%,#FFFFFF_58%)] px-6 py-14 text-center"><span className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50 text-amber-700"><AlertTriangle className="h-8 w-8" /></span><span className="rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-900">Em manutenção</span><h2 className="mt-4 text-2xl font-black text-[#173D6E]">{title}</h2><p className="mt-2 max-w-xl text-sm font-semibold leading-6 text-[#667B90]">As regras e projeções deste painel estão em revisão. Os contratos e as operações de alocação continuam disponíveis normalmente nas demais telas.</p></div></CardContent></Card>;
+  }
+
   return <>
-    <section className={view === "RECOMENDACAO" ? "block" : "hidden"} aria-hidden={view !== "RECOMENDACAO"}><Recommendation data={data} /></section>
-    <section className={view === "LINHA_TEMPO" ? "block" : "hidden"} aria-hidden={view !== "LINHA_TEMPO"}><Timeline planning={data.planejamento} /></section>
+    <section className={view === "CALENDARIO_EMBARQUE" ? "block" : "hidden"} aria-hidden={view !== "CALENDARIO_EMBARQUE"}><ShipmentCalendar contracts={data.contratos} /></section>
     <section className={view === "IMPORTACAO" ? "block" : "hidden"} aria-hidden={view !== "IMPORTACAO"}><SpreadsheetImport configured={data.pcp_estrutura_configurada} reload={reload} /></section>
     <section className={view === "CONFIGURACAO" ? "block" : "hidden"} aria-hidden={view !== "CONFIGURACAO"}><Configuration data={data} reload={reload} /></section>
     <section className={view === "MANUAL" ? "block" : "hidden"} aria-hidden={view !== "MANUAL"}><ContractsManual /></section>
   </>;
 }
+
+type ShipmentRisk = "OK" | "ATENCAO" | "RISCO" | "ATRASADO";
+
+const parseDateOnly = (value?: string | null) => {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+};
+
+const dateKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+
+const shipmentDate = (contract: ExportContract) => contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP || null;
+
+const shipmentCoverage = (contract: ExportContract) => {
+  const total = Number(contract.PESO_TOTAL || 0);
+  if (total <= 0) return 0;
+  const covered = contract.EM_EXPEDICAO
+    ? Number(contract.PESO_EXPEDIDO || 0)
+    : contract.PRODUTOS.reduce((sum, product) => sum + Math.min(Number(product.PESOCONTRATO || 0), Number(product.PESO_ATRELADO_TOTAL || 0)), 0);
+  return Math.min(100, Math.max(0, covered / total * 100));
+};
+
+const shipmentType = (contract: ExportContract) => {
+  const types = new Set(contract.PRODUTOS.map((product) => {
+    const value = String(product.RESFCONG || "").toUpperCase();
+    if (value.includes("RESF")) return "RESFRIADO";
+    if (value.includes("CONG")) return "CONGELADO";
+    return "NÃO CLASSIFICADO";
+  }));
+  if (types.size === 1) return [...types][0];
+  if (types.has("RESFRIADO") && types.has("CONGELADO")) return "MISTO";
+  return [...types].filter((item) => item !== "NÃO CLASSIFICADO").join(" + ") || "NÃO CLASSIFICADO";
+};
+
+const shipmentRisk = (contract: ExportContract): ShipmentRisk => {
+  const shipping = parseDateOnly(shipmentDate(contract));
+  if (!shipping) return "ATENCAO";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const coverage = shipmentCoverage(contract);
+  if (shipping < today && coverage < 98) return "ATRASADO";
+  const forecast = parseDateOnly(contract.PREVISAO_TERMINO_PRODUCAO);
+  if (forecast && forecast > shipping) return "RISCO";
+  if (!forecast && coverage < 98) return "ATENCAO";
+  return "OK";
+};
+
+const shipmentRiskLabel: Record<ShipmentRisk, string> = {
+  OK: "No prazo",
+  ATENCAO: "Sem previsão completa",
+  RISCO: "Risco de atraso",
+  ATRASADO: "Atrasado",
+};
+
+function ShipmentCalendar({ contracts }: { contracts: ExportContract[] }) {
+  const visibleContracts = useMemo(() => contracts.filter((contract) => !contract.DESCONSIDERADO && shipmentDate(contract)), [contracts]);
+  const initialDate = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const next = visibleContracts.map((contract) => parseDateOnly(shipmentDate(contract))).filter((item): item is Date => Boolean(item)).sort((a, b) => a.getTime() - b.getTime()).find((item) => item >= today);
+    return next || today;
+  }, [visibleContracts]);
+  const [month, setMonth] = useState(() => new Date(initialDate.getFullYear(), initialDate.getMonth(), 1));
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedContract, setSelectedContract] = useState<ExportContract | null>(null);
+  const contractsByDate = useMemo(() => {
+    const grouped = new Map<string, ExportContract[]>();
+    visibleContracts.forEach((contract) => {
+      const date = parseDateOnly(shipmentDate(contract));
+      if (!date) return;
+      const key = dateKey(date);
+      grouped.set(key, [...(grouped.get(key) || []), contract]);
+    });
+    return grouped;
+  }, [visibleContracts]);
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const gridStart = new Date(first);
+  gridStart.setDate(first.getDate() - first.getDay());
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(gridStart);
+    day.setDate(gridStart.getDate() + index);
+    return day;
+  });
+  const selectedContracts = selectedDate ? contractsByDate.get(selectedDate) || [] : [];
+  const monthTitle = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(month);
+
+  const openDay = (key: string) => {
+    setSelectedDate(key);
+    setSelectedContract(null);
+  };
+
+  return <div className="space-y-4">
+    <Card className="border-[#CEDAE5] shadow-sm"><CardContent className="p-0">
+      <div className="flex flex-col gap-3 border-b border-[#DCE5ED] p-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="flex items-center gap-2 text-lg font-black text-[#173D6E]"><CalendarRange className="h-5 w-5" />Calendário de embarques</h2><p className="mt-1 text-xs text-[#6A7E91]">Planejamento, previsão de término e risco dos contratos por data.</p></div><div className="flex items-center gap-2"><Button type="button" size="sm" variant="outline" onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}><ChevronLeft className="h-4 w-4" /></Button><p className="min-w-[190px] text-center text-sm font-black capitalize text-[#173D6E]">{monthTitle}</p><Button type="button" size="sm" variant="outline" onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4" /></Button><Button type="button" size="sm" variant="outline" onClick={() => { const today = new Date(); setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); }}>Hoje</Button></div></div>
+      <div className="flex flex-wrap gap-4 border-b border-[#E1E8EE] px-4 py-3 text-[10px] font-bold text-[#536B82]"><CalendarLegend className="bg-emerald-500" label="No prazo" /><CalendarLegend className="bg-amber-400" label="Sem previsão completa" /><CalendarLegend className="bg-red-500" label="Atrasado ou previsão após o embarque" /></div>
+      <div className="overflow-x-auto p-4"><div className="min-w-[920px]"><div className="grid grid-cols-7">{["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((label) => <div key={label} className="border-b bg-[#EDF3F7] p-2 text-center text-[10px] font-black uppercase text-[#536B82]">{label}</div>)}</div><div className="grid grid-cols-7 border-l border-t border-[#D7E1E9]">{days.map((day) => { const key = dateKey(day); const items = contractsByDate.get(key) || []; const outside = day.getMonth() !== month.getMonth(); const risks = items.map(shipmentRisk); const worst: ShipmentRisk = risks.includes("ATRASADO") ? "ATRASADO" : risks.includes("RISCO") ? "RISCO" : risks.includes("ATENCAO") ? "ATENCAO" : "OK"; const frozen = items.filter((item) => shipmentType(item).includes("CONGELADO")).length; const chilled = items.filter((item) => shipmentType(item).includes("RESFRIADO")).length; return <button key={key} type="button" disabled={items.length === 0} onClick={() => openDay(key)} className={`min-h-[118px] border-b border-r border-[#D7E1E9] p-2 text-left transition ${outside ? "bg-[#F7F9FB] text-[#9AA8B5]" : "bg-white"} ${items.length ? "hover:bg-blue-50" : "cursor-default"}`}><div className="flex items-center justify-between"><span className={`text-xs font-black ${outside ? "text-[#9AA8B5]" : "text-[#173D6E]"}`}>{day.getDate()}</span>{items.length > 0 && <span className={`h-2.5 w-2.5 rounded-full ${worst === "OK" ? "bg-emerald-500" : worst === "ATENCAO" ? "bg-amber-400" : "bg-red-500"}`} />}</div>{items.length > 0 && <div className="mt-3"><p className="text-lg font-black text-[#173D6E]">{items.length}</p><p className="text-[9px] font-bold uppercase text-[#71869A]">{items.length === 1 ? "contrato" : "contratos"}</p><p className="mt-2 truncate text-[9px] font-semibold text-[#536B82]">{frozen} cong. · {chilled} resf.</p><p className="mt-1 truncate text-[9px] font-black text-[#315F88]">{formatKg(items.reduce((sum, item) => sum + Number(item.PESO_TOTAL || 0), 0))}</p></div>}</button>; })}</div></div></div>
+    </CardContent></Card>
+    <Dialog open={Boolean(selectedDate)} onOpenChange={(open) => { if (!open) { setSelectedDate(null); setSelectedContract(null); } }}><DialogContent className="max-h-[90vh] max-w-[96vw] overflow-y-auto border-[#CBD8E3] xl:max-w-5xl"><DialogHeader><DialogTitle className="text-[#173D6E]">{selectedContract ? `Contrato ${selectedContract.NROCONTRATO}` : `Embarques de ${selectedDate ? formatDate(selectedDate) : ""}`}</DialogTitle><DialogDescription>{selectedContract ? `${selectedContract.NOMERAZAO} · ${shipmentType(selectedContract)}` : `${selectedContracts.length} contrato(s) programado(s) nesta data.`}</DialogDescription></DialogHeader>{selectedContract ? <ShipmentContractDetail contract={selectedContract} onBack={() => setSelectedContract(null)} /> : <div className="space-y-2">{selectedContracts.map((contract) => { const risk = shipmentRisk(contract); const coverage = shipmentCoverage(contract); return <button key={contract.SEQCONTRATO} type="button" onClick={() => setSelectedContract(contract)} className={`grid w-full gap-3 rounded-lg border p-4 text-left sm:grid-cols-[130px_1fr_130px_120px_24px] sm:items-center ${risk === "OK" ? "border-emerald-200 bg-emerald-50/50" : risk === "ATENCAO" ? "border-amber-200 bg-amber-50/60" : "border-red-300 bg-red-50/70"}`}><p className="font-mono text-sm font-black text-[#173D6E]">{contract.NROCONTRATO}</p><div><p className="text-xs font-black text-[#173D6E]">{contract.NOMERAZAO}</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">{contract.PAISDESTINO || "País não informado"} · {shipmentType(contract)}</p></div><div><p className="text-[9px] font-black uppercase text-[#71869A]">Previsão término</p><p className="mt-1 text-xs font-black text-[#304D68]">{formatDate(contract.PREVISAO_TERMINO_PRODUCAO)}</p></div><div><p className={`text-[10px] font-black uppercase ${risk === "OK" ? "text-emerald-700" : risk === "ATENCAO" ? "text-amber-800" : "text-red-700"}`}>{shipmentRiskLabel[risk]}</p><p className="mt-1 text-xs font-bold text-[#536B82]">{decimal.format(coverage)}% coberto</p></div><ChevronRight className="h-4 w-4 text-[#315F88]" /></button>; })}</div>}</DialogContent></Dialog>
+  </div>;
+}
+
+function ShipmentContractDetail({ contract, onBack }: { contract: ExportContract; onBack: () => void }) {
+  const risk = shipmentRisk(contract);
+  return <div className="space-y-4"><Button type="button" size="sm" variant="outline" onClick={onBack}><ChevronLeft className="mr-1 h-4 w-4" />Voltar para a data</Button><div className="grid grid-cols-2 gap-2 sm:grid-cols-5"><DecisionMetric label="Embarque" value={formatDate(shipmentDate(contract))} /><DecisionMetric label="Previsão término" value={formatDate(contract.PREVISAO_TERMINO_PRODUCAO)} /><DecisionMetric label="Cobertura" value={`${decimal.format(shipmentCoverage(contract))}%`} /><DecisionMetric label="Tipo" value={shipmentType(contract)} /><DecisionMetric label="Situação" value={shipmentRiskLabel[risk]} alert={risk === "RISCO" || risk === "ATRASADO"} /></div><div className="overflow-x-auto rounded-lg border border-[#D5E0E9]"><Table className="min-w-[900px]"><TableHeader className="bg-[#EDF3F7]"><TableRow><TableHead>Produto</TableHead><TableHead>Descrição</TableHead><TableHead>Tipo</TableHead><TableHead className="text-right">Peso contrato</TableHead><TableHead className="text-right">Alocado</TableHead><TableHead className="text-right">Saldo</TableHead><TableHead>Validade</TableHead></TableRow></TableHeader><TableBody>{contract.PRODUTOS.map((product) => <TableRow key={product.SEQPRODUTO}><TableCell className="font-mono text-xs font-black text-[#173D6E]">{product.SEQPRODUTO}</TableCell><TableCell className="text-xs font-bold text-[#304D68]">{product.DESCRICAO}</TableCell><TableCell className="text-xs font-semibold">{product.RESFCONG || "—"}</TableCell><TableCell className="text-right text-xs font-black">{formatKg(product.PESOCONTRATO)}</TableCell><TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(product.PESO_ATRELADO_TOTAL)}</TableCell><TableCell className="text-right text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</TableCell><TableCell className="text-xs font-semibold">{product.VALIDADE ? `${product.VALIDADE} ${product.TIPOVALIDADE === "D" ? "dias" : product.TIPOVALIDADE === "M" ? "meses" : "anos"}` : "Sem regra"}</TableCell></TableRow>)}</TableBody></Table></div></div>;
+}
+
+function CalendarLegend({ className, label }: { className: string; label: string }) { return <span className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${className}`} />{label}</span>; }
 
 function Recommendation({ data }: { data: ContractsPanelResponse }) {
   const planning = data.planejamento;
@@ -71,7 +184,7 @@ function Recommendation({ data }: { data: ContractsPanelResponse }) {
       <Card className="overflow-hidden border-[#B8CCDC] shadow-sm"><div className="bg-[#173D6E] p-5 text-white"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-100">Recomendação de hoje</p><div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">{first ? <button type="button" onClick={() => setSelectedDecision(first)} className="group text-left focus:outline-none focus:ring-2 focus:ring-white/70" title="Clique para entender a decisão deste contrato"><h2 className="text-2xl font-black underline-offset-4 group-hover:underline">{recommendationHeadline(first)} {first.NROCONTRATO}</h2><p className="mt-1 text-sm text-blue-100">{first.CLIENTE}</p><span className="mt-2 inline-block text-[10px] font-bold uppercase tracking-wider text-blue-200">Clique no nome para ver a decisão completa</span></button> : <div><h2 className="text-2xl font-black">Nenhum contrato pendente</h2><p className="mt-1 text-sm text-blue-100">Todos os contratos estão cobertos.</p></div>}{first && <button type="button" onClick={() => setSelectedDecision(first)} className={`w-fit rounded-md border px-3 py-1 text-xs font-black transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-white ${decisionStyle[first.DECISAO]}`} title="Clique para entender a decisão">{decisionLabel(first.DECISAO)}</button>}</div></div>{first && <CardContent className="grid gap-4 p-5 sm:grid-cols-4"><Fact label="Tempo estimado" value={first.DIAS_ESTIMADOS == null ? "Revisar dados" : `${first.DIAS_ESTIMADOS} dias`} /><Fact label="Produto gargalo" value={first.PRODUTO_GARGALO || "Sem gargalo"} /><Fact label="Embarque" value={formatDate(first.DATA_EMBARQUE)} /><Fact label="Cobertura" value={`${decimal.format(first.COBERTURA_PCT)}%`} /><div className="rounded-lg border border-[#D6E1EA] bg-[#F7F9FB] p-3 text-sm font-semibold text-[#3D5871] sm:col-span-4">{first.MOTIVO}</div><BottleneckGuidance recommendation={first} /></CardContent>}</Card>
       <Card className="border-[#CEDAE5] shadow-sm"><CardContent className="p-5"><h3 className="text-sm font-black text-[#173D6E]">Ocupação do estoque</h3><p className="mt-1 text-xs text-[#6A7E91]">Inclui MI na ocupação física.</p><div className="mt-4 space-y-4">{planning.OCUPACAO.map((item) => <div key={item.TIPO}><div className="mb-1.5 flex items-end justify-between"><div><p className="text-xs font-black text-[#274967]">{item.TIPO}</p><p className="text-[10px] text-[#708497]">Alerta {formatKg(item.ALERTA)}</p></div><p className={`text-sm font-black ${item.SITUACAO === "NORMAL" ? "text-[#173D6E]" : "text-orange-700"}`}>{formatKg(item.PESO_ATUAL)} <span className="text-[10px]">/ {formatKg(item.LIMITE)}</span></p></div><Progress value={Math.min(100, item.PERCENTUAL)} className="h-2" /></div>)}</div></CardContent></Card>
     </div>
-    <Card className="border-[#CEDAE5] shadow-sm"><CardContent className="p-0"><div className="border-b border-[#DCE5ED] p-4"><h2 className="text-base font-black text-[#173D6E]">Sequência recomendada</h2><p className="text-xs text-[#6A7E91]">Prioridade, embarque, cobertura, gargalo e capacidade de estoque. Clique na decisão para ver os motivos.</p></div><div className="overflow-x-auto"><Table className="min-w-[1150px]"><TableHeader className="bg-[#EDF3F7]"><TableRow><Head>Ordem</Head><Head>Contrato / cliente</Head><Head>Decisão</Head><Head>Cobertura</Head><Head>Gargalo</Head><Head>Dias</Head><Head>Data de entrega</Head><Head>Conclusão</Head><Head>Excesso</Head><Head /></TableRow></TableHeader><TableBody>{planning.RECOMENDACOES.map((item) => { const open = expanded.has(item.SEQCONTRATO); return [<TableRow key={`r-${item.SEQCONTRATO}`} className={item.DECISAO === "CRITICO" ? "bg-red-50/60" : ""}><TableCell className="text-center text-base font-black text-[#173D6E]">{item.POSICAO}</TableCell><TableCell><p className="text-xs font-black text-[#173D6E]">{item.NROCONTRATO} · {item.CLIENTE}</p><p className="text-[10px] text-[#6A7E91]">{item.PAIS || "País não informado"} · {item.PRIORIDADE}</p></TableCell><TableCell><button type="button" onClick={() => setSelectedDecision(item)} className={`rounded border px-2 py-1 text-[10px] font-black transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[#315F88] ${decisionStyle[item.DECISAO]}`} title="Clique para entender a decisão">{item.DECISAO.replaceAll("_", " ")}</button></TableCell><TableCell className="text-xs font-black">{decimal.format(item.COBERTURA_PCT)}%</TableCell><TableCell className="max-w-52 truncate text-xs font-bold">{item.PRODUTO_GARGALO || "—"}</TableCell><TableCell className="text-xs font-black">{item.DIAS_ESTIMADOS ?? "—"}</TableCell><TableCell className="whitespace-nowrap text-xs font-bold">{item.DATA_EMBARQUE ? formatDate(item.DATA_EMBARQUE) : "—"}</TableCell><TableCell className="whitespace-nowrap text-xs font-bold">{formatDate(item.FIM_SEQUENCIA)}</TableCell><TableCell className="text-xs font-black text-orange-700">{formatKg(item.EXCESSO_PROJETADO)}</TableCell><TableCell><button className="rounded border p-1.5 text-[#244B70]" onClick={() => setExpanded((current) => { const next = new Set(current); open ? next.delete(item.SEQCONTRATO) : next.add(item.SEQCONTRATO); return next; })}>{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button></TableCell></TableRow>, open && <TableRow key={`d-${item.SEQCONTRATO}`} className="bg-[#F7F9FB]"><TableCell colSpan={10} className="p-4"><ProductProjection recommendation={item} /></TableCell></TableRow>]; })}</TableBody></Table></div></CardContent></Card>
+    <Card className="border-[#CEDAE5] shadow-sm"><CardContent className="p-0"><div className="border-b border-[#DCE5ED] p-4"><h2 className="text-base font-black text-[#173D6E]">Sequência recomendada</h2><p className="text-xs text-[#6A7E91]">Prioridade, embarque, cobertura, gargalo e capacidade de estoque. Clique na decisão para ver os motivos.</p></div><div className="overflow-x-auto"><Table className="min-w-[1150px]"><TableHeader className="bg-[#EDF3F7]"><TableRow><Head>Ordem</Head><Head>Contrato / cliente</Head><Head>Decisão</Head><Head>Cobertura</Head><Head>Gargalo</Head><Head>Dias</Head><Head>Data de entrega</Head><Head>Conclusão</Head><Head>Excesso</Head><Head /></TableRow></TableHeader><TableBody>{planning.RECOMENDACOES.map((item) => { const open = expanded.has(item.SEQCONTRATO); return [<TableRow key={`r-${item.SEQCONTRATO}`} className={item.DECISAO === "CRITICO" ? "bg-red-50/60" : ""}><TableCell className="text-center text-base font-black text-[#173D6E]">{item.POSICAO}</TableCell><TableCell><p className="text-xs font-black text-[#173D6E]">{item.NROCONTRATO} · {item.CLIENTE}</p><p className="text-[10px] text-[#6A7E91]">{item.PAIS || "País não informado"} · {item.PRIORIDADE}</p></TableCell><TableCell><button type="button" onClick={() => setSelectedDecision(item)} className={`rounded border px-2 py-1 text-[10px] font-black transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-[#315F88] ${decisionStyle[item.DECISAO]}`} title="Clique para entender a decisão">{item.DECISAO.replaceAll("_", " ")}</button></TableCell><TableCell className="text-xs font-black">{decimal.format(item.COBERTURA_PCT)}%</TableCell><TableCell className="max-w-52 truncate text-xs font-bold">{item.PRODUTO_GARGALO || "—"}</TableCell><TableCell className="text-xs font-black">{item.DIAS_ESTIMADOS ?? "—"}</TableCell><TableCell className="whitespace-nowrap text-xs font-bold">{item.DATA_EMBARQUE ? formatDate(item.DATA_EMBARQUE) : "—"}</TableCell><TableCell className="whitespace-nowrap text-xs font-bold">{formatDate(item.FIM_SEQUENCIA)}</TableCell><TableCell className="text-xs font-black text-orange-700">{formatKg(item.EXCESSO_PROJETADO)}</TableCell><TableCell><button className="rounded border p-1.5 text-[#244B70]" onClick={() => setExpanded((current) => { const next = new Set(current); if (open) next.delete(item.SEQCONTRATO); else next.add(item.SEQCONTRATO); return next; })}>{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button></TableCell></TableRow>, open && <TableRow key={`d-${item.SEQCONTRATO}`} className="bg-[#F7F9FB]"><TableCell colSpan={10} className="p-4"><ProductProjection recommendation={item} /></TableCell></TableRow>]; })}</TableBody></Table></div></CardContent></Card>
     <DecisionDetailsDialog recommendation={selectedDecision} onClose={() => setSelectedDecision(null)} />
   </div>;
 }
@@ -85,7 +198,7 @@ const decisionImpact: Record<PcpRecommendation["DECISAO"], string> = {
   AGUARDAR_ESTOQUE: "Não comece os demais produtos agora. Forme primeiro o estoque mínimo do produto gargalo para reduzir o tempo em que os outros itens ficariam parados aguardando o fechamento do contrato.",
   COBERTO: "O peso necessário já está coberto. Produção adicional para este contrato pode gerar estoque excedente.",
   REVISAR_DADOS: "Faltam metas ou origem produtiva para calcular prazo e impacto com segurança. A programação pode ficar incorreta até completar esses dados.",
-  EM_EXPEDICAO: "O carregamento já foi iniciado. Reservas anteriores não ocupam mais o estoque e a cobertura exibida considera exclusivamente o peso efetivamente expedido.",
+  EM_EXPEDICAO: "O carregamento já foi iniciado. A cobertura exibida considera o peso efetivamente expedido; reservas manuais e de ordens de produção permanecem protegidas para o saldo ainda não carregado.",
 };
 
 function DecisionDetailsDialog({ recommendation, onClose }: { recommendation: PcpRecommendation | null; onClose: () => void }) {
@@ -124,7 +237,7 @@ function ProductProjection({ recommendation }: { recommendation: PcpRecommendati
 
 function Timeline({ planning }: { planning: PcpPlanning }) {
   const recommendations = planning?.RECOMENDACOES || [];
-  const projections = planning?.PROJECAO_ESTOQUE || [];
+  const projections = useMemo(() => planning?.PROJECAO_ESTOQUE || [], [planning?.PROJECAO_ESTOQUE]);
   const dates = useMemo(() => {
     if (projections.length) return projections.slice(0, 21).map((item) => new Date(`${item.DATA.slice(0, 10)}T12:00:00`));
     return Array.from({ length: 21 }, (_, index) => { const value = new Date(); value.setHours(12, 0, 0, 0); value.setDate(value.getDate() + index); return value; });
@@ -324,32 +437,84 @@ function Configuration({ data, reload }: { data: ContractsPanelResponse; reload:
 }
 
 function SpreadsheetImport({ configured, reload }: { configured: boolean; reload: () => Promise<void> }) {
-  const [file, setFile] = useState<File | null>(null); const [preview, setPreview] = useState<SpreadsheetImportResult | null>(null); const [loading, setLoading] = useState(false); const [confirm, setConfirm] = useState(false);
-  const analyze = async () => { if (!file) return toast.warning("Selecione a planilha XLSB."); setLoading(true); try { setPreview(await contractsApi.importSpreadsheet(file)); } catch (error) { toast.error(errorMessage(error)); } finally { setLoading(false); } };
-  const apply = async () => { if (!file) return; setLoading(true); try { setPreview(await contractsApi.importSpreadsheet(file, true)); setConfirm(false); toast.success("Planilha aplicada."); await reload(); } catch (error) { toast.error(errorMessage(error)); } finally { setLoading(false); } };
-  return <div className="space-y-4"><Card className="border-[#CEDAE5] shadow-sm"><CardContent className="p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h2 className="flex items-center gap-2 text-base font-black text-[#173D6E]"><FileSpreadsheet className="h-5 w-5" />Atualizar pela planilha</h2><p className="mt-1 text-xs text-[#6A7E91]">Lê a aba CONTRATOS e substitui as reservas da importação anterior. Travas manuais e ordens de produção são preservadas.</p></div><div className="flex gap-2"><label className="flex h-10 cursor-pointer items-center rounded-md border bg-white px-3 text-xs font-black text-[#244B70]"><Upload className="mr-2 h-4 w-4" />{file?.name || "Selecionar .xlsb"}<input type="file" accept=".xlsb" className="hidden" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); }} /></label><Button onClick={() => void analyze()} disabled={!file || loading || !configured} className="bg-[#173D6E]">{loading ? "Analisando..." : "Gerar prévia"}</Button></div></div></CardContent></Card>{preview && <><section className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric label="Reservas novas" value={String(preview.RESUMO.RESERVAS_APLICAVEIS)} icon={PackageCheck} /><Metric label="Peso aplicável" value={formatKg(preview.RESUMO.PESO_APLICAVEL)} icon={Warehouse} /><Metric label="Datas a atualizar" value={String(preview.RESUMO.DATAS_APLICAVEIS)} icon={CalendarRange} /><Metric label="Ignorados" value={String(preview.RESUMO.IGNORADOS)} icon={AlertTriangle} tone="orange" /></section><Card className="border-[#CEDAE5] shadow-sm"><CardContent className="p-0"><div className="flex items-center justify-between border-b p-4"><div><h3 className="text-sm font-black text-[#173D6E]">Prévia da importação</h3><p className="text-xs text-[#6A7E91]">{preview.RESUMO.RESERVAS_SUBSTITUIDAS} reservas da planilha anterior serão substituídas. Vínculos manuais ou de produção continuam protegidos.</p></div><Button disabled={!preview.RESUMO.RESERVAS_APLICAVEIS || preview.aplicado} onClick={() => setConfirm(true)} className="bg-emerald-700"><CheckCircle2 className="mr-2 h-4 w-4" />{preview.aplicado ? "Aplicado" : "Aplicar"}</Button></div><div className="max-h-[520px] overflow-auto"><Table className="min-w-[900px]"><TableHeader className="sticky top-0 bg-[#EDF3F7]"><TableRow><Head>Linha</Head><Head>Contrato</Head><Head>Produto</Head><Head>Planilha</Head><Head>Reservar</Head><Head>Situação</Head><Head>Observação</Head></TableRow></TableHeader><TableBody>{preview.ITENS.map((item) => <TableRow key={`${item.LINHA}-${item.NROCONTRATO}-${item.SEQPRODUTO}`}><TableCell className="text-xs">{item.LINHA}</TableCell><TableCell className="text-xs font-black">{item.NROCONTRATO}</TableCell><TableCell className="text-xs font-bold">{item.SEQPRODUTO} · {item.DESCRICAO || "Produto"}</TableCell><TableCell className="text-xs">{formatKg(item.PESO_ESTOQUE_PLANILHA)}</TableCell><TableCell className="text-xs font-black text-emerald-700">{formatKg(item.PESO_APLICADO)}</TableCell><TableCell className="text-[10px] font-black">{item.SITUACAO.replaceAll("_", " ")}</TableCell><TableCell className="text-xs">{item.MENSAGEM}</TableCell></TableRow>)}</TableBody></Table></div></CardContent></Card></>}<Dialog open={confirm} onOpenChange={setConfirm}><DialogContent><DialogHeader><DialogTitle>Substituir reservas pela nova planilha?</DialogTitle><DialogDescription>As {preview?.RESUMO.RESERVAS_SUBSTITUIDAS || 0} reservas da planilha anterior serão liberadas e substituídas por {preview?.RESUMO.RESERVAS_APLICAVEIS || 0} reservas, totalizando {formatKg(preview?.RESUMO.PESO_APLICAVEL)}. Travas manuais e ordens de produção não serão alteradas.</DialogDescription></DialogHeader><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setConfirm(false)}>Cancelar</Button><Button className="bg-emerald-700" disabled={loading} onClick={() => void apply()}>{loading ? "Aplicando..." : "Confirmar substituição"}</Button></div></DialogContent></Dialog></div>;
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<SpreadsheetImportResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+
+  const analyze = async () => {
+    if (!file) return toast.warning("Selecione a planilha XLSB.");
+    setLoading(true);
+    try {
+      setPreview(await contractsApi.importSpreadsheet(file));
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const apply = async () => {
+    if (!file) return;
+    setLoading(true);
+    try {
+      setPreview(await contractsApi.importSpreadsheet(file, true));
+      setConfirm(false);
+      toast.success("Planilha aplicada e estoque complementar atualizado.");
+      await reload();
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return <div className="space-y-4">
+    <Card className="border-[#CEDAE5] shadow-sm"><CardContent className="p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 text-base font-black text-[#173D6E]"><FileSpreadsheet className="h-5 w-5" />Importar alocações da planilha</h2>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-[#6A7E91]">O peso da planilha representa o total desejado no contrato. O sistema preserva o peso já vinculado por ordem de produção e reserva no estoque somente a diferença necessária.</p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <label className="flex h-10 cursor-pointer items-center rounded-md border bg-white px-3 text-xs font-black text-[#244B70]"><Upload className="mr-2 h-4 w-4" />{file?.name || "Selecionar .xlsb"}<input type="file" accept=".xlsb" className="hidden" onChange={(event) => { setFile(event.target.files?.[0] || null); setPreview(null); }} /></label>
+          <Button onClick={() => void analyze()} disabled={!file || loading || !configured} className="bg-[#173D6E]">{loading ? "Analisando..." : "Gerar prévia"}</Button>
+        </div>
+      </div>
+    </CardContent></Card>
+
+    {preview && <>
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Metric label="Ajustes aplicáveis" value={String(preview.RESUMO.RESERVAS_APLICAVEIS)} icon={PackageCheck} />
+        <Metric label="Reserva complementar" value={formatKg(preview.RESUMO.PESO_APLICAVEL)} icon={Warehouse} />
+        <Metric label="Datas a atualizar" value={String(preview.RESUMO.DATAS_APLICAVEIS)} icon={CalendarRange} />
+        <Metric label="Ignorados" value={String(preview.RESUMO.IGNORADOS)} icon={AlertTriangle} tone="orange" />
+      </section>
+      <Card className="border-[#CEDAE5] shadow-sm"><CardContent className="p-0">
+        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div><h3 className="text-sm font-black text-[#173D6E]">Prévia da importação</h3><p className="text-xs leading-5 text-[#6A7E91]">Cálculo: total da planilha menos peso protegido por OP. O complemento final é limitado pelo saldo do contrato e pelo estoque livre.</p></div>
+          <Button disabled={!preview.RESUMO.RESERVAS_APLICAVEIS || preview.aplicado} onClick={() => setConfirm(true)} className="bg-emerald-700"><CheckCircle2 className="mr-2 h-4 w-4" />{preview.aplicado ? "Aplicado" : "Aplicar ajustes"}</Button>
+        </div>
+        <div className="max-h-[520px] overflow-auto"><Table className="min-w-[1160px]"><TableHeader className="sticky top-0 bg-[#EDF3F7]"><TableRow><Head>Linha</Head><Head>Contrato</Head><Head>Produto</Head><Head>Planilha</Head><Head>OP protegida</Head><Head>Complemento necessário</Head><Head>Reserva final</Head><Head>Situação</Head><Head>Observação</Head></TableRow></TableHeader><TableBody>{preview.ITENS.map((item) => <TableRow key={`${item.LINHA}-${item.NROCONTRATO}-${item.SEQPRODUTO}`}><TableCell className="text-xs">{item.LINHA}</TableCell><TableCell className="text-xs font-black">{item.NROCONTRATO}</TableCell><TableCell className="text-xs font-bold">{item.SEQPRODUTO} · {item.DESCRICAO || "Produto"}</TableCell><TableCell className="text-xs font-bold">{formatKg(item.PESO_ESTOQUE_PLANILHA)}</TableCell><TableCell className="text-xs text-blue-700">{formatKg(item.PESO_ORDEM_PRODUCAO)}</TableCell><TableCell className="text-xs text-amber-700">{formatKg(item.PESO_COMPLEMENTO_NECESSARIO)}</TableCell><TableCell className="text-xs font-black text-emerald-700">{formatKg(item.PESO_APLICADO)}</TableCell><TableCell className="text-[10px] font-black">{item.SITUACAO.replaceAll("_", " ")}</TableCell><TableCell className="text-xs">{item.MENSAGEM}</TableCell></TableRow>)}</TableBody></Table></div>
+      </CardContent></Card>
+    </>}
+
+    <Dialog open={confirm} onOpenChange={setConfirm}><DialogContent><DialogHeader><DialogTitle>Aplicar a distribuição da planilha?</DialogTitle><DialogDescription>O sistema manterá os pesos protegidos por ordem de produção e ajustará somente a reserva complementar para atingir o total informado na planilha, respeitando o estoque livre. Reservas anteriores originadas por planilha serão reconciliadas com esta nova importação.</DialogDescription></DialogHeader><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setConfirm(false)}>Cancelar</Button><Button className="bg-emerald-700" disabled={loading} onClick={() => void apply()}>{loading ? "Aplicando..." : "Confirmar aplicação"}</Button></div></DialogContent></Dialog>
+  </div>;
 }
 
 function ContractsManual() {
-  const decisions = [
-    ["Iniciar", "Primeiro contrato realmente acionável da fila produtiva."],
-    ["Próximo", "Contrato que deve ser preparado depois do atual."],
-    ["Aguardar estoque", "Não iniciar os itens rápidos antes de formar o estoque mínimo do produto gargalo."],
-    ["Encaminhado", "Contrato com data ou andamento operacional. Se estiver coberto, não existe produção a iniciar."],
-    ["Crítico", "A conclusão calculada ultrapassa a data de entrega e exige priorização."],
-    ["Coberto", "Todo o peso necessário já está vinculado; produzir além disso pode gerar excesso."],
-  ];
   return <div className="space-y-4">
     <Card className="overflow-hidden border-[#B8CCDC] shadow-sm">
-      <div className="bg-[#173D6E] p-6 text-white"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-100">Ajuda operacional</p><h2 className="mt-1 text-2xl font-black">Manual do Planejamento de Contratos</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-blue-100">Consulte aqui as regras usadas para cobertura, recomendação, gargalo, projeção de estoque e importação da planilha.</p></div>
+      <div className="bg-[#173D6E] p-6 text-white"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-100">Ajuda operacional</p><h2 className="mt-1 text-2xl font-black">Manual de Contratos e Alocação</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-blue-100">Fluxo para consultar contratos e distribuir o estoque livre de exportação com segurança.</p></div>
     </Card>
     <div className="grid gap-4 xl:grid-cols-2">
-      <ManualSection title="Rotina recomendada" items={["Atualize o estoque antes de iniciar a análise.", "Importe a planilha mais recente e confira a prévia.", "Revise prioridade e data de entrega dos contratos.", "Abra a decisão para conferir gargalo, cobertura e estoque necessário.", "Consulte a linha do tempo antes de confirmar a sequência."]} />
-      <ManualSection title="Como ler as decisões" items={decisions.map(([name, description]) => `${name}: ${description}`)} />
-      <ManualSection title="Gargalo e ponto de início" items={["O sistema calcula os dias de produção de cada produto do contrato.", "O item com maior prazo é o produto gargalo.", "Quando os demais itens terminariam muito antes, o sistema recomenda aguardar estoque.", "O estoque-alvo aproxima o término do gargalo do término dos demais produtos.", "A espera só é recomendada quando não compromete a data de entrega."]} />
-      <ManualSection title="Cobertura e estoque" items={["Cobertura = peso coberto dividido pelo peso contratado.", "Reservas manuais, planilha e ordens vinculadas compõem a cobertura.", "A cobertura é limitada a 100%; peso adicional aparece como excesso.", "Na expedição, o peso efetivamente carregado passa a ser a referência.", "Na data prevista, a saída é o peso contratado menos o peso que já foi expedido.", "Miúdos também reduzem a ocupação na saída, pois utilizam espaço físico de estoque.", "A linha do tempo soma a entrada diária e desconta a saída na data de entrega."]} />
-      <ManualSection title="Configuração da desossa" items={["Peso bruto = @ médio x animais por dia x 15.", "A quebra de frio é retirada antes do quarteio.", "Traseiro, dianteiro e ponta de agulha seguem os percentuais configurados.", "A entrada exportável é separada pelo mix congelado e resfriado.", "O padrão atual é 70% congelado e 30% resfriado, mas pode ser alterado."]} />
-      <ManualSection title="Cores da linha do tempo" items={["Azul: produção programada sem alerta relevante.", "Laranja: aguardar gargalo, excesso projetado ou estoque em alerta.", "Vermelho: atraso ou limite de estoque que exige ação imediata.", "Verde: ocupação de estoque dentro da faixa normal.", "Clique em qualquer bloco para consultar o motivo detalhado."]} />
+      <ManualSection title="Rotina recomendada" items={["Sincronize o ERP antes de iniciar a distribuição.", "Abra Alocação de estoque e localize o produto pelo código ou descrição.", "Confira o estoque livre, os contratos que utilizam o produto e suas datas de embarque.", "Informe o novo total manual no contrato escolhido e confirme em Salvar.", "Volte à aba Contratos para revisar cobertura, saldo, prioridade e embarque."]} />
+      <ManualSection title="Como o estoque livre é calculado" items={["O painel considera somente produtos de mercado ME.", "Estoque livre = estoque disponível no ERP menos ordens de produção protegidas e menos alocações manuais.", "Uma ordem de produção nunca pode ser reduzida ou transferida por esta tela.", "Uma alocação manual pode ser ajustada; informe zero para liberá-la.", "O sistema impede alocação acima do estoque livre ou acima do saldo permitido no contrato."]} />
+      <ManualSection title="Aba Contratos" items={["A aba é consultiva para pesos e permite administrar prioridade, embarque, status e observação.", "Expanda um contrato para consultar seus produtos, o peso contratado, o total alocado e o saldo.", "Clique no valor alocado para consultar a composição detalhada do peso.", "Use Desconsiderar quando o contrato não deve participar da operação, informando uma observação quando necessário."]} />
+      <ManualSection title="Origem dos pesos" items={["Ordem de produção: vínculo automático do ERP, protegido contra realocação.", "Manual: peso distribuído pelo operador na aba Alocação de estoque.", "Expedição: quando o carregamento começa, o peso expedido passa a ser a referência de cobertura.", "A origem detalhada só aparece ao clicar no total alocado, mantendo as tabelas principais limpas."]} />
+      <ManualSection title="Configuração da desossa" items={["Peso bruto = @ médio x animais por dia x 15.", "A quebra de frio é retirada antes do quarteio.", "Traseiro, dianteiro e ponta de agulha seguem os percentuais configurados.", "A entrada exportável é separada pelo mix congelado e resfriado.", "Esses parâmetros alimentam as projeções exibidas em Sugestões e Calendário de ocupação."]} />
+      <ManualSection title="Recursos em validação" items={["Sugestões e Calendário de ocupação estão disponíveis em modo de consulta, com aviso de manutenção e validação em produção.", "A decisão operacional deve considerar prioridade, data de embarque, saldo do contrato e estoque livre.", "Confirme as projeções antes de executar uma decisão enquanto esses painéis estiverem em revisão."]} />
     </div>
   </div>;
 }

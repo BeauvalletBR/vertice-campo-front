@@ -64,6 +64,19 @@ const rendimentoUser: User = {
   nivel: 1,
 };
 
+const pedidosMiUser: User = {
+  id: 6,
+  name: "Pedidos MI",
+  login: "pedidos.mi",
+  role: "COMPRADOR",
+  modulos: [],
+  sistemas: ["VERTICEMI"],
+  modulosPorSistema: {
+    VERTICEMI: ["PEDIDOS"],
+  },
+  nivel: 1,
+};
+
 describe("navegação após o login", () => {
   it("prioriza a rota originalmente solicitada e preserva seus parâmetros", () => {
     expect(
@@ -148,5 +161,16 @@ describe("navegação após o login", () => {
     ).toBe(true);
     expect(canAccessAuthenticatedRoute(contractsUser, "/rendimento/testes")).toBe(false);
     expect(canAccessAuthenticatedRoute(fieldUser, "/rendimento/testes")).toBe(false);
+  });
+
+  it("libera Pedidos MI somente pelo VERTICEMI/PEDIDOS", () => {
+    expect(canAccessAuthenticatedRoute(pedidosMiUser, "/pedidos-mi")).toBe(true);
+    expect(canAccessAuthenticatedRoute(contractsUser, "/pedidos-mi")).toBe(false);
+    expect(
+      canAccessAuthenticatedRoute(
+        { ...pedidosMiUser, modulosPorSistema: { VERTICEMI: ["OUTRO"] } },
+        "/pedidos-mi",
+      ),
+    ).toBe(false);
   });
 });
