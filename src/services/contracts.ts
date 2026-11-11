@@ -23,7 +23,8 @@ export interface ContractStockLot {
   DTAPRODUCAO?: string | null; LOTE?: string | null; SEQEMBALAGEM?: number | null;
   QUANTIDADE: number; PESO_FISICO: number; PESO_DISPONIVEL_ESTIMADO: number;
   PESO_LIVRE_ESTIMADO?: number;
-  SITUACAO_VALIDADE?: "ELEGIVEL" | "ATENCAO" | "INCOMPATIVEL" | "SEM_REGRA" | "SEM_DATA";
+  SITUACAO_VALIDADE?: "ELEGIVEL" | "ATENCAO" | "INCOMPATIVEL" | "SEM_REGRA" | "SEM_DATA" | "ACEITO_EXCECAO";
+  SITUACAO_VALIDADE_ORIGINAL?: "INCOMPATIVEL" | null;
   MARGEM_DIAS?: number | null;
   CHAVE_LOTE?: string;
   DECISAO_LOTE?: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR" | null;
@@ -57,6 +58,7 @@ export interface ContractProduct {
   DATA_REFERENCIA_VALIDADE?: string | null; DATA_MINIMA_PRODUCAO?: string | null;
   PESO_ESTOQUE_ELEGIVEL?: number; PESO_ESTOQUE_ATENCAO?: number;
   PESO_ESTOQUE_INCOMPATIVEL?: number; PESO_ESTOQUE_SEM_RASTREIO?: number;
+  PESO_ESTOQUE_ACEITO_EXCECAO?: number;
   REGRA_VALIDADE_CONFIGURADA?: boolean;
   LOTES_ESTOQUE?: ContractStockLot[];
 }
@@ -211,7 +213,13 @@ const request = async <T>(path: string, init?: RequestInit) =>
   parseResponse<T>(await fetch(getBackendUrl(path), { ...init, headers: getAuthHeaders(Boolean(init?.body)) }));
 
 export const contractsApi = {
-  getPanel: (refreshStock = false) => request<ContractsPanelResponse>(`/contratos/painel${refreshStock ? "?atualizar=true" : ""}`),
+  getPanel: (refreshStock = false, recalculate = false) => {
+    const query = new URLSearchParams();
+    if (refreshStock) query.set("atualizar", "true");
+    if (recalculate) query.set("recalcular", "true");
+    const suffix = query.toString();
+    return request<ContractsPanelResponse>(`/contratos/painel${suffix ? `?${suffix}` : ""}`);
+  },
   saveConfig: (payload: ContractConfigPayload) => request<{ success: boolean; message: string }>("/contratos/configuracao", { method: "PUT", body: JSON.stringify(payload) }),
   savePcpConfig: (payload: PcpConfig) => request<{ success: boolean; message: string }>("/contratos/pcp/configuracao", {
     method: "PUT", body: JSON.stringify({

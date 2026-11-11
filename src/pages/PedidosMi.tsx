@@ -5,6 +5,8 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ClipboardCopy,
+  Database,
   FileDown,
   FileText,
   Loader2,
@@ -68,6 +70,17 @@ const money = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
   minimumFractionDigits: 2,
 });
+
+const PEDIDOS_MI_CONSULTA_SQL = `SELECT
+    H.*,
+    I.*
+FROM VERTICE.VCO_PEDIDO_MI H
+LEFT JOIN VERTICE.VCO_PEDIDO_MI_ITEM I
+       ON I.ID_PEDIDO_MI = H.ID_PEDIDO_MI
+ORDER BY
+    H.DTA_EMBARQUE DESC,
+    H.ID_PEDIDO_MI,
+    I.ORDEM;`;
 
 const formatDate = (value?: string | null) => {
   const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -165,6 +178,7 @@ export default function PedidosMi() {
   const [saving, setSaving] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const [removing, setRemoving] = useState<PedidoMi | null>(null);
+  const [showDatabaseQuery, setShowDatabaseQuery] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; direction: "asc" | "desc" }>({
     key: "embarque",
     direction: "asc",
@@ -368,6 +382,9 @@ export default function PedidosMi() {
             <p className="mt-1 text-sm font-medium text-[#60758A]">Planeje cargas e compare peso e preço com o pedido atual do ERP.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setShowDatabaseQuery(true)} className="border-[#B8CADB] text-[#173D6E]">
+              <Database className="mr-2 h-4 w-4" />Consulta no banco
+            </Button>
             <Button variant="outline" onClick={() => void loadPanel(true)} disabled={refreshing} className="border-[#B8CADB] text-[#173D6E]">
               <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />Atualizar
             </Button>
@@ -457,6 +474,46 @@ export default function PedidosMi() {
           )}
         </Card>
       </div>
+
+      <Dialog open={showDatabaseQuery} onOpenChange={setShowDatabaseQuery}>
+        <DialogContent className="max-w-[94vw] border-[#C7D7E5] sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-black text-[#123A68]">
+              <Database className="h-5 w-5" />Consulta dos Pedidos MI
+            </DialogTitle>
+            <DialogDescription>
+              Os dados preenchidos no Vértice ficam no cabeçalho <strong>VCO_PEDIDO_MI</strong> e nos itens <strong>VCO_PEDIDO_MI_ITEM</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-xl border border-[#D2DFEA] bg-[#F6F9FC] p-4 text-sm text-[#365675]">
+              Use a consulta abaixo no usuário <strong>VERTICE</strong> para visualizar o lançamento completo com seus produtos.
+            </div>
+            <div className="relative overflow-hidden rounded-xl border border-[#BFCFDE] bg-[#102E53]">
+              <pre className="max-h-[48vh] overflow-auto p-4 pr-14 text-xs leading-6 text-[#EAF3FB] sm:text-sm">
+                <code>{PEDIDOS_MI_CONSULTA_SQL}</code>
+              </pre>
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="absolute right-3 top-3 h-9 w-9 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                title="Copiar consulta"
+                onClick={() => {
+                  void navigator.clipboard.writeText(PEDIDOS_MI_CONSULTA_SQL)
+                    .then(() => toast.success("Consulta copiada."))
+                    .catch(() => toast.error("Não foi possível copiar a consulta."));
+                }}
+              >
+                <ClipboardCopy className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-xs font-medium text-[#60758A]">
+              Para consultar diretamente os dados vindos do ERP, utilize <strong>VERTICE.VCGV_PEDIDOS_MI_ERP</strong>.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(form)} onOpenChange={(open) => !open && !saving && setForm(null)}>
         <DialogContent className="max-h-[94vh] max-w-[96vw] overflow-y-auto border-[#C7D7E5] xl:max-w-6xl">

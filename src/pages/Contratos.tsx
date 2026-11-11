@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowDown,
@@ -86,6 +86,14 @@ const formatDate = (value: string | null | undefined) => {
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? "—" : dateFormatter.format(parsed);
+};
+
+const formatDateTime = (value: string | null | undefined) => {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? formatDate(value)
+    : parsed.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 };
 
 const inputDate = (value: string | null | undefined) =>
@@ -360,10 +368,10 @@ export default function Contratos() {
   const [disregardContract, setDisregardContract] = useState<ExportContract | null>(null);
   const [disregardNote, setDisregardNote] = useState("");
 
-  const loadPanel = async (silent = false, refreshStock = false) => {
+  const loadPanel = async (silent = false, refreshStock = false, recalculate = false) => {
     if (!silent) setLoading(true);
     try {
-      setData(await contractsApi.getPanel(refreshStock));
+      setData(await contractsApi.getPanel(refreshStock, recalculate));
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -423,28 +431,36 @@ export default function Contratos() {
     }
   };
 
-  const activeContracts = (data?.contratos || []).filter((item) => !item.DESCONSIDERADO);
-  const disregardedContracts = (data?.contratos || []).filter((item) => item.DESCONSIDERADO);
+  const activeContracts = useMemo(
+    () => (data?.contratos || []).filter((item) => !item.DESCONSIDERADO),
+    [data?.contratos],
+  );
+  const disregardedContracts = useMemo(
+    () => (data?.contratos || []).filter((item) => item.DESCONSIDERADO),
+    [data?.contratos],
+  );
   const tabContracts = contractTab === "ATIVOS" ? activeContracts : disregardedContracts;
-  const countries = Array.from(
+  const countries = useMemo(() => Array.from(
     new Set(tabContracts.map((item) => item.PAISDESTINO).filter(Boolean)),
-  ).sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
+  ).sort((a, b) => String(a).localeCompare(String(b), "pt-BR")), [tabContracts]);
 
-  const contractSearchTerm = normalizeSearch(search);
-  const contracts = tabContracts.filter((contract) => {
-    const productMatches = contract.PRODUTOS.some(
-      (product) =>
-        String(product.SEQPRODUTO).includes(contractSearchTerm) ||
-        normalizeSearch(product.DESCRICAO).includes(contractSearchTerm),
-    );
-    const matchesSearch =
-      !contractSearchTerm ||
-      normalizeSearch(contract.NROCONTRATO).includes(contractSearchTerm) ||
-      normalizeSearch(contract.NOMERAZAO).includes(contractSearchTerm) ||
-      normalizeSearch(contract.PAISDESTINO).includes(contractSearchTerm) ||
-      productMatches;
-    return matchesSearch && (country === "TODOS" || contract.PAISDESTINO === country);
-  }).sort((first, second) => compareContracts(first, second, contractSort));
+  const contracts = useMemo(() => {
+    const contractSearchTerm = normalizeSearch(search);
+    return tabContracts.filter((contract) => {
+      const productMatches = contract.PRODUTOS.some(
+        (product) =>
+          String(product.SEQPRODUTO).includes(contractSearchTerm) ||
+          normalizeSearch(product.DESCRICAO).includes(contractSearchTerm),
+      );
+      const matchesSearch =
+        !contractSearchTerm ||
+        normalizeSearch(contract.NROCONTRATO).includes(contractSearchTerm) ||
+        normalizeSearch(contract.NOMERAZAO).includes(contractSearchTerm) ||
+        normalizeSearch(contract.PAISDESTINO).includes(contractSearchTerm) ||
+        productMatches;
+      return matchesSearch && (country === "TODOS" || contract.PAISDESTINO === country);
+    }).sort((first, second) => compareContracts(first, second, contractSort));
+  }, [tabContracts, search, country, contractSort]);
 
   const changeContractSort = (key: ContractSortKey) => {
     setContractSort((current) => ({
@@ -675,8 +691,8 @@ export default function Contratos() {
       }
       reservationRefreshTimerRef.current = window.setTimeout(() => {
         reservationRefreshTimerRef.current = null;
-        void loadPanel(true);
-      }, 700);
+        void loadPanel(true, false, true);
+      }, 4000);
     };
 
     setSaving(key);
@@ -918,7 +934,7 @@ export default function Contratos() {
               {!isContractOperations && (workspaceView === "ALOCACAO" || workspaceView === "ALOCADOS" || workspaceView === "REVISAR_DATAS") && <Button type="button" variant="outline" onClick={() => { setSelectedStockProduct(null); navigateToWorkspace("CONTRATOS", "/contratos"); }} className="border-[#AFC1D1] text-[#173D6E]"><FileSignature className="mr-2 h-4 w-4" />Ir para contratos</Button>}
               {!isContractOperations && workspaceView === "CONTRATOS" && <Button type="button" onClick={() => navigateToWorkspace("ALOCACAO", "/contratos/alocacao")} className="bg-[#173D6E] text-white hover:bg-[#0F3157]"><Boxes className="mr-2 h-4 w-4" />Ir para alocação de estoque</Button>}
               {workspaceView === "VISAO_GERAL" && <Button type="button" onClick={() => navigateToWorkspace("CONTRATOS", "/contratos")} className="bg-[#173D6E] text-white hover:bg-[#0F3157]"><FileSignature className="mr-2 h-4 w-4" />Ver contratos</Button>}
-              <Button variant="outline" onClick={() => void loadPanel()} className="border-[#AFC1D1] text-[#244B70]"><RefreshCw className="mr-2 h-4 w-4" />Atualizar</Button>
+              <Button variant="outline" onClick={() => void loadPanel(false, false, true)} className="border-[#AFC1D1] text-[#244B70]"><RefreshCw className="mr-2 h-4 w-4" />Atualizar</Button>
             </div>
           </div>
         </header>
@@ -1848,6 +1864,7 @@ function StockAllocationWorkspace({
   const [lotDecisions, setLotDecisions] = useState<Record<string, "" | "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR">>({});
   const [lotReprocessDates, setLotReprocessDates] = useState<Record<string, string>>({});
   const [lotSaving, setLotSaving] = useState<string | null>(null);
+  const [reviewPreferredContractId, setReviewPreferredContractId] = useState<number | null>(null);
   const allocationTableScrollRef = useRef<HTMLDivElement | null>(null);
   const allocationBottomScrollRef = useRef<HTMLDivElement | null>(null);
   const syncingAllocationScroll = useRef(false);
@@ -2020,6 +2037,8 @@ function StockAllocationWorkspace({
     lot: ContractStockLot,
     decision: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR",
     reprocessDateOverride?: string,
+    targetContractId?: number,
+    targetWeight?: number,
   ) => {
     const key = lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`;
     if (lot.SINTETICO_SEM_RASTREIO) {
@@ -2029,6 +2048,16 @@ function StockAllocationWorkspace({
     const reprocessDate = reprocessDateOverride ?? lotReprocessDates[key] ?? inputDate(lot.DTA_REPROCESSO_LOTE);
     if (decision === "REPROCESSO" && !reprocessDate) {
       toast.error("Informe a data prevista para o reprocesso.");
+      return;
+    }
+    const targetContract = decision === "ALOCAR"
+      ? compatibleContractsForLot(item.SEQPRODUTO, lot.DTAPRODUCAO, contracts)
+        .find((contract) => contract.SEQCONTRATO === targetContractId)
+      : null;
+    const targetProduct = targetContract?.PRODUTOS.find((product) => product.SEQPRODUTO === item.SEQPRODUTO) || null;
+    const target = targetContract && targetProduct ? { contract: targetContract, product: targetProduct } : null;
+    if (decision === "ALOCAR" && !target) {
+      toast.error("Selecione o contrato compatível que receberá este peso.");
       return;
     }
     setLotSaving(key);
@@ -2045,7 +2074,14 @@ function StockAllocationWorkspace({
       });
       toast.success(result.message);
       setLotDecisions((current) => ({ ...current, [key]: decision }));
-      if (decision === "ALOCAR") {
+      if (decision === "ALOCAR" && target) {
+        const inputKey = `${target.contract.SEQCONTRATO}-${item.SEQPRODUTO}`;
+        const weight = Math.max(0, Number(targetWeight || 0));
+        setReservationInputs((current) => ({
+          ...current,
+          [inputKey]: allocationInputValue(weight),
+        }));
+        setReviewPreferredContractId(target.contract.SEQCONTRATO);
         setAllocationSource("REGULAR");
         onSelectProduct(item.SEQPRODUTO);
         onNavigateSection("DISPONIVEIS");
@@ -2058,12 +2094,14 @@ function StockAllocationWorkspace({
     }
   };
 
-  return <ModernStockOperationsLayout
+  return <>
+    {selectedStock && <AcceptedOldStockNotice stock={selectedStock} saving={lotSaving} onReverse={(lot) => saveLotTreatment(selectedStock, lot, "SEPARADO")} />}
+    <ModernStockOperationsLayout
     section={allocationView === "MAIS_6_MESES" ? "DISPONIVEIS" : allocationView}
     stock={stock}
     selectedStock={selectedStock}
     selectedContracts={selectedContracts}
-    preferredContractId={preferredContractId}
+    preferredContractId={reviewPreferredContractId ?? preferredContractId}
     allocatedItems={visibleAllocatedItems}
     contracts={contracts}
     reviewRows={reviewRows}
@@ -2090,8 +2128,9 @@ function StockAllocationWorkspace({
       onSelectProduct(null);
       onNavigateSection("REVISAR_DATAS");
     }}
-    lotSaving={lotSaving}
-  />;
+      lotSaving={lotSaving}
+    />
+  </>;
 
   return (
     <div className="space-y-4">
@@ -2444,6 +2483,27 @@ function StockAllocationWorkspace({
   );
 }
 
+function AcceptedOldStockNotice({ stock, saving, onReverse }: { stock: ContractStock; saving: string | null; onReverse: (lot: ContractStockLot) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const lots = (stock.LOTES_LIVRES || stock.LOTES_ESTOQUE || []).filter((lot) => lot.DECISAO_LOTE === "DISPONIVEL");
+  if (lots.length === 0) return null;
+  const total = lots.reduce((sum, lot) => sum + Number(lot.PESO_LIVRE_ESTIMADO || lot.PESO_DISPONIVEL_ESTIMADO || 0), 0);
+  return <>
+    <button type="button" onClick={() => setOpen(true)} className="flex w-full items-center justify-between gap-4 rounded-xl border border-orange-300 bg-orange-50 px-4 py-3 text-left shadow-sm hover:bg-orange-100">
+      <div className="min-w-0"><p className="truncate text-sm font-black text-[#173D6E]">{stock.SEQPRODUTO} - {stock.DESCRPRODUTO}</p><p className="mt-1 text-xs font-semibold text-orange-900">Lote antigo liberado manualmente para alocação. Clique para consultar ou reverter.</p></div>
+      <span className="shrink-0 rounded-full border border-orange-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase text-orange-800">Produto antigo aceito · {formatKg(total)}</span>
+    </button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="max-w-2xl border-[#CBD8E3]">
+        <DialogHeader><DialogTitle className="text-[#173D6E]">Produto antigo aceito</DialogTitle><DialogDescription>{stock.SEQPRODUTO} - {stock.DESCRPRODUTO}. Estes lotes foram liberados como exceção à validade contratual.</DialogDescription></DialogHeader>
+        <div className="max-h-[55vh] space-y-2 overflow-auto pr-1">
+          {lots.map((lot) => { const key = lot.CHAVE_LOTE || `${stock.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}`; return <div key={key} className="flex flex-col gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-black text-[#173D6E]">Produção em {formatDate(lot.DTAPRODUCAO)}</p><p className="mt-1 text-xs font-semibold text-[#60758A]">Lote {lot.LOTE || "sem lote"} · {formatKg(lot.PESO_LIVRE_ESTIMADO || lot.PESO_DISPONIVEL_ESTIMADO)}</p>{lot.DECISAO_ATUALIZADA_POR && <p className="mt-1 text-[10px] font-semibold text-[#71869A]">Aceito por {lot.DECISAO_ATUALIZADA_POR} em {formatDateTime(lot.DECISAO_ATUALIZADA_EM)}</p>}</div><Button type="button" variant="outline" disabled={saving === key} onClick={() => void onReverse(lot)} className="border-orange-300 bg-white font-black text-orange-900 hover:bg-orange-100">{saving === key ? "Revertendo..." : "Voltar para revisão"}</Button></div>; })}
+        </div>
+      </DialogContent>
+    </Dialog>
+  </>;
+}
+
 interface ModernStockOperationsLayoutProps {
   section: "DISPONIVEIS" | "ALOCADOS" | "REVISAR_DATAS";
   stock: ContractStock[];
@@ -2470,7 +2530,7 @@ interface ModernStockOperationsLayoutProps {
   reservationInputs: Record<string, string>;
   setReservationInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onSaveReservation: (contract: ExportContract, product: ContractProduct, fallbackWeight?: number, inputMode?: ReservationInputMode) => Promise<void>;
-  onSaveLotTreatment: (item: ContractStock, lot: ContractStockLot, decision: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR", reprocessDateOverride?: string) => Promise<void>;
+  onSaveLotTreatment: (item: ContractStock, lot: ContractStockLot, decision: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR", reprocessDateOverride?: string, targetContractId?: number, targetWeight?: number) => Promise<void>;
   onReviewProduct: (productId: number) => void;
   lotSaving: string | null;
 }
@@ -2559,6 +2619,10 @@ function ModernStockOperationsLayout({
   const selectedCandidate = selectedContracts.find(({ contract, product }) => candidateKey(contract.SEQCONTRATO, product.SEQPRODUTO) === selectedCandidateKey) || null;
   const selectedAllocated = allocatedItems.find(({ contract, product }) => candidateKey(contract.SEQCONTRATO, product.SEQPRODUTO) === selectedAllocatedKey) || null;
   const selectedReview = reviewRows.find(({ item, lot }) => (lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`) === selectedReviewKey) || null;
+  useEffect(() => {
+    setReviewDecision(selectedReview?.lot.DECISAO_LOTE || "SEPARADO");
+    setReviewReprocessDate(inputDate(selectedReview?.lot.DTA_REPROCESSO_LOTE));
+  }, [selectedReviewKey, selectedReview?.lot.DECISAO_LOTE, selectedReview?.lot.DTA_REPROCESSO_LOTE]);
 
   const sortedStock = stock.filter((item) =>
     Number(item.PESO_LIVRE_VERTICE || 0) > 0
@@ -2632,7 +2696,7 @@ function ModernStockOperationsLayout({
     return <div className="space-y-4">
       {!selectedStock ? <>
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><OverviewMetric icon={Weight} label="Estoque físico ERP" value={formatKg(totalErpStock)} tone="blue" /><OverviewMetric icon={Factory} label="Protegido por OP" value={formatKg(totalOrderStock)} tone="blue" /><OverviewMetric icon={LockKeyhole} label="Reservado em pedido" value={formatKg(totalOrderReservation)} tone="blue" /><OverviewMetric icon={Boxes} label="Estoque realmente livre" value={formatKg(totalFreeStock)} tone="green" /><OverviewMetric icon={ShieldAlert} label="Restrições de validade" value={String(validityAlertCount)} tone={validityAlertCount > 0 ? "red" : "green"} /></section>
-        <Card className="overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><WorkspaceToolbar title="Produtos disponíveis para alocação" description="Selecione um produto para comparar os contratos candidatos." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="max-h-[66vh] overflow-auto"><Table><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Descrição" sortKey="DESCRICAO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Estoque físico" sortKey="ESTOQUE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="OP" sortKey="OP" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Pedido" sortKey="PEDIDO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Manual" sortKey="MANUAL" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Livre" sortKey="LIVRE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="center" /><TableHead className="text-right">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedStock.map((item) => { const candidateCount = contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)).length; return <TableRow key={item.SEQPRODUTO} className="hover:bg-[#F7FAFC]"><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell><TableCell className="text-xs font-bold text-[#304D68]">{item.DESCRPRODUTO}</TableCell><NumberCell value={item.PESODISPONIVEL} /><NumberCell value={item.PESO_ATRELADO_ORDEM} /><NumberCell value={item.PESO_RESERVADO_PEDIDO_LIQUIDO ?? item.PESO_RESERVADO_PEDIDO} /><NumberCell value={item.PESO_RESERVADO_VERTICE} /><TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(item.PESO_LIVRE_VERTICE)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => onSelectProduct(item.SEQPRODUTO)} className="border-[#8FB1CE] text-[#174A78]"><Boxes className="mr-2 h-3.5 w-3.5" />Analisar e alocar</Button></TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card>
+        <Card className="overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><WorkspaceToolbar title="Produtos disponíveis para alocação" description="Selecione um produto para comparar os contratos candidatos." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="max-h-[66vh] overflow-auto"><Table><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Descrição" sortKey="DESCRICAO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Estoque físico" sortKey="ESTOQUE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="OP" sortKey="OP" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Pedido" sortKey="PEDIDO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Manual" sortKey="MANUAL" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Livre" sortKey="LIVRE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="center" /><TableHead className="text-right">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedStock.map((item) => { const candidateCount = contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)).length; return <TableRow key={item.SEQPRODUTO} className="hover:bg-[#F7FAFC]"><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell><TableCell className="text-xs font-bold text-[#304D68]"><span>{item.DESCRPRODUTO}</span>{(item.LOTES_LIVRES || item.LOTES_ESTOQUE || []).some((lot) => lot.DECISAO_LOTE === "DISPONIVEL") && <span className="ml-2 inline-flex rounded-full border border-orange-300 bg-orange-50 px-2 py-1 text-[9px] font-black uppercase text-orange-800">Produto antigo aceito</span>}</TableCell><NumberCell value={item.PESODISPONIVEL} /><NumberCell value={item.PESO_ATRELADO_ORDEM} /><NumberCell value={item.PESO_RESERVADO_PEDIDO_LIQUIDO ?? item.PESO_RESERVADO_PEDIDO} /><NumberCell value={item.PESO_RESERVADO_VERTICE} /><TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(item.PESO_LIVRE_VERTICE)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => onSelectProduct(item.SEQPRODUTO)} className="border-[#8FB1CE] text-[#174A78]"><Boxes className="mr-2 h-3.5 w-3.5" />Analisar e alocar</Button></TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card>
       </> : <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(270px,0.72fr)_minmax(420px,1.15fr)_minmax(300px,0.82fr)]">
         <Card className="h-fit border-[#CBD8E3] shadow-sm"><CardContent className="space-y-4 p-4"><button type="button" onClick={() => onSelectProduct(null)} className="text-xs font-black text-blue-700 hover:underline">← Escolher outro produto</button><div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="font-mono text-sm font-black text-blue-700">{selectedStock.SEQPRODUTO}</p><p className="mt-1 text-base font-black text-[#102F53]">{selectedStock.DESCRPRODUTO}</p></div><div><h3 className="text-sm font-black text-[#102F53]">Distribuição do peso no estoque</h3><div className="mt-3 flex h-7 overflow-hidden rounded-md bg-[#E6EDF3]">{stockSegments.map((segment) => <div key={segment.label} className={segment.color} style={{ width: `${stockTotal > 0 ? Math.max(0, segment.value / stockTotal * 100) : 0}%` }} title={`${segment.label}: ${formatKg(segment.value)}`} />)}</div><div className="mt-3 space-y-2">{stockSegments.map((segment) => <SummaryLine key={segment.label} label={segment.label} value={formatKg(segment.value)} />)}</div></div><div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Estoque realmente livre</p><p className="mt-1 text-2xl font-black text-emerald-800">{formatKg(selectedStock.PESO_LIVRE_VERTICE)}</p></div><div><h3 className="text-sm font-black text-[#102F53]">Lotes livres do produto</h3><div className="mt-2 max-h-52 overflow-auto rounded-lg border border-[#D8E2EA]"><Table><TableHeader className="bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produção" sortKey="DATA" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Peso" sortKey="PESO" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Situação" sortKey="SITUACAO" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} /></TableRow></TableHeader><TableBody>{sortedLots.map((lot, index) => <TableRow key={lot.CHAVE_LOTE || index}><TableCell className="text-xs font-bold">{formatDate(lot.DTAPRODUCAO)}</TableCell><TableCell className="text-right text-xs font-black">{formatKg(lot.PESO_LIVRE_ESTIMADO)}</TableCell><TableCell><ValidityBadge status={lot.SITUACAO_VALIDADE} /></TableCell></TableRow>)}</TableBody></Table></div></div></CardContent></Card>
         <Card className="min-w-0 overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><div className="border-b border-[#DCE5ED] px-4 py-4"><h2 className="text-lg font-black text-[#102F53]">Contratos candidatos</h2><p className="text-xs text-[#667B90]">Produtos que utilizam o SEQPRODUTO {selectedStock.SEQPRODUTO}</p></div><div className="max-h-[70vh] overflow-auto p-3">{selectedContracts.length === 0 ? <div className="rounded-lg border border-dashed p-8 text-center text-sm font-semibold text-[#6B7F92]">Nenhum contrato ativo possui este produto.</div> : <div className="min-w-[610px] space-y-2"><div className="grid grid-cols-[auto_0.7fr_1.25fr_0.8fr_0.8fr_0.8fr] items-center gap-3 px-3 text-[9px] font-black uppercase tracking-wider text-[#526A80]"><span className="w-4" /><CandidateSortButton label="Contrato" sortKey="CONTRATO" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Cliente" sortKey="CLIENTE" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Embarque" sortKey="EMBARQUE" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Saldo" sortKey="SALDO" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} align="right" /><CandidateSortButton label="Elegível" sortKey="ELEGIVEL" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} align="right" /></div>{sortedCandidates.map(({ contract, product }) => { const key = candidateKey(contract.SEQCONTRATO, product.SEQPRODUTO); const selectedRow = key === selectedCandidateKey; const eligibility = Number(product.PESO_ESTOQUE_ELEGIVEL || 0); return <button type="button" key={key} onClick={() => setSelectedCandidateKey(key)} className={`grid w-full grid-cols-[auto_0.7fr_1.25fr_0.8fr_0.8fr_0.8fr] items-center gap-3 rounded-lg border p-3 text-left ${selectedRow ? "border-blue-500 bg-blue-50 ring-1 ring-blue-200" : "border-[#D3DEE7] bg-white hover:bg-[#F7FAFC]"}`}><span className={`h-4 w-4 rounded-full border-2 ${selectedRow ? "border-blue-600 bg-blue-600 ring-2 ring-blue-100" : "border-[#AFC1D1]"}`} /><span className="font-mono text-xs font-black text-[#173D6E]">{contract.NROCONTRATO}</span><span className="truncate text-xs font-bold text-[#304D68]">{contract.NOMERAZAO}</span><span className="text-xs font-bold text-[#526A80]">{formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</span><span className="text-right text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</span><span className="text-right text-xs font-black text-emerald-700">{formatKg(eligibility)}</span></button>; })}</div>}</div>{selectedCandidate && Number(selectedCandidate.product.PESO_ESTOQUE_INCOMPATIVEL || 0) > 0 && <div className="m-3 flex flex-col gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs font-semibold text-orange-900 sm:flex-row sm:items-center sm:justify-between"><span><AlertTriangle className="mr-2 inline h-4 w-4" />{formatKg(selectedCandidate.product.PESO_ESTOQUE_INCOMPATIVEL)} livres não atendem à validade deste contrato.</span><Button type="button" size="sm" variant="outline" onClick={() => onReviewProduct(selectedStock.SEQPRODUTO)} className="shrink-0 border-orange-300 bg-white text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar datas</Button></div>}</CardContent></Card>
@@ -2706,7 +2770,7 @@ function ModernStockOperationsLayout({
   const semData = reviewRows.filter(({ lot }) => !lot.DTAPRODUCAO || lot.SITUACAO_VALIDADE === "SEM_DATA");
   const incompatibles = reviewRows.filter(({ lot }) => lot.SITUACAO_VALIDADE === "INCOMPATIVEL");
   const noDemand = reviewRows.filter(({ item }) => !contracts.some((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)));
-  return <div className="space-y-4"><section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><ReviewMetric tone="red" title="Sem contrato elegível por validade" rows={incompatibles} /><ReviewMetric tone="green" title="Elegível para outro contrato" rows={reviewRows.filter(({ item, lot }) => compatibleContractsForLot(item.SEQPRODUTO, lot.DTAPRODUCAO, contracts).length > 0)} /><ReviewMetric tone="orange" title="Sem data de produção rastreável" rows={semData} /><ReviewMetric tone="blue" title="Sem demanda contratual ativa" rows={noDemand} /></section><WorkspaceToolbar title="Lotes que exigem decisão" description="Selecione um lote para analisar validade e definir uma ação operacional." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(390px,0.85fr)]"><Card className="min-w-0 overflow-hidden border-[#CBD8E3]"><CardContent className="p-0"><div className="max-h-[68vh] overflow-auto"><Table className="min-w-[760px]"><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Lote" sortKey="LOTE" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Produção" sortKey="DATA" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Peso livre" sortKey="PESO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} align="center" /><SortableTableHead label="Motivo" sortKey="MOTIVO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><TableHead className="text-center">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedReviewRows.map(({ item, lot }) => { const key = lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`; const compatible = compatibleContractsForLot(item.SEQPRODUTO, lot.DTAPRODUCAO, contracts); return <TableRow key={key} onClick={() => setSelectedReviewKey(key)} className={`cursor-pointer ${key === selectedReviewKey ? "bg-red-50 ring-1 ring-inset ring-red-200" : "hover:bg-[#F7FAFC]"}`}><TableCell><p className="font-mono text-xs font-black text-[#173D6E]">{item.SEQPRODUTO}</p><p className="max-w-[180px] truncate text-[10px] font-bold text-[#526A80]">{item.DESCRPRODUTO}</p></TableCell><TableCell className="text-xs font-bold">{lot.LOTE || "Sem lote"}</TableCell><TableCell className="text-xs font-bold">{formatDate(lot.DTAPRODUCAO)}</TableCell><TableCell className="text-right text-xs font-black">{formatKg(lot.PESO_LIVRE_ESTIMADO)}</TableCell><TableCell className="text-center text-xs font-black">{compatible.length}</TableCell><TableCell><ValidityBadge status={lot.SITUACAO_VALIDADE} /></TableCell><TableCell className="text-center"><Eye className="mx-auto h-4 w-4 text-[#174A78]" /></TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card><ReviewDecisionPanel selected={selectedReview} contracts={contracts} decision={reviewDecision} onDecisionChange={setReviewDecision} reprocessDate={reviewReprocessDate} onReprocessDateChange={setReviewReprocessDate} saving={lotSaving} onSave={onSaveLotTreatment} /></div></div>;
+  return <div className="space-y-4"><section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><ReviewMetric tone="red" title="Sem contrato elegível por validade" rows={incompatibles} /><ReviewMetric tone="green" title="Elegível para outro contrato" rows={reviewRows.filter(({ item, lot }) => compatibleContractsForLot(item.SEQPRODUTO, lot.DTAPRODUCAO, contracts).length > 0)} /><ReviewMetric tone="orange" title="Sem data de produção rastreável" rows={semData} /><ReviewMetric tone="blue" title="Sem demanda contratual ativa" rows={noDemand} /></section><WorkspaceToolbar title="Lotes que exigem decisão" description="Selecione um lote para analisar validade e definir uma ação operacional." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(390px,0.85fr)]"><Card className="min-w-0 overflow-hidden border-[#CBD8E3]"><CardContent className="p-0"><div className="max-h-[68vh] overflow-auto"><Table className="min-w-[760px]"><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Lote" sortKey="LOTE" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Produção" sortKey="DATA" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Peso livre" sortKey="PESO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} align="center" /><SortableTableHead label="Motivo" sortKey="MOTIVO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><TableHead className="text-center">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedReviewRows.map(({ item, lot }) => { const key = lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`; const compatible = compatibleContractsForLot(item.SEQPRODUTO, lot.DTAPRODUCAO, contracts); return <TableRow key={key} onClick={() => setSelectedReviewKey(key)} className={`cursor-pointer ${key === selectedReviewKey ? "bg-red-50 ring-1 ring-inset ring-red-200" : "hover:bg-[#F7FAFC]"}`}><TableCell><p className="font-mono text-xs font-black text-[#173D6E]">{item.SEQPRODUTO}</p><p className="max-w-[180px] truncate text-[10px] font-bold text-[#526A80]">{item.DESCRPRODUTO}</p><LotDecisionBadge decision={lot.DECISAO_LOTE} /></TableCell><TableCell className="text-xs font-bold">{lot.LOTE || "Sem lote"}</TableCell><TableCell className="text-xs font-bold">{formatDate(lot.DTAPRODUCAO)}</TableCell><TableCell className="text-right text-xs font-black">{formatKg(lot.PESO_LIVRE_ESTIMADO)}</TableCell><TableCell className="text-center text-xs font-black">{compatible.length}</TableCell><TableCell><ValidityBadge status={lot.SITUACAO_VALIDADE} /></TableCell><TableCell className="text-center"><Eye className="mx-auto h-4 w-4 text-[#174A78]" /></TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card><ReviewDecisionPanel selected={selectedReview} contracts={contracts} decision={reviewDecision} onDecisionChange={setReviewDecision} reprocessDate={reviewReprocessDate} onReprocessDateChange={setReviewReprocessDate} saving={lotSaving} onSave={onSaveLotTreatment} /></div></div>;
 }
 
 function WorkspaceToolbar({ title, description, search, onSearchChange, syncing, onSync }: { title: string; description: string; search: string; onSearchChange: (value: string) => void; syncing: boolean; onSync: () => Promise<void> }) {
@@ -2821,7 +2885,78 @@ function ReviewDecisionPanel({ selected, contracts, decision, onDecisionChange, 
       </CardContent>
     </Card>;
   }
-  return <Card className="h-fit border-[#CBD8E3] shadow-sm xl:sticky xl:top-4"><CardContent className="space-y-4 p-4"><div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-black text-[#102F53]">Detalhes do lote</h2><p className="text-xs text-[#667B90]">{item.SEQPRODUTO} · {item.DESCRPRODUTO}</p></div><ValidityBadge status={lot.SITUACAO_VALIDADE} /></div><div className="grid grid-cols-3 gap-2 rounded-xl border border-[#D5E0E9] bg-[#F7F9FB] p-3"><MiniFact label="Peso físico" value={formatKg(lot.PESO_FISICO)} /><MiniFact label="Peso livre" value={formatKg(lot.PESO_LIVRE_ESTIMADO)} /><MiniFact label="Produção" value={formatDate(lot.DTAPRODUCAO)} /></div><div><h3 className="mb-2 text-sm font-black text-[#102F53]">Contratos ativos que exigem o produto</h3><div className="overflow-hidden rounded-lg border border-[#D5E0E9]"><Table><TableHeader className="bg-[#EDF3F7]"><TableRow><TableHead>Contrato</TableHead><TableHead>Cliente</TableHead><TableHead>Data mínima</TableHead><TableHead>Situação</TableHead></TableRow></TableHeader><TableBody>{productContracts.map((contract) => { const product = contract.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO)!; const accepted = compatible.some((entry) => entry.SEQCONTRATO === contract.SEQCONTRATO); return <TableRow key={contract.SEQCONTRATO}><TableCell className="font-mono text-xs font-black">{contract.NROCONTRATO}</TableCell><TableCell className="max-w-[130px] truncate text-xs font-bold">{contract.NOMERAZAO}</TableCell><TableCell className="text-xs font-bold">{formatDate(product.DATA_MINIMA_PRODUCAO)}</TableCell><TableCell><span className={`rounded-full px-2 py-1 text-[9px] font-black ${accepted ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}`}>{accepted ? "Compatível" : "Não compatível"}</span></TableCell></TableRow>; })}</TableBody></Table></div></div><div className={`rounded-lg border p-3 text-xs font-semibold ${compatible.length > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`}><p className="font-black">Resultado da análise</p><p className="mt-1">{compatible.length > 0 ? `${compatible.length} contrato(s) aceitam a data deste lote.` : "Nenhum contrato ativo aceita a data deste lote."}</p></div><div><h3 className="mb-2 text-sm font-black text-[#102F53]">Ação operacional</h3><select value={decision} onChange={(event) => onDecisionChange(event.target.value as typeof decision)} className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm font-bold"><option value="SEPARADO">Manter separado</option><option value="DISPONIVEL">Disponibilizar</option><option value="REPROCESSO">Encaminhar para reprocesso</option><option value="ALOCAR">Alocar em contrato compatível</option></select>{decision === "REPROCESSO" && <Input type="date" value={reprocessDate} onChange={(event) => onReprocessDateChange(event.target.value)} className="mt-2" />}</div><Button type="button" disabled={saving === key || (decision === "REPROCESSO" && !reprocessDate) || (decision === "ALOCAR" && compatible.length === 0)} onClick={() => void onSave(item, lot, decision, decision === "REPROCESSO" ? reprocessDate : undefined)} className="h-11 w-full bg-[#173D6E] hover:bg-[#102F53]">{saving === key ? "Salvando..." : "Confirmar decisão"}</Button></CardContent></Card>;
+  return <ReviewDecisionDetails
+    key={key}
+    item={item}
+    lot={lot}
+    contracts={productContracts}
+    compatibleContracts={compatible}
+    decision={decision}
+    onDecisionChange={onDecisionChange}
+    reprocessDate={reprocessDate}
+    onReprocessDateChange={onReprocessDateChange}
+    saving={saving === key}
+    onSave={onSave}
+  />;
+}
+
+function ReviewDecisionDetails({ item, lot, contracts, compatibleContracts, decision, onDecisionChange, reprocessDate, onReprocessDateChange, saving, onSave }: {
+  item: ContractStock;
+  lot: ContractStockLot;
+  contracts: ExportContract[];
+  compatibleContracts: ExportContract[];
+  decision: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR";
+  onDecisionChange: (value: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR") => void;
+  reprocessDate: string;
+  onReprocessDateChange: (value: string) => void;
+  saving: boolean;
+  onSave: ModernStockOperationsLayoutProps["onSaveLotTreatment"];
+}) {
+  const suggestedWeight = (contract: ExportContract | null) => {
+    const product = contract?.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO);
+    return Math.max(0, Math.min(
+      Number(lot.PESO_LIVRE_ESTIMADO || lot.PESO_DISPONIVEL_ESTIMADO || 0),
+      Number(product?.SALDO_CONTRATO || 0),
+    ));
+  };
+  const firstCompatibleContract = compatibleContracts[0] || null;
+  const [targetContractId, setTargetContractId] = useState<number | null>(firstCompatibleContract?.SEQCONTRATO ?? null);
+  const [targetWeight, setTargetWeight] = useState(() => allocationInputValue(suggestedWeight(firstCompatibleContract)));
+  const selectedContract = compatibleContracts.find((contract) => contract.SEQCONTRATO === targetContractId) || null;
+  const selectTargetContract = (contract: ExportContract) => {
+    setTargetContractId(contract.SEQCONTRATO);
+    setTargetWeight(allocationInputValue(suggestedWeight(contract)));
+  };
+  const numericWeight = Math.max(0, Number(String(targetWeight).replace(",", ".")) || 0);
+  const currentDecision = lot.DECISAO_LOTE;
+  return <Card className="h-fit border-[#CBD8E3] shadow-sm xl:sticky xl:top-4">
+    <CardContent className="space-y-4 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div><h2 className="text-lg font-black text-[#102F53]">Detalhes do lote</h2><div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs font-bold text-[#667B90]">{item.SEQPRODUTO} · {item.DESCRPRODUTO}</p><LotDecisionBadge decision={currentDecision} /></div></div>
+        <ValidityBadge status={lot.SITUACAO_VALIDADE} />
+      </div>
+      <div className="grid grid-cols-3 gap-2 rounded-xl border border-[#D5E0E9] bg-[#F7F9FB] p-3"><MiniFact label="Peso físico" value={formatKg(lot.PESO_FISICO)} /><MiniFact label="Peso livre" value={formatKg(lot.PESO_LIVRE_ESTIMADO)} /><MiniFact label="Produção" value={formatDate(lot.DTAPRODUCAO)} /></div>
+      <div><h3 className="mb-2 text-sm font-black text-[#102F53]">Contratos que possuem este produto</h3><div className="max-h-52 overflow-auto rounded-lg border border-[#D5E0E9]"><Table><TableHeader className="sticky top-0 bg-[#EDF3F7]"><TableRow><TableHead>Contrato</TableHead><TableHead>Cliente</TableHead><TableHead>Data mínima</TableHead><TableHead>Situação</TableHead></TableRow></TableHeader><TableBody>{contracts.map((contract) => { const product = contract.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO)!; const accepted = compatibleContracts.some((entry) => entry.SEQCONTRATO === contract.SEQCONTRATO); return <TableRow key={contract.SEQCONTRATO}><TableCell className="font-mono text-xs font-black">{contract.NROCONTRATO}</TableCell><TableCell className="max-w-[130px] truncate text-xs font-bold">{contract.NOMERAZAO}</TableCell><TableCell className="text-xs font-bold">{formatDate(product.DATA_MINIMA_PRODUCAO)}</TableCell><TableCell><span className={`rounded-full px-2 py-1 text-[9px] font-black ${accepted ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}`}>{accepted ? "Compatível" : "Não compatível"}</span></TableCell></TableRow>; })}</TableBody></Table></div></div>
+      <div className={`rounded-lg border p-3 text-xs font-semibold ${compatibleContracts.length > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`}><p className="font-black">Resultado da análise</p><p className="mt-1">{compatibleContracts.length > 0 ? `${compatibleContracts.length} contrato(s) aceitam a data deste lote.` : "Nenhum contrato ativo aceita a data deste lote."}</p></div>
+      <div><h3 className="mb-2 text-sm font-black text-[#102F53]">Ação operacional</h3><select value={decision} onChange={(event) => onDecisionChange(event.target.value as typeof decision)} className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm font-bold"><option value="SEPARADO">Manter separado</option><option value="DISPONIVEL">Disponibilizar mesmo com data antiga</option><option value="REPROCESSO">Encaminhar para reprocesso</option><option value="ALOCAR">Alocar em contrato compatível</option></select></div>
+      {decision === "DISPONIVEL" && <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 text-xs font-semibold leading-5 text-orange-950"><strong>Exceção de validade:</strong> este lote será liberado para qualquer contrato que use o produto e aparecerá como “Produto antigo aceito”. A decisão poderá ser revertida depois.</div>}
+      {decision === "REPROCESSO" && <div className="space-y-2"><FilterField label="Data prevista de reprocesso"><Input type="date" value={reprocessDate} onChange={(event) => onReprocessDateChange(event.target.value)} /></FilterField><p className="text-xs font-semibold text-orange-800">O lote continuará nesta revisão, identificado como “Em reprocesso”.</p></div>}
+      {decision === "ALOCAR" && <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-3"><div><p className="text-xs font-black text-[#173D6E]">Escolha o contrato compatível</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">A tela de alocação abrirá com o contrato e o peso já preenchidos.</p></div><div className="max-h-44 space-y-2 overflow-auto">{compatibleContracts.map((contract) => { const product = contract.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO)!; const checked = contract.SEQCONTRATO === targetContractId; return <button key={contract.SEQCONTRATO} type="button" onClick={() => selectTargetContract(contract)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left ${checked ? "border-blue-500 bg-white ring-1 ring-blue-200" : "border-blue-200 bg-blue-50 hover:bg-white"}`}><div><p className="font-mono text-xs font-black text-[#173D6E]">{contract.NROCONTRATO}</p><p className="max-w-[230px] truncate text-[10px] font-semibold text-[#60758A]">{contract.NOMERAZAO}</p></div><div className="text-right"><p className="text-[9px] font-black uppercase text-[#71869A]">Saldo</p><p className="text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</p></div></button>; })}</div><FilterField label="Peso que deseja alocar"><Input type="number" min="0" step="0.001" value={targetWeight} onChange={(event) => setTargetWeight(event.target.value)} className="h-11 text-base font-black" /></FilterField></div>}
+      <Button type="button" disabled={saving || (decision === "REPROCESSO" && !reprocessDate) || (decision === "ALOCAR" && (!selectedContract || numericWeight <= 0))} onClick={() => void onSave(item, lot, decision, decision === "REPROCESSO" ? reprocessDate : undefined, targetContractId ?? undefined, numericWeight)} className="h-11 w-full bg-[#173D6E] hover:bg-[#102F53]">{saving ? "Salvando..." : decision === "ALOCAR" ? "Salvar e abrir alocação" : "Confirmar decisão"}</Button>
+    </CardContent>
+  </Card>;
+}
+
+function LotDecisionBadge({ decision }: { decision?: ContractStockLot["DECISAO_LOTE"] }) {
+  if (!decision) return null;
+  const config = decision === "REPROCESSO"
+    ? ["Em reprocesso", "border-orange-300 bg-orange-50 text-orange-800"]
+    : decision === "DISPONIVEL"
+      ? ["Produto antigo aceito", "border-orange-300 bg-orange-50 text-orange-800"]
+      : decision === "ALOCAR"
+        ? ["Aguardando alocação", "border-blue-300 bg-blue-50 text-blue-800"]
+        : ["Separado", "border-slate-300 bg-slate-50 text-slate-700"];
+  return <span className={`inline-flex rounded-full border px-2 py-1 text-[9px] font-black uppercase ${config[1]}`}>{config[0]}</span>;
 }
 
 function ReviewMetric({ title, rows, tone }: { title: string; rows: Array<{ lot: ContractStockLot }>; tone: "red" | "green" | "orange" | "blue" }) {
@@ -2831,7 +2966,17 @@ function ReviewMetric({ title, rows, tone }: { title: string; rows: Array<{ lot:
 }
 
 function ValidityBadge({ status }: { status?: ContractStockLot["SITUACAO_VALIDADE"] }) {
-  const config = status === "ELEGIVEL" ? ["Elegível", "bg-emerald-100 text-emerald-800"] : status === "ATENCAO" ? ["Atenção", "bg-amber-100 text-amber-800"] : status === "SEM_DATA" ? ["Sem data", "bg-blue-100 text-blue-800"] : status === "SEM_REGRA" ? ["Sem regra", "bg-slate-100 text-slate-700"] : ["Incompatível", "bg-red-100 text-red-700"];
+  const config = status === "ELEGIVEL"
+    ? ["Elegível", "bg-emerald-100 text-emerald-800"]
+    : status === "ACEITO_EXCECAO"
+      ? ["Produto antigo aceito", "bg-orange-100 text-orange-800"]
+      : status === "ATENCAO"
+        ? ["Atenção", "bg-amber-100 text-amber-800"]
+        : status === "SEM_DATA"
+          ? ["Sem data", "bg-blue-100 text-blue-800"]
+          : status === "SEM_REGRA"
+            ? ["Sem regra", "bg-slate-100 text-slate-700"]
+            : ["Incompatível", "bg-red-100 text-red-700"];
   return <span className={`inline-flex whitespace-nowrap rounded-full px-2 py-1 text-[9px] font-black uppercase ${config[1]}`}>{config[0]}</span>;
 }
 
