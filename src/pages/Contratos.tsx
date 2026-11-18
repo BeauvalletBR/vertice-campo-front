@@ -123,16 +123,14 @@ const reservationCoverageClass = (product: ContractProduct) => {
 };
 
 const validityRuleLabel = (product: ContractProduct) => {
-  const value = Number(product.VALIDADE || 0);
-  const unit = product.TIPOVALIDADE === "D" ? "dias" : product.TIPOVALIDADE === "M" ? "meses" : product.TIPOVALIDADE === "A" ? "anos" : "";
-  return value > 0 && unit ? `${value} ${unit}` : "Sem regra";
+  void product;
+  return "6 meses";
 };
 
 const validityStatus = (product: ContractProduct) => {
-  if (!product.REGRA_VALIDADE_CONFIGURADA) return { label: "Sem regra", className: "border-slate-300 bg-slate-50 text-slate-700" };
-  if (Number(product.PESO_ESTOQUE_ELEGIVEL || 0) <= 0) return { label: "Sem estoque válido", className: "border-red-300 bg-red-50 text-red-700" };
-  if (Number(product.PESO_ESTOQUE_ATENCAO || 0) > 0) return { label: "Válido com atenção", className: "border-amber-300 bg-amber-50 text-amber-800" };
-  return { label: "Estoque válido", className: "border-emerald-300 bg-emerald-50 text-emerald-800" };
+  if (Number(product.PESO_ESTOQUE_ELEGIVEL || 0) <= 0) return { label: "Sem estoque liberado", className: "border-red-300 bg-red-50 text-red-700" };
+  if (Number(product.PESO_ESTOQUE_ATENCAO || 0) > 0) return { label: "Próximo de 6 meses", className: "border-amber-300 bg-amber-50 text-amber-800" };
+  return { label: "Estoque liberado", className: "border-emerald-300 bg-emerald-50 text-emerald-800" };
 };
 
 const comparableDate = (value: string | null | undefined) => {
@@ -143,18 +141,13 @@ const comparableDate = (value: string | null | undefined) => {
 
 const compatibleContractsForLot = (
   productId: number,
-  productionDate: string | null | undefined,
+  _productionDate: string | null | undefined,
   contracts: ExportContract[],
 ) => {
-  const lotDate = comparableDate(productionDate);
-  if (lotDate == null) return [];
   return contracts.filter((contract) => {
     if (contract.DESCONSIDERADO) return false;
     const product = contract.PRODUTOS.find((item) => item.SEQPRODUTO === productId);
-    if (!product || Number(product.SALDO_CONTRATO || 0) <= 0) return false;
-    if (!product.REGRA_VALIDADE_CONFIGURADA) return true;
-    const minimumDate = comparableDate(product.DATA_MINIMA_PRODUCAO);
-    return minimumDate != null && lotDate >= minimumDate;
+    return Boolean(product && Number(product.SALDO_CONTRATO || 0) > 0);
   });
 };
 
@@ -169,16 +162,19 @@ const productContractsForValidity = (
 );
 
 const reviewLotValidityStatus = (
-  productId: number,
   productionDate: string | null | undefined,
-  contracts: ExportContract[],
+  decision?: ContractStockLot["DECISAO_LOTE"],
 ): ContractStockLot["SITUACAO_VALIDADE"] => {
-  if (comparableDate(productionDate) == null) return "SEM_DATA";
-  const productContracts = productContractsForValidity(productId, contracts);
-  if (productContracts.length === 0) return "INCOMPATIVEL";
-  const compatible = compatibleContractsForLot(productId, productionDate, productContracts);
-  if (compatible.length === 0) return "INCOMPATIVEL";
-  if (compatible.length < productContracts.length) return "ATENCAO";
+  if (decision === "DISPONIVEL" || decision === "ALOCAR") return "ACEITO_EXCECAO";
+  const lotDate = comparableDate(productionDate);
+  if (lotDate == null) return "SEM_DATA";
+  const cutoff = new Date();
+  cutoff.setHours(0, 0, 0, 0);
+  cutoff.setMonth(cutoff.getMonth() - 6);
+  if (lotDate < cutoff.getTime()) return "INCOMPATIVEL";
+  const warningCutoff = new Date(cutoff);
+  warningCutoff.setDate(warningCutoff.getDate() + 30);
+  if (lotDate <= warningCutoff.getTime()) return "ATENCAO";
   return "ELEGIVEL";
 };
 
@@ -269,11 +265,11 @@ const contractWorkspaceFromLocation = (
 };
 
 const contractWorkspaceMeta = (view: ContractWorkspaceView) => {
-  if (view === "VISAO_GERAL") return { icon: BarChart3, eyebrow: "Centro de controle PCP", title: "Visão geral", description: "Contratos, estoque livre, validade e decisões que exigem ação em um único painel." };
+  if (view === "VISAO_GERAL") return { icon: BarChart3, eyebrow: "Centro de controle PCP", title: "Visão geral", description: "Contratos, estoque livre, idade dos lotes e decisões que exigem ação em um único painel." };
   if (view === "CONTRATOS") return { icon: FileSignature, eyebrow: "PCP · Exportação", title: "Gestão de contratos", description: "Acompanhe cobertura, embarque e a composição dos pesos de cada produto." };
-  if (view === "ALOCACAO") return { icon: Boxes, eyebrow: "Estoque · Contratos", title: "Alocação de estoque", description: "Distribua apenas o estoque realmente livre, respeitando OP, pedidos e validade." };
+  if (view === "ALOCACAO") return { icon: Boxes, eyebrow: "Estoque · Contratos", title: "Alocação de estoque", description: "Distribua apenas o estoque realmente livre, respeitando OP, pedidos e o limite de seis meses do estoque." };
   if (view === "ALOCADOS") return { icon: CheckCircle2, eyebrow: "Estoque · Conciliação", title: "Alocações existentes", description: "Consulte a origem de cada peso e ajuste somente a parcela manual editável." };
-  if (view === "REVISAR_DATAS") return { icon: CalendarDays, eyebrow: "Estoque · Validade", title: "Revisão de datas", description: "Trate lotes sem contrato elegível, sem rastreabilidade ou que exigem decisão operacional." };
+  if (view === "REVISAR_DATAS") return { icon: CalendarDays, eyebrow: "Estoque · Idade", title: "Revisão de datas", description: "Trate lotes com mais de seis meses, sem rastreabilidade ou que exigem decisão operacional." };
   if (view === "CONFIGURACAO") return { icon: Factory, eyebrow: "Configuração PCP", title: "Configuração da desossa", description: "Defina premissas produtivas, quarteio, exportação e capacidade de estoque." };
   if (view === "IMPORTACAO") return { icon: FileSpreadsheet, eyebrow: "Configuração PCP", title: "Importar planilha", description: "Revise e aplique os dados operacionais da planilha de contratos." };
   if (view === "CALENDARIO_EMBARQUE") return { icon: CalendarDays, eyebrow: "Configuração PCP", title: "Calendário de embarques", description: "Visualize contratos, cobertura e risco agrupados por data planejada." };
@@ -534,12 +530,14 @@ export default function Contratos() {
   const totalBlockedStock = (data?.estoque || []).reduce((sum, item) => sum + Number(item.PESO_BLOQUEADO_ERP || 0), 0);
   const totalManualStock = (data?.estoque || []).reduce((sum, item) => sum + Number(item.PESO_RESERVADO_VERTICE || 0), 0);
   const totalAgedAllocated = (data?.estoque || []).reduce((sum, item) => sum + Number(item.PESO_RESERVADO_6_MESES || 0), 0);
-  const validityAlertCount = activeContracts.reduce(
-    (sum, contract) => sum + contract.PRODUTOS.filter((product) =>
-      !product.REGRA_VALIDADE_CONFIGURADA || Number(product.PESO_ESTOQUE_INCOMPATIVEL || 0) > 0,
-    ).length,
-    0,
-  );
+  const validityAlertCount = (data?.estoque || []).reduce((sum, item) => {
+    const lots = item.LOTES_REVISAO || [];
+    const hasUntracked = Number(item.PESO_RETIDO_IDADE || 0) > lots.reduce(
+      (weight, lot) => weight + Number(lot.PESO_LIVRE_ESTIMADO || 0),
+      0,
+    );
+    return sum + lots.length + (hasUntracked ? 1 : 0);
+  }, 0);
 
   const toggleExpanded = (contractId: number) => {
     setExpanded((current) => {
@@ -1401,7 +1399,7 @@ function ContractsManagementLayout({
               <SummaryValue label="Saldo pendente" value={formatKg(selectedProduct.SALDO_CONTRATO)} tone="red" />
               <SummaryValue label="Estoque livre elegível" value={formatKg(selectedProduct.PESO_ESTOQUE_ELEGIVEL)} tone="green" />
             </div>
-            <div className="space-y-2 border-y border-[#DCE5ED] py-3 text-xs"><SummaryLine label="Cobertura total" value={`${selectedCoverage.toFixed(1)}%`} /><SummaryLine label="Estoque livre global" value={formatKg(selectedProduct.PESO_LIVRE_VERTICE)} /><SummaryLine label="Data mínima aceita" value={formatDate(selectedProduct.DATA_MINIMA_PRODUCAO)} /><SummaryLine label="Embarque" value={formatDate(selectedContract.DTA_EMBARQUE_PLANEJADA || selectedContract.DTA_EMBARQUE_ERP)} /></div>
+            <div className="space-y-2 border-y border-[#DCE5ED] py-3 text-xs"><SummaryLine label="Cobertura total" value={`${selectedCoverage.toFixed(1)}%`} /><SummaryLine label="Estoque livre global" value={formatKg(selectedProduct.PESO_LIVRE_VERTICE)} /><SummaryLine label="Corte do estoque" value={formatDate(selectedProduct.DATA_MINIMA_PRODUCAO)} /><SummaryLine label="Embarque" value={formatDate(selectedContract.DTA_EMBARQUE_PLANEJADA || selectedContract.DTA_EMBARQUE_ERP)} /></div>
             {Number(selectedProduct.PESO_SOBREPOSTO_ORDEM_PEDIDO || 0) > 0 && <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900"><p className="font-black">Entender a conciliação</p><p>{formatKg(selectedProduct.PESO_SOBREPOSTO_ORDEM_PEDIDO)} da reserva de pedido já está coberta pela OP e não foi contada duas vezes.</p></div>}
             <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs leading-5 text-cyan-950"><p className="font-black">Como o saldo é calculado</p><p>Contratado menos expedido e menos o que ainda permanece reservado por OP, pedido ou manualmente.</p></div>
             <Button type="button" onClick={() => onAllocate(selectedProduct.SEQPRODUTO)} className="h-11 w-full bg-emerald-700 text-white hover:bg-emerald-800"><Boxes className="mr-2 h-4 w-4" />Alocar estoque</Button>
@@ -1441,7 +1439,7 @@ function OverviewAnalysisDialog({
     : analysis === "OVERFLOW"
       ? { title: "Produtos com transbordo", description: "Pesos que ultrapassaram o limite contratado e precisam de conciliação." }
       : analysis === "VALIDITY"
-        ? { title: "Lotes que exigem revisão", description: "Lotes com validade incompatível ou sem data de produção rastreável." }
+        ? { title: "Lotes que exigem revisão", description: "Lotes com mais de seis meses ou sem data de produção rastreável." }
         : { title: "Produtos com decisão possível", description: "Produtos que possuem estoque livre ou demanda contratual pendente." };
 
   const closeAndRun = (action: () => void) => {
@@ -1458,7 +1456,7 @@ function OverviewAnalysisDialog({
       <div className="max-h-[64vh] space-y-2 overflow-y-auto pr-1">
         {analysis === "RISK" && (atRisk.length ? atRisk.map((contract) => <div key={contract.SEQCONTRATO} className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50/60 p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-mono text-xs font-black text-blue-700">{contract.NROCONTRATO}</p><p className="mt-1 truncate text-sm font-black text-[#203F5D]">{contract.NOMERAZAO}</p><p className="mt-1 text-xs font-semibold text-red-800">Embarque em {formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}, cobertura de {contractCoverage(contract).toFixed(0)}% e saldo de {formatKg(contract.SALDO_TOTAL)}.</p></div><Button type="button" size="sm" onClick={() => closeAndRun(() => onOpenContract(contract))} className="shrink-0 bg-[#173D6E] hover:bg-[#102F53]">Abrir contrato<ChevronRight className="ml-1 h-4 w-4" /></Button></div>) : <EmptyAnalysis />)}
         {analysis === "OVERFLOW" && (overflowRows.length ? overflowRows.map(({ contract, product }) => <div key={`${contract.SEQCONTRATO}-${product.SEQPRODUTO}`} className="flex flex-col gap-3 rounded-xl border border-orange-200 bg-orange-50/60 p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-mono text-xs font-black text-blue-700">Contrato {contract.NROCONTRATO} · Produto {product.SEQPRODUTO}</p><p className="mt-1 truncate text-sm font-black text-[#203F5D]">{product.DESCRICAO}</p><p className="mt-1 text-xs font-semibold text-orange-800">Transbordo de {formatKg(product.PESO_TRANSBORDADO)}. Total alocado: {formatKg(product.PESO_ATRELADO_TOTAL)} para {formatKg(product.PESOCONTRATO)} contratados.</p></div><Button type="button" size="sm" onClick={() => closeAndRun(() => onOpenContract(contract))} className="shrink-0 bg-[#173D6E] hover:bg-[#102F53]">Abrir contrato<ChevronRight className="ml-1 h-4 w-4" /></Button></div>) : <EmptyAnalysis />)}
-        {analysis === "VALIDITY" && (validityRows.length ? validityRows.map(({ item, lot }, index) => <div key={lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${index}`} className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50/60 p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-mono text-xs font-black text-blue-700">Produto {item.SEQPRODUTO}</p><p className="mt-1 truncate text-sm font-black text-[#203F5D]">{item.DESCRPRODUTO}</p><p className="mt-1 text-xs font-semibold text-red-800">{lot.SITUACAO_VALIDADE === "SEM_DATA" ? "Sem data de produção rastreável" : `Produção em ${formatDate(lot.DTAPRODUCAO)} sem contrato compatível`}. Peso livre: {formatKg(lot.PESO_LIVRE_ESTIMADO)}.</p></div><Button type="button" size="sm" onClick={() => closeAndRun(onReviewDates)} className="shrink-0 bg-[#173D6E] hover:bg-[#102F53]">Revisar lote<ChevronRight className="ml-1 h-4 w-4" /></Button></div>) : <EmptyAnalysis />)}
+        {analysis === "VALIDITY" && (validityRows.length ? validityRows.map(({ item, lot }, index) => <div key={lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${index}`} className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50/60 p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-mono text-xs font-black text-blue-700">Produto {item.SEQPRODUTO}</p><p className="mt-1 truncate text-sm font-black text-[#203F5D]">{item.DESCRPRODUTO}</p><p className="mt-1 text-xs font-semibold text-red-800">{lot.SITUACAO_VALIDADE === "SEM_DATA" ? "Sem data de produção rastreável" : `Produção em ${formatDate(lot.DTAPRODUCAO)} com mais de seis meses`}. Peso retido: {formatKg(lot.PESO_LIVRE_ESTIMADO)}.</p></div><Button type="button" size="sm" onClick={() => closeAndRun(onReviewDates)} className="shrink-0 bg-[#173D6E] hover:bg-[#102F53]">Revisar lote<ChevronRight className="ml-1 h-4 w-4" /></Button></div>) : <EmptyAnalysis />)}
         {analysis === "DECISION" && (decisionProducts.length ? decisionProducts.map((item) => <div key={item.SEQPRODUTO} className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50/60 p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-mono text-xs font-black text-blue-700">Produto {item.SEQPRODUTO}</p><p className="mt-1 truncate text-sm font-black text-[#203F5D]">{item.DESCRPRODUTO}</p><p className="mt-1 text-xs font-semibold text-blue-800">Estoque livre de {formatKg(item.PESO_LIVRE_VERTICE)}, demanda pendente de {formatKg(item.demand)} e próximo embarque em {formatDate(item.nextShipping)}.</p></div><Button type="button" size="sm" onClick={() => closeAndRun(() => onOpenProduct(item.SEQPRODUTO))} className="shrink-0 bg-[#173D6E] hover:bg-[#102F53]">Analisar estoque<ChevronRight className="ml-1 h-4 w-4" /></Button></div>) : <EmptyAnalysis />)}
       </div>
     </DialogContent>
@@ -1556,13 +1554,12 @@ function ContractsOverview({
   const activeProductIds = new Set(contracts.flatMap((contract) => contract.PRODUTOS.filter((product) => Number(product.SALDO_CONTRATO || 0) > 0).map((product) => product.SEQPRODUTO)));
   const eligibleWithoutContract = stock.reduce((sum, item) => sum + (activeProductIds.has(item.SEQPRODUTO) ? Number(item.PESO_LIVRE_VERTICE || 0) : 0), 0);
   const atRisk = contracts.filter((contract) => !contract.EM_EXPEDICAO && Number(contract.SALDO_TOTAL || 0) > 0 && Number(contract.PRAZO_DIAS ?? 9999) <= 7);
-  const validityIssues = stock.reduce((sum, item) => sum + (item.LOTES_LIVRES || []).filter((lot) => lot.SITUACAO_VALIDADE === "INCOMPATIVEL" || lot.SITUACAO_VALIDADE === "SEM_DATA").length, 0);
+  const validityIssues = stock.reduce((sum, item) => sum + (item.LOTES_REVISAO || []).length, 0);
   const overflowCount = contracts.reduce((sum, contract) => sum + contract.PRODUTOS.filter((product) => Number(product.PESO_TRANSBORDADO || 0) > 0).length, 0);
   const overflowRows = contracts.flatMap((contract) => contract.PRODUTOS
     .filter((product) => Number(product.PESO_TRANSBORDADO || 0) > 0)
     .map((product) => ({ contract, product })));
-  const validityRows = stock.flatMap((item) => (item.LOTES_LIVRES || [])
-    .filter((lot) => lot.SITUACAO_VALIDADE === "INCOMPATIVEL" || lot.SITUACAO_VALIDADE === "SEM_DATA")
+  const validityRows = stock.flatMap((item) => (item.LOTES_REVISAO || [])
     .map((lot) => ({ item, lot })));
   const priorityContracts = contracts
     .filter((contract) => Boolean(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP))
@@ -1617,7 +1614,7 @@ function ContractsOverview({
       <Card className="border-[#CBD8E3] shadow-[0_6px_18px_rgba(23,61,110,0.06)]"><CardContent className="p-0"><div className="border-b border-[#DCE5ED] px-5 py-4"><h2 className="text-lg font-black text-[#102F53]">Atenções que exigem ação</h2><p className="text-xs text-[#667B90]">Pendências calculadas com os dados atuais</p></div><div className="space-y-2 p-4">
         <AttentionItem tone="red" title={`${atRisk.length} contrato(s) com risco de embarque`} description="Revise cobertura, produção e data planejada." action="Analisar" onClick={() => setAnalysis("RISK")} />
         <AttentionItem tone="orange" title={`${overflowCount} produto(s) com transbordo`} description="Há peso acima do limite contratado em uma ou mais origens." action="Analisar" onClick={() => setAnalysis("OVERFLOW")} />
-        <AttentionItem tone="red" title={`${validityIssues} lote(s) exigem revisão`} description="Validade incompatível ou data de produção ausente." action="Analisar" onClick={() => setAnalysis("VALIDITY")} />
+        <AttentionItem tone="red" title={`${validityIssues} lote(s) exigem revisão`} description="Estoque com mais de seis meses ou data de produção ausente." action="Analisar" onClick={() => setAnalysis("VALIDITY")} />
         <AttentionItem tone="blue" title={`${decisionProducts.length} produto(s) com decisão possível`} description="Existe demanda contratual ou estoque livre para analisar." action="Analisar" onClick={() => setAnalysis("DECISION")} />
       </div></CardContent></Card>
     </section>
@@ -1947,23 +1944,20 @@ function StockAllocationWorkspace({
     item.SITUACAO_6_MESES === "DISPONIVEL",
   );
   const dateReviewItems = stock.map((item) => {
-    const productContracts = productContractsForValidity(item.SEQPRODUTO, contracts);
-    const trackedWeight = (item.LOTES_LIVRES || []).reduce(
+    const reviewLots = item.LOTES_REVISAO || (item.LOTES_LIVRES || []).filter((lot) =>
+      lot.SITUACAO_VALIDADE === "INCOMPATIVEL" || lot.SITUACAO_VALIDADE === "SEM_DATA",
+    );
+    const trackedReviewWeight = reviewLots.reduce(
       (sum, lot) => sum + Math.max(0, Number(lot.PESO_LIVRE_ESTIMADO || 0)),
       0,
     );
-    const untrackedWeightFromContracts = productContracts.reduce((maximum, contract) => {
-      const product = contract.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO);
-      return Math.max(maximum, Number(product?.PESO_ESTOQUE_SEM_RASTREIO || 0));
-    }, 0);
     const untrackedWeight = Math.max(
       0,
       Number(item.PESO_LIVRE_SEM_RASTREIO || 0),
-      untrackedWeightFromContracts,
-      Number(item.PESO_LIVRE_VERTICE || 0) - trackedWeight,
+      Number(item.PESO_RETIDO_IDADE || 0) - trackedReviewWeight,
     );
     const reviewableLots: ContractStockLot[] = [
-      ...(item.LOTES_LIVRES || []),
+      ...reviewLots,
       ...(untrackedWeight > 0 ? [{
         SEQPRODUTO: item.SEQPRODUTO,
         DESCRPRODUTO: item.DESCRPRODUTO,
@@ -1980,22 +1974,11 @@ function StockAllocationWorkspace({
       }] : []),
     ];
     const rejectedLots = reviewableLots
-      .filter((lot) => {
-        if (lot.SINTETICO_SEM_RASTREIO) return true;
-        const compatible = compatibleContractsForLot(
-          item.SEQPRODUTO,
-          lot.DTAPRODUCAO,
-          productContracts,
-        );
-        return productContracts.length === 0
-          || comparableDate(lot.DTAPRODUCAO) == null
-          || compatible.length < productContracts.length;
-      })
       .map((lot) => ({
         ...lot,
         SITUACAO_VALIDADE: lot.SINTETICO_SEM_RASTREIO
           ? "SEM_DATA" as const
-          : reviewLotValidityStatus(item.SEQPRODUTO, lot.DTAPRODUCAO, contracts),
+          : lot.SITUACAO_VALIDADE || reviewLotValidityStatus(lot.DTAPRODUCAO, lot.DECISAO_LOTE),
       }));
     const rejectedDatedWeight = rejectedLots.reduce(
       (sum, lot) => sum + Number(lot.PESO_LIVRE_ESTIMADO || 0),
@@ -2284,7 +2267,7 @@ function StockAllocationWorkspace({
                 <CompactSortableHeader label="Embarque" sortKey="EMBARQUE" activeSort={allocatedSort} onSort={changeAllocatedSort} className="w-[108px]" />
                  <CompactSortableHeader label="OP / pedido / manual" sortKey="OP" activeSort={allocatedSort} onSort={changeAllocatedSort} numeric className="w-[175px]" />
                 <CompactSortableHeader label="Total / saldo" sortKey="TOTAL" activeSort={allocatedSort} onSort={changeAllocatedSort} numeric className="w-[155px]" />
-                <Header className="w-[130px]">Validade / ação</Header>
+                <Header className="w-[130px]">Idade / ação</Header>
               </TableRow></TableHeader>
               <TableBody>
                 {visibleAllocatedItems.length === 0 && <TableRow><TableCell colSpan={6} className="h-32 text-center text-sm font-semibold text-[#6B7F92]">Nenhuma alocação encontrada para a pesquisa.</TableCell></TableRow>}
@@ -2299,7 +2282,7 @@ function StockAllocationWorkspace({
               </TableBody>
             </Table>
           </div> : allocationView === "REVISAR_DATAS" ? <div className="max-h-[640px] overflow-auto">
-            <div className="border-b border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">Cada linha representa um peso livre com data que nenhum contrato ativo aceita. Defina a destinação sem alterar os outros lotes do produto.</div>
+            <div className="border-b border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">Cada linha representa estoque com mais de seis meses ou sem data rastreável. Defina a destinação sem alterar os outros lotes do produto.</div>
             {!lotTreatmentConfigured && <div className="border-b border-red-200 bg-red-50 p-3 text-xs font-bold text-red-900">Execute <code>sql/migrar_contrato_estoque_lote_acao.sql</code> para habilitar as decisões por lote.</div>}
             <Table className="w-full table-fixed [&_td]:px-2.5 [&_th]:px-2.5">
               <TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow>
@@ -2375,9 +2358,9 @@ function StockAllocationWorkspace({
                       <Header>Cliente</Header>
                       <Header className="w-[120px]">Embarque</Header>
                       <Header className="w-[125px]">Regra</Header>
-                      <Header className="w-[130px]">Produção mínima</Header>
-                      <Header className="w-[125px] text-right">Elegível</Header>
-                      <Header className="w-[125px] text-right">Incompatível</Header>
+                      <Header className="w-[130px]">Data de corte</Header>
+                      <Header className="w-[125px] text-right">Liberado</Header>
+                      <Header className="w-[125px] text-right">Retido</Header>
                       <Header className="w-[120px] text-right">Peso contrato</Header>
                       <Header className="w-[115px] text-right">OP protegida</Header>
                       <Header className="w-[115px] text-right">Pedido reservado</Header>
@@ -2491,11 +2474,11 @@ function AcceptedOldStockNotice({ stock, saving, onReverse }: { stock: ContractS
   return <>
     <button type="button" onClick={() => setOpen(true)} className="flex w-full items-center justify-between gap-4 rounded-xl border border-orange-300 bg-orange-50 px-4 py-3 text-left shadow-sm hover:bg-orange-100">
       <div className="min-w-0"><p className="truncate text-sm font-black text-[#173D6E]">{stock.SEQPRODUTO} - {stock.DESCRPRODUTO}</p><p className="mt-1 text-xs font-semibold text-orange-900">Lote antigo liberado manualmente para alocação. Clique para consultar ou reverter.</p></div>
-      <span className="shrink-0 rounded-full border border-orange-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase text-orange-800">Produto antigo aceito · {formatKg(total)}</span>
+      <span className="shrink-0 rounded-full border border-orange-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase text-orange-800">Produto antigo liberado · {formatKg(total)}</span>
     </button>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-w-2xl border-[#CBD8E3]">
-        <DialogHeader><DialogTitle className="text-[#173D6E]">Produto antigo aceito</DialogTitle><DialogDescription>{stock.SEQPRODUTO} - {stock.DESCRPRODUTO}. Estes lotes foram liberados como exceção à validade contratual.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle className="text-[#173D6E]">Produto antigo liberado</DialogTitle><DialogDescription>{stock.SEQPRODUTO} - {stock.DESCRPRODUTO}. Estes lotes foram disponibilizados pelo PCP apesar de terem mais de seis meses.</DialogDescription></DialogHeader>
         <div className="max-h-[55vh] space-y-2 overflow-auto pr-1">
           {lots.map((lot) => { const key = lot.CHAVE_LOTE || `${stock.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}`; return <div key={key} className="flex flex-col gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-black text-[#173D6E]">Produção em {formatDate(lot.DTAPRODUCAO)}</p><p className="mt-1 text-xs font-semibold text-[#60758A]">Lote {lot.LOTE || "sem lote"} · {formatKg(lot.PESO_LIVRE_ESTIMADO || lot.PESO_DISPONIVEL_ESTIMADO)}</p>{lot.DECISAO_ATUALIZADA_POR && <p className="mt-1 text-[10px] font-semibold text-[#71869A]">Aceito por {lot.DECISAO_ATUALIZADA_POR} em {formatDateTime(lot.DECISAO_ATUALIZADA_EM)}</p>}</div><Button type="button" variant="outline" disabled={saving === key} onClick={() => void onReverse(lot)} className="border-orange-300 bg-white font-black text-orange-900 hover:bg-orange-100">{saving === key ? "Revertendo..." : "Voltar para revisão"}</Button></div>; })}
         </div>
@@ -2641,7 +2624,7 @@ function ModernStockOperationsLayout({
     });
     return compareTableValues(value(first)[availableSort.key], value(second)[availableSort.key], availableSort.direction);
   });
-  const sortedLots = [...(selectedStock?.LOTES_LIVRES || [])].sort((first, second) => {
+  const sortedLots = [...(selectedStock?.LOTES_ALOCAVEIS || selectedStock?.LOTES_LIVRES || [])].sort((first, second) => {
     const value = (lot: ContractStockLot) => ({ DATA: lot.DTAPRODUCAO, PESO: Number(lot.PESO_LIVRE_ESTIMADO || 0), SITUACAO: lot.SITUACAO_VALIDADE });
     return compareTableValues(value(first)[lotSort.key], value(second)[lotSort.key], lotSort.direction);
   });
@@ -2695,11 +2678,11 @@ function ModernStockOperationsLayout({
   if (section === "DISPONIVEIS") {
     return <div className="space-y-4">
       {!selectedStock ? <>
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><OverviewMetric icon={Weight} label="Estoque físico ERP" value={formatKg(totalErpStock)} tone="blue" /><OverviewMetric icon={Factory} label="Protegido por OP" value={formatKg(totalOrderStock)} tone="blue" /><OverviewMetric icon={LockKeyhole} label="Reservado em pedido" value={formatKg(totalOrderReservation)} tone="blue" /><OverviewMetric icon={Boxes} label="Estoque realmente livre" value={formatKg(totalFreeStock)} tone="green" /><OverviewMetric icon={ShieldAlert} label="Restrições de validade" value={String(validityAlertCount)} tone={validityAlertCount > 0 ? "red" : "green"} /></section>
-        <Card className="overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><WorkspaceToolbar title="Produtos disponíveis para alocação" description="Selecione um produto para comparar os contratos candidatos." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="max-h-[66vh] overflow-auto"><Table><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Descrição" sortKey="DESCRICAO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Estoque físico" sortKey="ESTOQUE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="OP" sortKey="OP" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Pedido" sortKey="PEDIDO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Manual" sortKey="MANUAL" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Livre" sortKey="LIVRE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="center" /><TableHead className="text-right">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedStock.map((item) => { const candidateCount = contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)).length; return <TableRow key={item.SEQPRODUTO} className="hover:bg-[#F7FAFC]"><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell><TableCell className="text-xs font-bold text-[#304D68]"><span>{item.DESCRPRODUTO}</span>{(item.LOTES_LIVRES || item.LOTES_ESTOQUE || []).some((lot) => lot.DECISAO_LOTE === "DISPONIVEL") && <span className="ml-2 inline-flex rounded-full border border-orange-300 bg-orange-50 px-2 py-1 text-[9px] font-black uppercase text-orange-800">Produto antigo aceito</span>}</TableCell><NumberCell value={item.PESODISPONIVEL} /><NumberCell value={item.PESO_ATRELADO_ORDEM} /><NumberCell value={item.PESO_RESERVADO_PEDIDO_LIQUIDO ?? item.PESO_RESERVADO_PEDIDO} /><NumberCell value={item.PESO_RESERVADO_VERTICE} /><TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(item.PESO_LIVRE_VERTICE)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => onSelectProduct(item.SEQPRODUTO)} className="border-[#8FB1CE] text-[#174A78]"><Boxes className="mr-2 h-3.5 w-3.5" />Analisar e alocar</Button></TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card>
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><OverviewMetric icon={Weight} label="Estoque físico ERP" value={formatKg(totalErpStock)} tone="blue" /><OverviewMetric icon={Factory} label="Protegido por OP" value={formatKg(totalOrderStock)} tone="blue" /><OverviewMetric icon={LockKeyhole} label="Reservado em pedido" value={formatKg(totalOrderReservation)} tone="blue" /><OverviewMetric icon={Boxes} label="Estoque realmente livre" value={formatKg(totalFreeStock)} tone="green" /><OverviewMetric icon={ShieldAlert} label="Lotes em revisão" value={String(validityAlertCount)} tone={validityAlertCount > 0 ? "red" : "green"} /></section>
+        <Card className="overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><WorkspaceToolbar title="Produtos disponíveis para alocação" description="Selecione um produto para comparar os contratos candidatos." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="max-h-[66vh] overflow-auto"><Table><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Descrição" sortKey="DESCRICAO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Estoque físico" sortKey="ESTOQUE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="OP" sortKey="OP" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Pedido" sortKey="PEDIDO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Manual" sortKey="MANUAL" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Livre" sortKey="LIVRE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="center" /><TableHead className="text-right">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedStock.map((item) => { const candidateCount = contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)).length; return <TableRow key={item.SEQPRODUTO} className="hover:bg-[#F7FAFC]"><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell><TableCell className="text-xs font-bold text-[#304D68]"><span>{item.DESCRPRODUTO}</span>{(item.LOTES_LIVRES || item.LOTES_ESTOQUE || []).some((lot) => lot.DECISAO_LOTE === "DISPONIVEL") && <span className="ml-2 inline-flex rounded-full border border-orange-300 bg-orange-50 px-2 py-1 text-[9px] font-black uppercase text-orange-800">Produto antigo liberado</span>}</TableCell><NumberCell value={item.PESODISPONIVEL} /><NumberCell value={item.PESO_ATRELADO_ORDEM} /><NumberCell value={item.PESO_RESERVADO_PEDIDO_LIQUIDO ?? item.PESO_RESERVADO_PEDIDO} /><NumberCell value={item.PESO_RESERVADO_VERTICE} /><TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(item.PESO_LIVRE_VERTICE)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => onSelectProduct(item.SEQPRODUTO)} className="border-[#8FB1CE] text-[#174A78]"><Boxes className="mr-2 h-3.5 w-3.5" />Analisar e alocar</Button></TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card>
       </> : <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(270px,0.72fr)_minmax(420px,1.15fr)_minmax(300px,0.82fr)]">
         <Card className="h-fit border-[#CBD8E3] shadow-sm"><CardContent className="space-y-4 p-4"><button type="button" onClick={() => onSelectProduct(null)} className="text-xs font-black text-blue-700 hover:underline">← Escolher outro produto</button><div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="font-mono text-sm font-black text-blue-700">{selectedStock.SEQPRODUTO}</p><p className="mt-1 text-base font-black text-[#102F53]">{selectedStock.DESCRPRODUTO}</p></div><div><h3 className="text-sm font-black text-[#102F53]">Distribuição do peso no estoque</h3><div className="mt-3 flex h-7 overflow-hidden rounded-md bg-[#E6EDF3]">{stockSegments.map((segment) => <div key={segment.label} className={segment.color} style={{ width: `${stockTotal > 0 ? Math.max(0, segment.value / stockTotal * 100) : 0}%` }} title={`${segment.label}: ${formatKg(segment.value)}`} />)}</div><div className="mt-3 space-y-2">{stockSegments.map((segment) => <SummaryLine key={segment.label} label={segment.label} value={formatKg(segment.value)} />)}</div></div><div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Estoque realmente livre</p><p className="mt-1 text-2xl font-black text-emerald-800">{formatKg(selectedStock.PESO_LIVRE_VERTICE)}</p></div><div><h3 className="text-sm font-black text-[#102F53]">Lotes livres do produto</h3><div className="mt-2 max-h-52 overflow-auto rounded-lg border border-[#D8E2EA]"><Table><TableHeader className="bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produção" sortKey="DATA" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Peso" sortKey="PESO" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Situação" sortKey="SITUACAO" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} /></TableRow></TableHeader><TableBody>{sortedLots.map((lot, index) => <TableRow key={lot.CHAVE_LOTE || index}><TableCell className="text-xs font-bold">{formatDate(lot.DTAPRODUCAO)}</TableCell><TableCell className="text-right text-xs font-black">{formatKg(lot.PESO_LIVRE_ESTIMADO)}</TableCell><TableCell><ValidityBadge status={lot.SITUACAO_VALIDADE} /></TableCell></TableRow>)}</TableBody></Table></div></div></CardContent></Card>
-        <Card className="min-w-0 overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><div className="border-b border-[#DCE5ED] px-4 py-4"><h2 className="text-lg font-black text-[#102F53]">Contratos candidatos</h2><p className="text-xs text-[#667B90]">Produtos que utilizam o SEQPRODUTO {selectedStock.SEQPRODUTO}</p></div><div className="max-h-[70vh] overflow-auto p-3">{selectedContracts.length === 0 ? <div className="rounded-lg border border-dashed p-8 text-center text-sm font-semibold text-[#6B7F92]">Nenhum contrato ativo possui este produto.</div> : <div className="min-w-[610px] space-y-2"><div className="grid grid-cols-[auto_0.7fr_1.25fr_0.8fr_0.8fr_0.8fr] items-center gap-3 px-3 text-[9px] font-black uppercase tracking-wider text-[#526A80]"><span className="w-4" /><CandidateSortButton label="Contrato" sortKey="CONTRATO" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Cliente" sortKey="CLIENTE" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Embarque" sortKey="EMBARQUE" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Saldo" sortKey="SALDO" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} align="right" /><CandidateSortButton label="Elegível" sortKey="ELEGIVEL" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} align="right" /></div>{sortedCandidates.map(({ contract, product }) => { const key = candidateKey(contract.SEQCONTRATO, product.SEQPRODUTO); const selectedRow = key === selectedCandidateKey; const eligibility = Number(product.PESO_ESTOQUE_ELEGIVEL || 0); return <button type="button" key={key} onClick={() => setSelectedCandidateKey(key)} className={`grid w-full grid-cols-[auto_0.7fr_1.25fr_0.8fr_0.8fr_0.8fr] items-center gap-3 rounded-lg border p-3 text-left ${selectedRow ? "border-blue-500 bg-blue-50 ring-1 ring-blue-200" : "border-[#D3DEE7] bg-white hover:bg-[#F7FAFC]"}`}><span className={`h-4 w-4 rounded-full border-2 ${selectedRow ? "border-blue-600 bg-blue-600 ring-2 ring-blue-100" : "border-[#AFC1D1]"}`} /><span className="font-mono text-xs font-black text-[#173D6E]">{contract.NROCONTRATO}</span><span className="truncate text-xs font-bold text-[#304D68]">{contract.NOMERAZAO}</span><span className="text-xs font-bold text-[#526A80]">{formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</span><span className="text-right text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</span><span className="text-right text-xs font-black text-emerald-700">{formatKg(eligibility)}</span></button>; })}</div>}</div>{selectedCandidate && Number(selectedCandidate.product.PESO_ESTOQUE_INCOMPATIVEL || 0) > 0 && <div className="m-3 flex flex-col gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs font-semibold text-orange-900 sm:flex-row sm:items-center sm:justify-between"><span><AlertTriangle className="mr-2 inline h-4 w-4" />{formatKg(selectedCandidate.product.PESO_ESTOQUE_INCOMPATIVEL)} livres não atendem à validade deste contrato.</span><Button type="button" size="sm" variant="outline" onClick={() => onReviewProduct(selectedStock.SEQPRODUTO)} className="shrink-0 border-orange-300 bg-white text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar datas</Button></div>}</CardContent></Card>
+        <Card className="min-w-0 overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><div className="border-b border-[#DCE5ED] px-4 py-4"><h2 className="text-lg font-black text-[#102F53]">Contratos candidatos</h2><p className="text-xs text-[#667B90]">Produtos que utilizam o SEQPRODUTO {selectedStock.SEQPRODUTO}</p></div><div className="max-h-[70vh] overflow-auto p-3">{selectedContracts.length === 0 ? <div className="rounded-lg border border-dashed p-8 text-center text-sm font-semibold text-[#6B7F92]">Nenhum contrato ativo possui este produto.</div> : <div className="min-w-[610px] space-y-2"><div className="grid grid-cols-[auto_0.7fr_1.25fr_0.8fr_0.8fr_0.8fr] items-center gap-3 px-3 text-[9px] font-black uppercase tracking-wider text-[#526A80]"><span className="w-4" /><CandidateSortButton label="Contrato" sortKey="CONTRATO" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Cliente" sortKey="CLIENTE" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Embarque" sortKey="EMBARQUE" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Saldo" sortKey="SALDO" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} align="right" /><CandidateSortButton label="Liberado" sortKey="ELEGIVEL" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} align="right" /></div>{sortedCandidates.map(({ contract, product }) => { const key = candidateKey(contract.SEQCONTRATO, product.SEQPRODUTO); const selectedRow = key === selectedCandidateKey; const eligibility = Number(product.PESO_ESTOQUE_ELEGIVEL || 0); return <button type="button" key={key} onClick={() => setSelectedCandidateKey(key)} className={`grid w-full grid-cols-[auto_0.7fr_1.25fr_0.8fr_0.8fr_0.8fr] items-center gap-3 rounded-lg border p-3 text-left ${selectedRow ? "border-blue-500 bg-blue-50 ring-1 ring-blue-200" : "border-[#D3DEE7] bg-white hover:bg-[#F7FAFC]"}`}><span className={`h-4 w-4 rounded-full border-2 ${selectedRow ? "border-blue-600 bg-blue-600 ring-2 ring-blue-100" : "border-[#AFC1D1]"}`} /><span className="font-mono text-xs font-black text-[#173D6E]">{contract.NROCONTRATO}</span><span className="truncate text-xs font-bold text-[#304D68]">{contract.NOMERAZAO}</span><span className="text-xs font-bold text-[#526A80]">{formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</span><span className="text-right text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</span><span className="text-right text-xs font-black text-emerald-700">{formatKg(eligibility)}</span></button>; })}</div>}</div>{selectedCandidate && Number(selectedCandidate.product.PESO_ESTOQUE_INCOMPATIVEL || 0) > 0 && <div className="m-3 flex flex-col gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs font-semibold text-orange-900 sm:flex-row sm:items-center sm:justify-between"><span><AlertTriangle className="mr-2 inline h-4 w-4" />{formatKg(selectedCandidate.product.PESO_ESTOQUE_INCOMPATIVEL)} estão retidos por terem mais de seis meses ou não possuírem data rastreável.</span><Button type="button" size="sm" variant="outline" onClick={() => onReviewProduct(selectedStock.SEQPRODUTO)} className="shrink-0 border-orange-300 bg-white text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar datas</Button></div>}</CardContent></Card>
         <AllocationEditor candidate={selectedCandidate} selectedStock={selectedStock} configured={configured} saving={saving} reservationInputs={reservationInputs} setReservationInputs={setReservationInputs} onSave={onSaveReservation} onReviewDates={() => onReviewProduct(selectedStock.SEQPRODUTO)} />
       </div>}
     </div>;
@@ -2768,9 +2751,44 @@ function ModernStockOperationsLayout({
   }
 
   const semData = reviewRows.filter(({ lot }) => !lot.DTAPRODUCAO || lot.SITUACAO_VALIDADE === "SEM_DATA");
-  const incompatibles = reviewRows.filter(({ lot }) => lot.SITUACAO_VALIDADE === "INCOMPATIVEL");
-  const noDemand = reviewRows.filter(({ item }) => !contracts.some((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)));
-  return <div className="space-y-4"><section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><ReviewMetric tone="red" title="Sem contrato elegível por validade" rows={incompatibles} /><ReviewMetric tone="green" title="Elegível para outro contrato" rows={reviewRows.filter(({ item, lot }) => compatibleContractsForLot(item.SEQPRODUTO, lot.DTAPRODUCAO, contracts).length > 0)} /><ReviewMetric tone="orange" title="Sem data de produção rastreável" rows={semData} /><ReviewMetric tone="blue" title="Sem demanda contratual ativa" rows={noDemand} /></section><WorkspaceToolbar title="Lotes que exigem decisão" description="Selecione um lote para analisar validade e definir uma ação operacional." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(390px,0.85fr)]"><Card className="min-w-0 overflow-hidden border-[#CBD8E3]"><CardContent className="p-0"><div className="max-h-[68vh] overflow-auto"><Table className="min-w-[760px]"><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Lote" sortKey="LOTE" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Produção" sortKey="DATA" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Peso livre" sortKey="PESO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} align="center" /><SortableTableHead label="Motivo" sortKey="MOTIVO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} /><TableHead className="text-center">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedReviewRows.map(({ item, lot }) => { const key = lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`; const compatible = compatibleContractsForLot(item.SEQPRODUTO, lot.DTAPRODUCAO, contracts); return <TableRow key={key} onClick={() => setSelectedReviewKey(key)} className={`cursor-pointer ${key === selectedReviewKey ? "bg-red-50 ring-1 ring-inset ring-red-200" : "hover:bg-[#F7FAFC]"}`}><TableCell><p className="font-mono text-xs font-black text-[#173D6E]">{item.SEQPRODUTO}</p><p className="max-w-[180px] truncate text-[10px] font-bold text-[#526A80]">{item.DESCRPRODUTO}</p><LotDecisionBadge decision={lot.DECISAO_LOTE} /></TableCell><TableCell className="text-xs font-bold">{lot.LOTE || "Sem lote"}</TableCell><TableCell className="text-xs font-bold">{formatDate(lot.DTAPRODUCAO)}</TableCell><TableCell className="text-right text-xs font-black">{formatKg(lot.PESO_LIVRE_ESTIMADO)}</TableCell><TableCell className="text-center text-xs font-black">{compatible.length}</TableCell><TableCell><ValidityBadge status={lot.SITUACAO_VALIDADE} /></TableCell><TableCell className="text-center"><Eye className="mx-auto h-4 w-4 text-[#174A78]" /></TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card><ReviewDecisionPanel selected={selectedReview} contracts={contracts} decision={reviewDecision} onDecisionChange={setReviewDecision} reprocessDate={reviewReprocessDate} onReprocessDateChange={setReviewReprocessDate} saving={lotSaving} onSave={onSaveLotTreatment} /></div></div>;
+  const olderThanSixMonths = reviewRows.filter(({ lot }) => lot.SITUACAO_VALIDADE === "INCOMPATIVEL");
+  const reprocessing = reviewRows.filter(({ lot }) => lot.DECISAO_LOTE === "REPROCESSO");
+  const separated = reviewRows.filter(({ lot }) => lot.DECISAO_LOTE === "SEPARADO" || !lot.DECISAO_LOTE);
+  return <div className="space-y-4">
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ReviewMetric tone="red" title="Estoque com mais de 6 meses" rows={olderThanSixMonths} />
+      <ReviewMetric tone="orange" title="Sem data de produção rastreável" rows={semData} />
+      <ReviewMetric tone="blue" title="Encaminhado para reprocesso" rows={reprocessing} />
+      <ReviewMetric tone="green" title="Mantido separado" rows={separated} />
+    </section>
+    <WorkspaceToolbar title="Lotes que exigem decisão" description="Produtos acima de seis meses ou sem data ficam fora do estoque livre até uma decisão operacional." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} />
+    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(390px,0.85fr)]">
+      <Card className="min-w-0 overflow-hidden border-[#CBD8E3]"><CardContent className="p-0"><div className="max-h-[68vh] overflow-auto">
+        <Table className="min-w-[760px]"><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow>
+          <SortableTableHead label="Produto" sortKey="PRODUTO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} />
+          <SortableTableHead label="Lote" sortKey="LOTE" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} />
+          <SortableTableHead label="Produção" sortKey="DATA" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} />
+          <SortableTableHead label="Peso retido" sortKey="PESO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} align="right" />
+          <SortableTableHead label="Contratos ativos" sortKey="CONTRATOS" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} align="center" />
+          <SortableTableHead label="Motivo" sortKey="MOTIVO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} />
+          <TableHead className="text-center">Ação</TableHead>
+        </TableRow></TableHeader><TableBody>{sortedReviewRows.map(({ item, lot }) => {
+          const key = lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`;
+          const relatedContracts = compatibleContractsForLot(item.SEQPRODUTO, lot.DTAPRODUCAO, contracts);
+          return <TableRow key={key} onClick={() => setSelectedReviewKey(key)} className={`cursor-pointer ${key === selectedReviewKey ? "bg-red-50 ring-1 ring-inset ring-red-200" : "hover:bg-[#F7FAFC]"}`}>
+            <TableCell><p className="font-mono text-xs font-black text-[#173D6E]">{item.SEQPRODUTO}</p><p className="max-w-[180px] truncate text-[10px] font-bold text-[#526A80]">{item.DESCRPRODUTO}</p><LotDecisionBadge decision={lot.DECISAO_LOTE} /></TableCell>
+            <TableCell className="text-xs font-bold">{lot.LOTE || "Sem lote"}</TableCell>
+            <TableCell className="text-xs font-bold">{formatDate(lot.DTAPRODUCAO)}</TableCell>
+            <TableCell className="text-right text-xs font-black">{formatKg(lot.PESO_LIVRE_ESTIMADO)}</TableCell>
+            <TableCell className="text-center text-xs font-black">{relatedContracts.length}</TableCell>
+            <TableCell><ValidityBadge status={lot.SITUACAO_VALIDADE} /></TableCell>
+            <TableCell className="text-center"><Eye className="mx-auto h-4 w-4 text-[#174A78]" /></TableCell>
+          </TableRow>;
+        })}</TableBody></Table>
+      </div></CardContent></Card>
+      <ReviewDecisionPanel selected={selectedReview} contracts={contracts} decision={reviewDecision} onDecisionChange={setReviewDecision} reprocessDate={reviewReprocessDate} onReprocessDateChange={setReviewReprocessDate} saving={lotSaving} onSave={onSaveLotTreatment} />
+    </div>
+  </div>;
 }
 
 function WorkspaceToolbar({ title, description, search, onSearchChange, syncing, onSync }: { title: string; description: string; search: string; onSearchChange: (value: string) => void; syncing: boolean; onSync: () => Promise<void> }) {
@@ -2791,7 +2809,7 @@ function AllocationEditor({ candidate, selectedStock, configured, saving, reserv
   const validityBlocked = Boolean(product.REGRA_VALIDADE_CONFIGURADA)
     && Number(product.PESO_ESTOQUE_ELEGIVEL || 0) <= 0
     && Number(product.PESO_ESTOQUE_INCOMPATIVEL || 0) > 0;
-  return <Card className="h-fit border-[#CBD8E3] shadow-sm xl:sticky xl:top-4"><CardContent className="space-y-4 p-4"><div><h2 className="text-lg font-black text-[#102F53]">Painel de alocação</h2><p className="text-xs text-[#667B90]">Defina o peso que será adicionado neste contrato.</p></div><div className="rounded-xl border border-blue-200 bg-blue-50 p-3"><p className="font-mono text-sm font-black text-blue-700">Contrato {contract.NROCONTRATO}</p><p className="mt-1 text-xs font-bold text-[#304D68]">{contract.NOMERAZAO}</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">Produto {product.SEQPRODUTO} · embarque {formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</p></div><div className="space-y-2"><SummaryLine label="Saldo do contrato" value={formatKg(product.SALDO_CONTRATO)} /><SummaryLine label="Estoque global livre" value={formatKg(selectedStock.PESO_LIVRE_VERTICE)} /><SummaryLine label="Estoque elegível livre" value={formatKg(product.PESO_ESTOQUE_ELEGIVEL)} /></div><div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3"><div className="flex items-center justify-between"><span className="text-xs font-black text-emerald-800">Sugestão de alocação</span><strong className="text-xl text-emerald-800">{formatKg(suggestion)}</strong></div></div>{validityBlocked && <Button type="button" variant="outline" onClick={onReviewDates} className="h-11 w-full border-orange-300 bg-orange-50 font-black text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar datas deste produto</Button>}<FilterField label="Peso a adicionar (kg)"><Input type="number" min="0" step="0.001" value={input} onChange={(event) => setReservationInputs((current) => ({ ...current, [key]: event.target.value }))} className="h-12 text-lg font-black" /></FilterField><div className="rounded-lg border border-[#D5E0E9] bg-[#F7F9FB] p-3"><SummaryLine label="Manual atual" value={formatKg(currentManual)} /><SummaryLine label="Novo total manual" value={formatKg(newManual)} /></div><div><h3 className="mb-2 text-sm font-black text-[#102F53]">Prévia do resultado</h3><div className="space-y-2 rounded-lg border border-[#D5E0E9] p-3"><SummaryLine label="Saldo restante do contrato" value={formatKg(remaining)} /><SummaryLine label="Estoque livre após operação" value={formatKg(freeAfter)} /></div></div><Button type="button" disabled={!configured || addition <= 0 || saving === key || validityBlocked} onClick={() => void onSave(contract, product, addition, "ADDITION")} className="h-12 w-full bg-emerald-700 text-white hover:bg-emerald-800"><CheckCircle2 className="mr-2 h-5 w-5" />{saving === key ? "Confirmando..." : validityBlocked ? "Revisar validade antes de alocar" : "Confirmar alocação"}</Button></CardContent></Card>;
+  return <Card className="h-fit border-[#CBD8E3] shadow-sm xl:sticky xl:top-4"><CardContent className="space-y-4 p-4"><div><h2 className="text-lg font-black text-[#102F53]">Painel de alocação</h2><p className="text-xs text-[#667B90]">Defina o peso que será adicionado neste contrato.</p></div><div className="rounded-xl border border-blue-200 bg-blue-50 p-3"><p className="font-mono text-sm font-black text-blue-700">Contrato {contract.NROCONTRATO}</p><p className="mt-1 text-xs font-bold text-[#304D68]">{contract.NOMERAZAO}</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">Produto {product.SEQPRODUTO} · embarque {formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</p></div><div className="space-y-2"><SummaryLine label="Saldo do contrato" value={formatKg(product.SALDO_CONTRATO)} /><SummaryLine label="Estoque global livre" value={formatKg(selectedStock.PESO_LIVRE_VERTICE)} /><SummaryLine label="Estoque liberado" value={formatKg(product.PESO_ESTOQUE_ELEGIVEL)} /></div><div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3"><div className="flex items-center justify-between"><span className="text-xs font-black text-emerald-800">Sugestão de alocação</span><strong className="text-xl text-emerald-800">{formatKg(suggestion)}</strong></div></div>{validityBlocked && <Button type="button" variant="outline" onClick={onReviewDates} className="h-11 w-full border-orange-300 bg-orange-50 font-black text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar estoque com mais de 6 meses</Button>}<FilterField label="Peso a adicionar (kg)"><Input type="number" min="0" step="0.001" value={input} onChange={(event) => setReservationInputs((current) => ({ ...current, [key]: event.target.value }))} className="h-12 text-lg font-black" /></FilterField><div className="rounded-lg border border-[#D5E0E9] bg-[#F7F9FB] p-3"><SummaryLine label="Manual atual" value={formatKg(currentManual)} /><SummaryLine label="Novo total manual" value={formatKg(newManual)} /></div><div><h3 className="mb-2 text-sm font-black text-[#102F53]">Prévia do resultado</h3><div className="space-y-2 rounded-lg border border-[#D5E0E9] p-3"><SummaryLine label="Saldo restante do contrato" value={formatKg(remaining)} /><SummaryLine label="Estoque livre após operação" value={formatKg(freeAfter)} /></div></div><Button type="button" disabled={!configured || addition <= 0 || saving === key || validityBlocked} onClick={() => void onSave(contract, product, addition, "ADDITION")} className="h-12 w-full bg-emerald-700 text-white hover:bg-emerald-800"><CheckCircle2 className="mr-2 h-5 w-5" />{saving === key ? "Confirmando..." : validityBlocked ? "Revisar estoque com mais de 6 meses" : "Confirmar alocação"}</Button></CardContent></Card>;
 }
 
 function ManualAllocationEditor({ allocation, totalFreeStock, configured, saving, reservationInputs, setReservationInputs, onSave, onReviewDates }: { allocation: { contract: ExportContract; product: ContractProduct } | null; totalFreeStock: number; configured: boolean; saving: string | null; reservationInputs: Record<string, string>; setReservationInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>; onSave: ModernStockOperationsLayoutProps["onSaveReservation"]; onReviewDates?: () => void }) {
@@ -2826,7 +2844,7 @@ function ManualAllocationEditor({ allocation, totalFreeStock, configured, saving
           <SummaryValue label="Novo total manual" value={formatKg(nextManual)} tone={nextManual <= currentManual ? "green" : "blue"} />
         </div>
         <FilterField label="Novo total manual"><Input type="number" min="0" step="0.001" value={input} onChange={(event) => setReservationInputs((current) => ({ ...current, [key]: event.target.value }))} className="h-12 text-lg font-black" /></FilterField>
-        {increaseBlockedByValidity && onReviewDates && <Button type="button" variant="outline" onClick={onReviewDates} className="h-11 w-full border-orange-300 bg-orange-50 font-black text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar datas deste produto</Button>}
+        {increaseBlockedByValidity && onReviewDates && <Button type="button" variant="outline" onClick={onReviewDates} className="h-11 w-full border-orange-300 bg-orange-50 font-black text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar estoque com mais de 6 meses</Button>}
         <div>
           <h3 className="mb-2 text-sm font-black text-[#102F53]">Prévia do impacto</h3>
           <div className="space-y-2 rounded-lg border border-[#D5E0E9] p-3">
@@ -2838,7 +2856,7 @@ function ManualAllocationEditor({ allocation, totalFreeStock, configured, saving
           </div>
         </div>
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-900"><LockKeyhole className="mr-2 inline h-4 w-4" />O saldo considera o que já foi expedido e o que permanece reservado. Esta operação altera somente a reserva manual; OP e pedido permanecem protegidos.</div>
-        <Button type="button" disabled={!configured || saving === key || nextManual === currentManual || increaseBlockedByValidity} onClick={() => void onSave(contract, product, nextManual, "TOTAL")} className="h-12 w-full bg-emerald-700 hover:bg-emerald-800"><CheckCircle2 className="mr-2 h-5 w-5" />{saving === key ? "Salvando..." : increaseBlockedByValidity ? "Revisar validade antes de aumentar" : "Confirmar alteração"}</Button>
+        <Button type="button" disabled={!configured || saving === key || nextManual === currentManual || increaseBlockedByValidity} onClick={() => void onSave(contract, product, nextManual, "TOTAL")} className="h-12 w-full bg-emerald-700 hover:bg-emerald-800"><CheckCircle2 className="mr-2 h-5 w-5" />{saving === key ? "Salvando..." : increaseBlockedByValidity ? "Revisar estoque com mais de 6 meses" : "Confirmar alteração"}</Button>
       </CardContent>
     </Card>
   );
@@ -2865,16 +2883,15 @@ function ReviewDecisionPanel({ selected, contracts, decision, onDecisionChange, 
           <MiniFact label="Data de produção" value="Não identificada" />
         </div>
         <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 text-xs font-semibold leading-5 text-orange-950">
-          O estoque consolidado informa este peso como livre, mas ele não foi associado a um lote e a uma data de produção na consulta analítica. Sem essa correspondência, o sistema não consegue comprovar a validade exigida pelo contrato.
+          O estoque consolidado informa este peso como livre, mas ele não foi associado a um lote e a uma data de produção na consulta analítica. Sem essa correspondência, o sistema não consegue comprovar se o produto está dentro do limite operacional de seis meses.
         </div>
         <div>
           <h3 className="mb-2 text-sm font-black text-[#102F53]">Contratos que exigem o produto</h3>
           <div className="space-y-2">
             {productContracts.map((contract) => {
-              const product = contract.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO)!;
               return <div key={contract.SEQCONTRATO} className="flex items-center justify-between gap-3 rounded-lg border border-[#D5E0E9] px-3 py-2">
                 <div className="min-w-0"><p className="font-mono text-xs font-black text-[#173D6E]">{contract.NROCONTRATO}</p><p className="truncate text-[10px] font-semibold text-[#60758A]">{contract.NOMERAZAO}</p></div>
-                <div className="text-right"><p className="text-[9px] font-black uppercase text-[#71869A]">Produção mínima</p><p className="text-xs font-black text-red-700">{formatDate(product.DATA_MINIMA_PRODUCAO)}</p></div>
+                <div className="text-right"><p className="text-[9px] font-black uppercase text-[#71869A]">Embarque</p><p className="text-xs font-black text-[#173D6E]">{formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</p></div>
               </div>;
             })}
           </div>
@@ -2936,12 +2953,23 @@ function ReviewDecisionDetails({ item, lot, contracts, compatibleContracts, deci
         <ValidityBadge status={lot.SITUACAO_VALIDADE} />
       </div>
       <div className="grid grid-cols-3 gap-2 rounded-xl border border-[#D5E0E9] bg-[#F7F9FB] p-3"><MiniFact label="Peso físico" value={formatKg(lot.PESO_FISICO)} /><MiniFact label="Peso livre" value={formatKg(lot.PESO_LIVRE_ESTIMADO)} /><MiniFact label="Produção" value={formatDate(lot.DTAPRODUCAO)} /></div>
-      <div><h3 className="mb-2 text-sm font-black text-[#102F53]">Contratos que possuem este produto</h3><div className="max-h-52 overflow-auto rounded-lg border border-[#D5E0E9]"><Table><TableHeader className="sticky top-0 bg-[#EDF3F7]"><TableRow><TableHead>Contrato</TableHead><TableHead>Cliente</TableHead><TableHead>Data mínima</TableHead><TableHead>Situação</TableHead></TableRow></TableHeader><TableBody>{contracts.map((contract) => { const product = contract.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO)!; const accepted = compatibleContracts.some((entry) => entry.SEQCONTRATO === contract.SEQCONTRATO); return <TableRow key={contract.SEQCONTRATO}><TableCell className="font-mono text-xs font-black">{contract.NROCONTRATO}</TableCell><TableCell className="max-w-[130px] truncate text-xs font-bold">{contract.NOMERAZAO}</TableCell><TableCell className="text-xs font-bold">{formatDate(product.DATA_MINIMA_PRODUCAO)}</TableCell><TableCell><span className={`rounded-full px-2 py-1 text-[9px] font-black ${accepted ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}`}>{accepted ? "Compatível" : "Não compatível"}</span></TableCell></TableRow>; })}</TableBody></Table></div></div>
-      <div className={`rounded-lg border p-3 text-xs font-semibold ${compatibleContracts.length > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`}><p className="font-black">Resultado da análise</p><p className="mt-1">{compatibleContracts.length > 0 ? `${compatibleContracts.length} contrato(s) aceitam a data deste lote.` : "Nenhum contrato ativo aceita a data deste lote."}</p></div>
-      <div><h3 className="mb-2 text-sm font-black text-[#102F53]">Ação operacional</h3><select value={decision} onChange={(event) => onDecisionChange(event.target.value as typeof decision)} className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm font-bold"><option value="SEPARADO">Manter separado</option><option value="DISPONIVEL">Disponibilizar mesmo com data antiga</option><option value="REPROCESSO">Encaminhar para reprocesso</option><option value="ALOCAR">Alocar em contrato compatível</option></select></div>
-      {decision === "DISPONIVEL" && <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 text-xs font-semibold leading-5 text-orange-950"><strong>Exceção de validade:</strong> este lote será liberado para qualquer contrato que use o produto e aparecerá como “Produto antigo aceito”. A decisão poderá ser revertida depois.</div>}
+      <div>
+        <h3 className="mb-2 text-sm font-black text-[#102F53]">Contratos que possuem este produto</h3>
+        <div className="max-h-52 overflow-auto rounded-lg border border-[#D5E0E9]">
+          <Table>
+            <TableHeader className="sticky top-0 bg-[#EDF3F7]"><TableRow><TableHead>Contrato</TableHead><TableHead>Cliente</TableHead><TableHead>Embarque</TableHead><TableHead>Saldo</TableHead></TableRow></TableHeader>
+            <TableBody>{contracts.map((contract) => {
+              const product = contract.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO)!;
+              return <TableRow key={contract.SEQCONTRATO}><TableCell className="font-mono text-xs font-black">{contract.NROCONTRATO}</TableCell><TableCell className="max-w-[130px] truncate text-xs font-bold">{contract.NOMERAZAO}</TableCell><TableCell className="text-xs font-bold">{formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</TableCell><TableCell className="text-right text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</TableCell></TableRow>;
+            })}</TableBody>
+          </Table>
+        </div>
+      </div>
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-950"><p className="font-black">Regra de estoque</p><p className="mt-1">A data não restringe contratos específicos. Lotes com mais de seis meses ficam retidos até uma decisão do PCP.</p></div>
+      <div><h3 className="mb-2 text-sm font-black text-[#102F53]">Ação operacional</h3><select value={decision} onChange={(event) => onDecisionChange(event.target.value as typeof decision)} className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm font-bold"><option value="SEPARADO">Manter separado</option><option value="DISPONIVEL">Disponibilizar para alocação</option><option value="REPROCESSO">Encaminhar para reprocesso</option><option value="ALOCAR">Disponibilizar e alocar</option></select></div>
+      {decision === "DISPONIVEL" && <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 text-xs font-semibold leading-5 text-orange-950"><strong>Liberação excepcional:</strong> este lote antigo voltará ao estoque disponível para alocação em qualquer contrato que utilize o produto. A decisão poderá ser revertida depois.</div>}
       {decision === "REPROCESSO" && <div className="space-y-2"><FilterField label="Data prevista de reprocesso"><Input type="date" value={reprocessDate} onChange={(event) => onReprocessDateChange(event.target.value)} /></FilterField><p className="text-xs font-semibold text-orange-800">O lote continuará nesta revisão, identificado como “Em reprocesso”.</p></div>}
-      {decision === "ALOCAR" && <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-3"><div><p className="text-xs font-black text-[#173D6E]">Escolha o contrato compatível</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">A tela de alocação abrirá com o contrato e o peso já preenchidos.</p></div><div className="max-h-44 space-y-2 overflow-auto">{compatibleContracts.map((contract) => { const product = contract.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO)!; const checked = contract.SEQCONTRATO === targetContractId; return <button key={contract.SEQCONTRATO} type="button" onClick={() => selectTargetContract(contract)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left ${checked ? "border-blue-500 bg-white ring-1 ring-blue-200" : "border-blue-200 bg-blue-50 hover:bg-white"}`}><div><p className="font-mono text-xs font-black text-[#173D6E]">{contract.NROCONTRATO}</p><p className="max-w-[230px] truncate text-[10px] font-semibold text-[#60758A]">{contract.NOMERAZAO}</p></div><div className="text-right"><p className="text-[9px] font-black uppercase text-[#71869A]">Saldo</p><p className="text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</p></div></button>; })}</div><FilterField label="Peso que deseja alocar"><Input type="number" min="0" step="0.001" value={targetWeight} onChange={(event) => setTargetWeight(event.target.value)} className="h-11 text-base font-black" /></FilterField></div>}
+      {decision === "ALOCAR" && <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-3"><div><p className="text-xs font-black text-[#173D6E]">Escolha o contrato</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">A liberação por idade será registrada e a tela de alocação abrirá com o contrato e o peso preenchidos.</p></div><div className="max-h-44 space-y-2 overflow-auto">{compatibleContracts.map((contract) => { const product = contract.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO)!; const checked = contract.SEQCONTRATO === targetContractId; return <button key={contract.SEQCONTRATO} type="button" onClick={() => selectTargetContract(contract)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left ${checked ? "border-blue-500 bg-white ring-1 ring-blue-200" : "border-blue-200 bg-blue-50 hover:bg-white"}`}><div><p className="font-mono text-xs font-black text-[#173D6E]">{contract.NROCONTRATO}</p><p className="max-w-[230px] truncate text-[10px] font-semibold text-[#60758A]">{contract.NOMERAZAO}</p></div><div className="text-right"><p className="text-[9px] font-black uppercase text-[#71869A]">Saldo</p><p className="text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</p></div></button>; })}</div><FilterField label="Peso que deseja alocar"><Input type="number" min="0" step="0.001" value={targetWeight} onChange={(event) => setTargetWeight(event.target.value)} className="h-11 text-base font-black" /></FilterField></div>}
       <Button type="button" disabled={saving || (decision === "REPROCESSO" && !reprocessDate) || (decision === "ALOCAR" && (!selectedContract || numericWeight <= 0))} onClick={() => void onSave(item, lot, decision, decision === "REPROCESSO" ? reprocessDate : undefined, targetContractId ?? undefined, numericWeight)} className="h-11 w-full bg-[#173D6E] hover:bg-[#102F53]">{saving ? "Salvando..." : decision === "ALOCAR" ? "Salvar e abrir alocação" : "Confirmar decisão"}</Button>
     </CardContent>
   </Card>;
@@ -2952,7 +2980,7 @@ function LotDecisionBadge({ decision }: { decision?: ContractStockLot["DECISAO_L
   const config = decision === "REPROCESSO"
     ? ["Em reprocesso", "border-orange-300 bg-orange-50 text-orange-800"]
     : decision === "DISPONIVEL"
-      ? ["Produto antigo aceito", "border-orange-300 bg-orange-50 text-orange-800"]
+      ? ["Produto antigo liberado", "border-orange-300 bg-orange-50 text-orange-800"]
       : decision === "ALOCAR"
         ? ["Aguardando alocação", "border-blue-300 bg-blue-50 text-blue-800"]
         : ["Separado", "border-slate-300 bg-slate-50 text-slate-700"];
@@ -2967,16 +2995,16 @@ function ReviewMetric({ title, rows, tone }: { title: string; rows: Array<{ lot:
 
 function ValidityBadge({ status }: { status?: ContractStockLot["SITUACAO_VALIDADE"] }) {
   const config = status === "ELEGIVEL"
-    ? ["Elegível", "bg-emerald-100 text-emerald-800"]
+    ? ["Liberado", "bg-emerald-100 text-emerald-800"]
     : status === "ACEITO_EXCECAO"
-      ? ["Produto antigo aceito", "bg-orange-100 text-orange-800"]
+      ? ["Produto antigo liberado", "bg-orange-100 text-orange-800"]
       : status === "ATENCAO"
-        ? ["Atenção", "bg-amber-100 text-amber-800"]
-        : status === "SEM_DATA"
+        ? ["Próximo de 6 meses", "bg-amber-100 text-amber-800"]
+      : status === "SEM_DATA"
           ? ["Sem data", "bg-blue-100 text-blue-800"]
-          : status === "SEM_REGRA"
-            ? ["Sem regra", "bg-slate-100 text-slate-700"]
-            : ["Incompatível", "bg-red-100 text-red-700"];
+      : status === "SEM_REGRA"
+            ? ["Sem rastreio", "bg-slate-100 text-slate-700"]
+            : ["Mais de 6 meses", "bg-red-100 text-red-700"];
   return <span className={`inline-flex whitespace-nowrap rounded-full px-2 py-1 text-[9px] font-black uppercase ${config[1]}`}>{config[0]}</span>;
 }
 
@@ -3003,7 +3031,7 @@ function StockLotsDialog({ stock, contracts, onClose }: { stock: ContractStock |
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><AllocationSummary label="Livre total" value={stock.PESO_LIVRE_VERTICE} className="border-[#C8D7E3] bg-[#F5F8FA] text-[#173D6E]" /><AllocationSummary label="Com data" value={stock.PESO_LIVRE_COM_DATA || 0} className="border-emerald-200 bg-emerald-50 text-emerald-800" /><AllocationSummary label="Sem data física" value={stock.PESO_LIVRE_SEM_DATA || 0} className="border-amber-200 bg-amber-50 text-amber-800" /><AllocationSummary label="Sem correspondência" value={stock.PESO_LIVRE_SEM_RASTREIO || 0} className="border-red-200 bg-red-50 text-red-800" /></div>
         {unresolved > 0 && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-xs font-bold leading-5 text-red-900">Há {formatKg(unresolved)} que o ERP informa como livre, mas que não possuem data física suficiente para validar. Esse peso não poderá ser alocado até a origem ser identificada.</div>}
         <div className="max-h-[54vh] overflow-auto rounded-lg border border-[#D5E0E9]">
-          <Table className="min-w-[900px]"><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><Header>Produção</Header><Header>Lote</Header><Header>Embalagem</Header><Header className="text-right">Quantidade física</Header><Header className="text-right">Peso físico</Header><Header className="text-right">Saldo livre</Header><Header className="w-[200px]">Contratos que aceitam</Header></TableRow></TableHeader><TableBody>{lots.length === 0 ? <TableRow><TableCell colSpan={7} className="h-28 text-center text-sm font-semibold text-red-700">Nenhum lote livre com data foi identificado.</TableCell></TableRow> : lots.map((lot, index) => { const compatible = compatibleContractsForLot(stock.SEQPRODUTO, lot.DTAPRODUCAO, contracts); return <TableRow key={`${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}-${index}`} className={compatible.length ? "" : "bg-amber-50"}><TableCell className="whitespace-nowrap text-xs font-black text-[#173D6E]">{formatDate(lot.DTAPRODUCAO)}</TableCell><TableCell className="text-xs font-bold text-[#304D68]">{lot.LOTE || "Sem lote"}</TableCell><TableCell className="text-xs font-semibold text-[#536B82]">{lot.SEQEMBALAGEM || "—"}</TableCell><TableCell className="text-right text-xs font-semibold">{kgFormatter.format(Number(lot.QUANTIDADE || 0))}</TableCell><TableCell className="text-right text-xs font-semibold">{formatKg(lot.PESO_FISICO)}</TableCell><TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(lot.PESO_LIVRE_ESTIMADO)}</TableCell><TableCell>{compatible.length ? <div className="flex flex-wrap gap-1">{compatible.slice(0, 3).map((contract) => <span key={contract.SEQCONTRATO} className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[9px] font-black text-emerald-800">{contract.NROCONTRATO}</span>)}{compatible.length > 3 && <span className="text-[9px] font-bold text-[#536B82]">+{compatible.length - 3}</span>}</div> : <span className="text-[10px] font-black text-amber-800">Nenhum contrato aceita esta data</span>}</TableCell></TableRow>; })}</TableBody></Table>
+          <Table className="min-w-[900px]"><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><Header>Produção</Header><Header>Lote</Header><Header>Embalagem</Header><Header className="text-right">Quantidade física</Header><Header className="text-right">Peso físico</Header><Header className="text-right">Saldo livre</Header><Header className="w-[200px]">Contratos com demanda</Header></TableRow></TableHeader><TableBody>{lots.length === 0 ? <TableRow><TableCell colSpan={7} className="h-28 text-center text-sm font-semibold text-red-700">Nenhum lote livre com data foi identificado.</TableCell></TableRow> : lots.map((lot, index) => { const compatible = compatibleContractsForLot(stock.SEQPRODUTO, lot.DTAPRODUCAO, contracts); return <TableRow key={`${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}-${index}`} className={compatible.length ? "" : "bg-amber-50"}><TableCell className="whitespace-nowrap text-xs font-black text-[#173D6E]">{formatDate(lot.DTAPRODUCAO)}</TableCell><TableCell className="text-xs font-bold text-[#304D68]">{lot.LOTE || "Sem lote"}</TableCell><TableCell className="text-xs font-semibold text-[#536B82]">{lot.SEQEMBALAGEM || "—"}</TableCell><TableCell className="text-right text-xs font-semibold">{kgFormatter.format(Number(lot.QUANTIDADE || 0))}</TableCell><TableCell className="text-right text-xs font-semibold">{formatKg(lot.PESO_FISICO)}</TableCell><TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(lot.PESO_LIVRE_ESTIMADO)}</TableCell><TableCell>{compatible.length ? <div className="flex flex-wrap gap-1">{compatible.slice(0, 3).map((contract) => <span key={contract.SEQCONTRATO} className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[9px] font-black text-emerald-800">{contract.NROCONTRATO}</span>)}{compatible.length > 3 && <span className="text-[9px] font-bold text-[#536B82]">+{compatible.length - 3}</span>}</div> : <span className="text-[10px] font-black text-amber-800">Sem contrato ativo com saldo</span>}</TableCell></TableRow>; })}</TableBody></Table>
         </div>
         <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">Como as reservas manuais ainda são feitas por produto, o sistema aplica o saldo livre às produções mais recentes. O total nunca ultrapassa o disponível consolidado do ERP.</p>
       </div>}
@@ -3029,19 +3057,18 @@ function ValidityLotsDialog({
   return <Dialog open={Boolean(detail)} onOpenChange={(open) => !open && onClose()}>
     <DialogContent className="max-h-[90vh] max-w-[96vw] overflow-hidden border-[#CBD8E3] xl:max-w-5xl">
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-2 text-[#173D6E]"><CalendarDays className="h-5 w-5" />Validade para o contrato {detail?.contract.NROCONTRATO}</DialogTitle>
-        <DialogDescription>{product ? `${product.SEQPRODUTO} - ${product.DESCRICAO}. A validade é avaliada na data prevista de embarque.` : "Detalhes da validade"}</DialogDescription>
+        <DialogTitle className="flex items-center gap-2 text-[#173D6E]"><CalendarDays className="h-5 w-5" />Idade do estoque do produto</DialogTitle>
+        <DialogDescription>{product ? `${product.SEQPRODUTO} - ${product.DESCRICAO}. O corte considera seis meses a partir da data atual e não depende do contrato.` : "Detalhes da idade do estoque"}</DialogDescription>
       </DialogHeader>
       {product && <div className="min-h-0 space-y-4 overflow-hidden">
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
-          <div className="rounded-lg border border-[#C8D7E3] bg-[#F5F8FA] p-3"><p className="text-[9px] font-black uppercase text-[#71869A]">Regra</p><p className="mt-1 text-sm font-black text-[#173D6E]">{validityRuleLabel(product)}</p></div>
-          <div className="rounded-lg border border-[#C8D7E3] bg-[#F5F8FA] p-3"><p className="text-[9px] font-black uppercase text-[#71869A]">Embarque</p><p className="mt-1 text-sm font-black text-[#173D6E]">{formatDate(product.DATA_REFERENCIA_VALIDADE)}</p></div>
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3"><p className="text-[9px] font-black uppercase text-blue-700">Produção mínima</p><p className="mt-1 text-sm font-black text-blue-900">{formatDate(product.DATA_MINIMA_PRODUCAO)}</p></div>
-          <AllocationSummary label="Elegível" value={product.PESO_ESTOQUE_ELEGIVEL || 0} className="border-emerald-200 bg-emerald-50 text-emerald-800" />
-          <AllocationSummary label="Próximo do limite" value={product.PESO_ESTOQUE_ATENCAO || 0} className="border-amber-200 bg-amber-50 text-amber-800" />
-          <AllocationSummary label="Incompatível" value={product.PESO_ESTOQUE_INCOMPATIVEL || 0} className="border-red-200 bg-red-50 text-red-800" />
+          <div className="rounded-lg border border-[#C8D7E3] bg-[#F5F8FA] p-3"><p className="text-[9px] font-black uppercase text-[#71869A]">Regra do estoque</p><p className="mt-1 text-sm font-black text-[#173D6E]">6 meses</p></div>
+          <div className="rounded-lg border border-[#C8D7E3] bg-[#F5F8FA] p-3"><p className="text-[9px] font-black uppercase text-[#71869A]">Data atual</p><p className="mt-1 text-sm font-black text-[#173D6E]">{formatDate(product.DATA_REFERENCIA_VALIDADE)}</p></div>
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3"><p className="text-[9px] font-black uppercase text-blue-700">Data de corte</p><p className="mt-1 text-sm font-black text-blue-900">{formatDate(product.DATA_MINIMA_PRODUCAO)}</p></div>
+          <AllocationSummary label="Liberado" value={product.PESO_ESTOQUE_ELEGIVEL || 0} className="border-emerald-200 bg-emerald-50 text-emerald-800" />
+          <AllocationSummary label="Próximo de 6 meses" value={product.PESO_ESTOQUE_ATENCAO || 0} className="border-amber-200 bg-amber-50 text-amber-800" />
+          <AllocationSummary label="Retido pela idade" value={product.PESO_ESTOQUE_INCOMPATIVEL || 0} className="border-red-200 bg-red-50 text-red-800" />
         </div>
-        {!product.REGRA_VALIDADE_CONFIGURADA && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-bold text-amber-900">Este produto não possui uma regra de validade configurada no contrato. O estoque não será bloqueado, mas deve ser revisado antes da alocação.</div>}
         <div className="max-h-[52vh] overflow-auto rounded-lg border border-[#D5E0E9]">
           <Table className="min-w-[820px] table-fixed [&_td]:px-3 [&_th]:px-3">
             <TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><Header className="w-[130px]">Produção</Header><Header>Lote</Header><Header className="w-[130px] text-right">Peso físico</Header><Header className="w-[155px] text-right">Disponível estimado</Header><Header className="w-[135px] text-center">Margem</Header><Header className="w-[155px]">Situação</Header><Header className="w-[150px] text-center">Ação</Header></TableRow></TableHeader>
@@ -3049,15 +3076,15 @@ function ValidityLotsDialog({
               {lots.length === 0 && <TableRow><TableCell colSpan={7} className="h-28 text-center text-sm font-semibold text-[#6B7F92]">Nenhum lote livre foi identificado para este produto.</TableCell></TableRow>}
               {lots.map((lot, index) => {
                 const status = lot.SITUACAO_VALIDADE || "SEM_DATA";
-                const statusClass = status === "ELEGIVEL" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : status === "ATENCAO" ? "border-amber-300 bg-amber-50 text-amber-800" : status === "SEM_REGRA" ? "border-slate-300 bg-slate-50 text-slate-700" : "border-red-300 bg-red-50 text-red-700";
-                const statusLabel = status === "ELEGIVEL" ? "Elegível" : status === "ATENCAO" ? "Próximo do limite" : status === "SEM_REGRA" ? "Sem regra" : status === "SEM_DATA" ? "Sem data" : "Incompatível";
+                const statusClass = status === "ELEGIVEL" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : status === "ACEITO_EXCECAO" ? "border-orange-300 bg-orange-50 text-orange-800" : status === "ATENCAO" ? "border-amber-300 bg-amber-50 text-amber-800" : status === "SEM_REGRA" ? "border-slate-300 bg-slate-50 text-slate-700" : "border-red-300 bg-red-50 text-red-700";
+                const statusLabel = status === "ELEGIVEL" ? "Liberado" : status === "ACEITO_EXCECAO" ? "Produto antigo liberado" : status === "ATENCAO" ? "Próximo de 6 meses" : status === "SEM_REGRA" ? "Sem rastreio" : status === "SEM_DATA" ? "Sem data" : "Mais de 6 meses";
                 const lotKey = lot.CHAVE_LOTE || `${lot.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`;
                 return <TableRow key={`${lot.DTAPRODUCAO || "sem-data"}-${lot.LOTE || "sem-lote"}-${lot.SEQEMBALAGEM || index}`}><TableCell className="text-xs font-black text-[#173D6E]">{formatDate(lot.DTAPRODUCAO)}</TableCell><TableCell className="text-xs font-bold text-[#304D68]">{lot.LOTE || "Sem lote"}</TableCell><NumberCell value={lot.PESO_FISICO} /><TableCell className="text-right text-xs font-black text-blue-700">{formatKg(lot.PESO_DISPONIVEL_ESTIMADO)}</TableCell><TableCell className="text-center text-xs font-bold text-[#47627D]">{lot.MARGEM_DIAS == null ? "—" : `${lot.MARGEM_DIAS} dias`}</TableCell><TableCell><span className={`inline-flex rounded-full border px-2 py-1 text-[9px] font-black uppercase ${statusClass}`}>{statusLabel}</span></TableCell><TableCell className="text-center">{status === "INCOMPATIVEL" ? <Button type="button" size="sm" variant="outline" disabled={!lotTreatmentConfigured || lotSaving === lotKey} onClick={() => void onSeparateLot(lot)} className="h-8 border-red-200 px-2 text-[10px] font-black text-red-700 hover:bg-red-50"><Minus className="mr-1 h-3.5 w-3.5" />{lotSaving === lotKey ? "Retirando..." : "Retirar do disponível"}</Button> : <span className="text-[10px] font-semibold text-[#8192A2]">Sem ação</span>}</TableCell></TableRow>;
               })}
             </TableBody>
           </Table>
         </div>
-        <p className="text-[10px] font-semibold text-[#667B90]">O saldo disponível por data é estimado de forma conservadora sobre o total livre informado pelo ERP. A ordenação FEFO prioriza o lote válido mais antigo na operação.</p>
+        <p className="text-[10px] font-semibold text-[#667B90]">O saldo por data é estimado sobre o total livre informado pelo ERP. Produtos com mais de seis meses permanecem retidos até uma decisão na Revisão de datas.</p>
       </div>}
     </DialogContent>
   </Dialog>;
@@ -3158,7 +3185,7 @@ function ContractDetails({ contract, configured, saving, notes, setNotes, onSave
       </div>
       <div className="overflow-x-auto rounded-md border border-[#D5E0E9]">
         <Table className="w-full min-w-[1100px] table-fixed [&_td]:px-2 [&_th]:px-2">
-          <TableHeader className="bg-white"><TableRow><Header className="w-[82px]">Produto</Header><Header>Descrição</Header><Header className="w-[115px] text-right">Peso contrato</Header><Header className="w-[115px] text-right">Disponível ERP</Header><Header className="w-[175px]">Validade do estoque</Header><Header className="w-[145px] text-right">Peso alocado</Header><Header className="w-[115px] text-right">Saldo contrato</Header></TableRow></TableHeader>
+          <TableHeader className="bg-white"><TableRow><Header className="w-[82px]">Produto</Header><Header>Descrição</Header><Header className="w-[115px] text-right">Peso contrato</Header><Header className="w-[115px] text-right">Disponível ERP</Header><Header className="w-[175px]">Idade do estoque</Header><Header className="w-[145px] text-right">Peso alocado</Header><Header className="w-[115px] text-right">Saldo contrato</Header></TableRow></TableHeader>
           <TableBody>{contract.PRODUTOS.map((product) => {
             const key = `${contract.SEQCONTRATO}-${product.SEQPRODUTO}`;
             return (

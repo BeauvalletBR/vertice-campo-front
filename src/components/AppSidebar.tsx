@@ -16,6 +16,7 @@ import {
   MapPinned,
   PanelLeftClose,
   PanelLeftOpen,
+  PackageSearch,
   PlusCircle,
   Settings2,
   ShieldCheck,
@@ -92,6 +93,7 @@ export function AppSidebar() {
   const isUsuariosActive = location.pathname.startsWith("/admin/usuarios");
   const isEscalaActive = location.pathname.startsWith("/escala");
   const isContratosActive = location.pathname.startsWith("/contratos");
+  const isProjecaoPecasActive = location.pathname.startsWith("/projecao-pecas");
   const isPedidosMiActive = location.pathname.startsWith("/pedidos-mi");
   const isRendimentoActive = location.pathname.startsWith("/rendimento");
   const activeGroupId = isUsuariosActive
@@ -102,6 +104,8 @@ export function AppSidebar() {
         ? "pedidos-mi"
       : isContratosActive
         ? "contratos"
+        : isProjecaoPecasActive
+          ? "projecao-pecas"
         : isRendimentoActive
           ? "rendimento"
           : "campo";
@@ -111,6 +115,7 @@ export function AppSidebar() {
     campo: activeGroupId === "campo",
     escala: activeGroupId === "escala",
     contratos: activeGroupId === "contratos",
+    "projecao-pecas": activeGroupId === "projecao-pecas",
     "pedidos-mi": activeGroupId === "pedidos-mi",
     rendimento: activeGroupId === "rendimento",
   });
@@ -369,6 +374,34 @@ export function AppSidebar() {
               access: APP_ROUTE_ACCESS.contratos,
             },
           ],
+        },
+      ],
+    },
+    {
+      id: "projecao-pecas",
+      title: "Projeção peças",
+      icon: PackageSearch,
+      items: [
+        {
+          id: "projecao-pecas-inicio",
+          title: "Realizado",
+          url: "/projecao-pecas",
+          icon: PackageSearch,
+          access: APP_ROUTE_ACCESS.projecaoPecas,
+        },
+        {
+          id: "projecao-pecas-projecao",
+          title: "Projeção",
+          url: "/projecao-pecas/projecao",
+          icon: TrendingUp,
+          access: APP_ROUTE_ACCESS.projecaoPecas,
+        },
+        {
+          id: "projecao-pecas-configuracao",
+          title: "Configuração",
+          url: "/projecao-pecas/configuracao",
+          icon: Settings2,
+          access: APP_ROUTE_ACCESS.projecaoPecas,
         },
       ],
     },

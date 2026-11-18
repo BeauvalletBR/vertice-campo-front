@@ -41,6 +41,9 @@ export const APP_ROUTE_ACCESS = {
   contratos: {
     allowedSystems: ["VERTICEPCP"],
   },
+  projecaoPecas: {
+    allowedSystems: ["VERTICEPCP"],
+  },
   pedidosMi: {
     allowedSystems: ["VERTICEMI"],
     allowedModules: ["PEDIDOS"],
@@ -60,6 +63,7 @@ const DESKTOP_DEFAULT_ROUTE_ORDER = [
   "/agendamento",
   "/escala",
   "/contratos",
+  "/projecao-pecas",
   "/pedidos-mi",
   "/rendimento/testes",
 ] as const;
@@ -72,6 +76,7 @@ const MOBILE_DEFAULT_ROUTE_ORDER = [
   "/agendamento",
   "/escala",
   "/contratos",
+  "/projecao-pecas",
   "/pedidos-mi",
   "/rendimento/testes",
 ] as const;
@@ -85,6 +90,9 @@ const ACCESS_BY_PATH: Record<string, AccessRule> = {
   "/agendamento": APP_ROUTE_ACCESS.agendamento,
   "/escala": APP_ROUTE_ACCESS.escala,
   "/contratos": APP_ROUTE_ACCESS.contratos,
+  "/projecao-pecas": APP_ROUTE_ACCESS.projecaoPecas,
+  "/projecao-pecas/projecao": APP_ROUTE_ACCESS.projecaoPecas,
+  "/projecao-pecas/configuracao": APP_ROUTE_ACCESS.projecaoPecas,
   "/pedidos-mi": APP_ROUTE_ACCESS.pedidosMi,
   "/rendimento/testes": APP_ROUTE_ACCESS.rendimento,
 };

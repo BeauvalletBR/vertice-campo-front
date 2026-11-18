@@ -70,12 +70,12 @@ export async function exportContractsPlanningToExcel({
     },
   });
 
-  const widths = [14, 17, 36, 16, 11, 46, 15, 15, 18, 16, 13, 18, 13, 20, 48];
+  const widths = [14, 17, 36, 16, 11, 46, 15, 15, 18, 20, 18, 18, 20, 48];
   widths.forEach((width, index) => {
     worksheet.getColumn(index + 1).width = width;
   });
 
-  worksheet.mergeCells("A1:O1");
+  worksheet.mergeCells("A1:N1");
   const titleCell = worksheet.getCell("A1");
   titleCell.value = title;
   titleCell.font = { name: "Arial", size: 15, bold: true, color: { argb: "FFFFFFFF" } };
@@ -93,8 +93,7 @@ export async function exportContractsPlanningToExcel({
     "VENDIDO",
     "ESTOQUE",
     "ESTOQUE DISPONÍVEL",
-    "DATA DE EMBARQUE",
-    "SEMANA DE EMBARQUE",
+    "SEMANA IDEAL DE EMBARQUE",
     "EMBARQUE PLANEJADO",
     "SEMANA PLANEJADA",
     "PREVISÃO PRODUÇÃO",
@@ -126,7 +125,6 @@ export async function exportContractsPlanningToExcel({
         sold,
         allocated,
         allocated - sold,
-        productIndex === 0 ? parseDate(contract.DTA_EMBARQUE_ERP) : null,
         productIndex === 0 ? isoWeek(contract.DTA_EMBARQUE_ERP) : null,
         productIndex === 0 ? parseDate(contract.DTA_EMBARQUE_PLANEJADA) : null,
         productIndex === 0 ? isoWeek(contract.DTA_EMBARQUE_PLANEJADA) : null,
@@ -144,13 +142,13 @@ export async function exportContractsPlanningToExcel({
         row.getCell(column).numFmt = '#,##0.000 "kg"';
         row.getCell(column).alignment = { horizontal: "right", vertical: "middle" };
       }
-      for (const column of [10, 12]) {
+      for (const column of [11]) {
         row.getCell(column).numFmt = "dd/mm/yyyy";
         row.getCell(column).alignment = { horizontal: "center", vertical: "middle" };
       }
       row.getCell(1).font = { name: "Arial", size: 9, bold: true, color: { argb: "FF173D6E" } };
       row.getCell(5).font = { name: "Arial", size: 9, bold: true, color: { argb: "FF244B70" } };
-      row.getCell(14).font = {
+      row.getCell(13).font = {
         name: "Arial",
         size: 9,
         bold: true,
@@ -183,8 +181,8 @@ export async function exportContractsPlanningToExcel({
   });
 
   const lastContractRow = rowNumber - 2;
-  worksheet.autoFilter = { from: "A2", to: `O${lastContractRow}` };
-  worksheet.pageSetup.printArea = `A1:O${lastContractRow}`;
+  worksheet.autoFilter = { from: "A2", to: `N${lastContractRow}` };
+  worksheet.pageSetup.printArea = `A1:N${lastContractRow}`;
   worksheet.headerFooter.oddFooter = "Vértice PCP · Contratos de exportação";
 
   const stockSheet = workbook.addWorksheet("ESTOQUE", {
@@ -226,6 +224,96 @@ export async function exportContractsPlanningToExcel({
     });
   });
   stockSheet.autoFilter = `A1:H${Math.max(1, stockSheet.rowCount)}`;
+
+  const withoutSaleSheet = workbook.addWorksheet("ESTOQUE SEM VENDA", {
+    views: [{ state: "frozen", ySplit: 1, activeCell: "A2", showGridLines: false }],
+  });
+  withoutSaleSheet.columns = [
+    { header: "PRODUTO", key: "produto", width: 13 },
+    { header: "DESCRIÇÃO", key: "descricao", width: 54 },
+    { header: "ESTOQUE ERP", key: "erp", width: 18 },
+    { header: "PROTEGIDO POR OP", key: "op", width: 19 },
+    { header: "RESERVADO EM PEDIDO", key: "pedido", width: 22 },
+    { header: "ALOCADO MANUAL", key: "manual", width: 19 },
+    { header: "LIVRE PARA ALOCAR", key: "livre", width: 20 },
+    { header: "ESTOQUE SEM VENDA", key: "semVenda", width: 21 },
+    { header: "PRODUÇÃO MAIS ANTIGA", key: "antiga", width: 23 },
+    { header: "PRODUÇÃO MAIS RECENTE", key: "recente", width: 23 },
+  ];
+  withoutSaleSheet.getRow(1).eachCell((cell) => {
+    cell.font = { name: "Arial", size: 9, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF244B70" } };
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border = border;
+  });
+  withoutSaleSheet.getRow(1).height = 32;
+  stock
+    .filter((item) => asNumber(item.ESTOQUE_SEM_VENDA) > 0 && asNumber(item.PESO_LIVRE_VERTICE) > 0)
+    .sort((first, second) => asNumber(second.ESTOQUE_SEM_VENDA) - asNumber(first.ESTOQUE_SEM_VENDA))
+    .forEach((item) => {
+      const row = withoutSaleSheet.addRow({
+        produto: item.SEQPRODUTO,
+        descricao: item.DESCRPRODUTO,
+        erp: asNumber(item.PESODISPONIVEL),
+        op: asNumber(item.PESO_ATRELADO_ORDEM),
+        pedido: asNumber(item.PESO_RESERVADO_PEDIDO_LIQUIDO ?? item.PESO_RESERVADO_PEDIDO),
+        manual: asNumber(item.PESO_RESERVADO_VERTICE),
+        livre: asNumber(item.PESO_LIVRE_VERTICE),
+        semVenda: asNumber(item.ESTOQUE_SEM_VENDA),
+        antiga: parseDate(item.DTA_PRODUCAO_MAIS_ANTIGA),
+        recente: parseDate(item.DTA_PRODUCAO_MAIS_RECENTE),
+      });
+      row.font = { name: "Arial", size: 9 };
+      row.eachCell({ includeEmpty: true }, (cell, column) => {
+        cell.border = border;
+        if (column >= 3 && column <= 8) cell.numFmt = '#,##0.000 "kg"';
+        if (column >= 9) cell.numFmt = "dd/mm/yyyy";
+      });
+    });
+  withoutSaleSheet.autoFilter = `A1:J${Math.max(1, withoutSaleSheet.rowCount)}`;
+
+  const reviewSheet = workbook.addWorksheet("ITENS A DEFINIR", {
+    views: [{ state: "frozen", ySplit: 1, activeCell: "A2", showGridLines: false }],
+  });
+  reviewSheet.columns = [
+    { header: "PRODUTO", key: "produto", width: 13 },
+    { header: "DESCRIÇÃO", key: "descricao", width: 48 },
+    { header: "LOTE", key: "lote", width: 22 },
+    { header: "DATA DE PRODUÇÃO", key: "producao", width: 21 },
+    { header: "PESO LIVRE", key: "peso", width: 18 },
+    { header: "SITUAÇÃO", key: "situacao", width: 22 },
+    { header: "DECISÃO", key: "decisao", width: 20 },
+    { header: "DATA DE REPROCESSO", key: "reprocesso", width: 23 },
+    { header: "OBSERVAÇÃO", key: "observacao", width: 52 },
+  ];
+  reviewSheet.getRow(1).eachCell((cell) => {
+    cell.font = { name: "Arial", size: 9, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF9A3412" } };
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border = border;
+  });
+  reviewSheet.getRow(1).height = 32;
+  stock.flatMap((item) => (item.LOTES_REVISAO || []).map((lot) => ({ item, lot })))
+    .sort((first, second) => String(first.lot.DTAPRODUCAO || "").localeCompare(String(second.lot.DTAPRODUCAO || "")))
+    .forEach(({ item, lot }) => {
+      const row = reviewSheet.addRow({
+        produto: item.SEQPRODUTO,
+        descricao: item.DESCRPRODUTO,
+        lote: lot.LOTE || lot.CHAVE_LOTE || "Sem identificação",
+        producao: parseDate(lot.DTAPRODUCAO),
+        peso: asNumber(lot.PESO_LIVRE_ESTIMADO ?? lot.PESO_DISPONIVEL_ESTIMADO),
+        situacao: lot.SITUACAO_VALIDADE || "A definir",
+        decisao: lot.DECISAO_LOTE || "A definir",
+        reprocesso: parseDate(lot.DTA_REPROCESSO_LOTE),
+        observacao: lot.OBSERVACAO_LOTE || "",
+      });
+      row.font = { name: "Arial", size: 9 };
+      row.eachCell({ includeEmpty: true }, (cell) => { cell.border = border; });
+      row.getCell(4).numFmt = "dd/mm/yyyy";
+      row.getCell(5).numFmt = '#,##0.000 "kg"';
+      row.getCell(8).numFmt = "dd/mm/yyyy";
+    });
+  reviewSheet.autoFilter = `A1:I${Math.max(1, reviewSheet.rowCount)}`;
 
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: workbookMimeType });

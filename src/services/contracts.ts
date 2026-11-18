@@ -95,8 +95,10 @@ export interface ContractStock {
   VERSAO_TRATAMENTO?: number | null;
   LOTES_ESTOQUE?: ContractStockLot[]; QTD_LOTES_ESTOQUE?: number;
   LOTES_LIVRES?: ContractStockLot[]; QTD_LOTES_LIVRES?: number;
+  LOTES_ALOCAVEIS?: ContractStockLot[]; LOTES_REVISAO?: ContractStockLot[];
   PESO_LIVRE_COM_DATA?: number; PESO_LIVRE_SEM_DATA?: number;
   PESO_LIVRE_SEM_RASTREIO?: number;
+  PESO_RETIDO_IDADE?: number; DATA_CORTE_ESTOQUE?: string | null;
   DTA_PRODUCAO_MAIS_ANTIGA?: string | null; DTA_PRODUCAO_MAIS_RECENTE?: string | null;
 }
 

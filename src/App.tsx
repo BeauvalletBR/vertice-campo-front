@@ -49,6 +49,9 @@ import EscalaTVScreen from "./pages/EscalaTVScreen";
 import StartPage from "./pages/StartPage";
 import VisitaLocalizacaoPublica from "./pages/VisitaLocalizacaoPublica";
 import Contratos from "./pages/Contratos";
+import ProjecaoPecas from "./pages/ProjecaoPecas";
+import ProjecaoPecasProjecao from "./pages/ProjecaoPecasProjecao";
+import ProjecaoPecasConfiguracao from "./pages/ProjecaoPecasConfiguracao";
 import PedidosMi from "./pages/PedidosMi";
 import UserManagement from "./pages/UserManagement";
 import RendimentoModule from "./modules/rendimento/RendimentoModule";
@@ -188,6 +191,12 @@ function ProtectedLayout() {
 
               <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.contratos} />}>
                 <Route path="/contratos/*" element={<Contratos />} />
+              </Route>
+
+              <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.projecaoPecas} />}>
+                <Route path="/projecao-pecas" element={<ProjecaoPecas />} />
+                <Route path="/projecao-pecas/projecao" element={<ProjecaoPecasProjecao />} />
+                <Route path="/projecao-pecas/configuracao" element={<ProjecaoPecasConfiguracao />} />
               </Route>
 
               <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.pedidosMi} />}>

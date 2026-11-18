@@ -73,7 +73,7 @@ export async function exportPedidosMiPdf(pedidos: PedidoMi[]) {
       index === 0 ? pedido.CLIENTE : "",
       index === 0 ? formatDate(pedido.DTA_EMBARQUE) : "",
       item.SEQPRODUTO || "-",
-      item.PRODUTO,
+      `${item.PRODUTO}${item.DTA_MIN_PRODUCAO || item.DTA_MAX_PRODUCAO ? `\nProdução: ${formatDate(item.DTA_MIN_PRODUCAO)} a ${formatDate(item.DTA_MAX_PRODUCAO)}` : ""}`,
       `${weight.format(Number(item.PESO_PEDIDO || 0))} kg`,
       item.PRECO_PEDIDO == null ? "-" : currency.format(item.PRECO_PEDIDO),
       `${weight.format(Number(item.PESO_SISTEMA || 0))} kg`,

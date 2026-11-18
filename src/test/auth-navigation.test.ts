@@ -140,6 +140,13 @@ describe("navegação após o login", () => {
     ).toBe("/contratos");
   });
 
+  it("libera Projeção Peças com as mesmas permissões do VERTICEPCP", () => {
+    expect(canAccessAuthenticatedRoute(contractsUser, "/projecao-pecas")).toBe(true);
+    expect(canAccessAuthenticatedRoute(contractsUser, "/projecao-pecas/projecao")).toBe(true);
+    expect(canAccessAuthenticatedRoute(fieldUser, "/projecao-pecas")).toBe(false);
+    expect(canAccessAuthenticatedRoute(fieldUser, "/projecao-pecas/projecao")).toBe(false);
+  });
+
   it("não libera Campo ou Escala para usuário exclusivo do VERTICEPCP", () => {
     expect(canAccessAuthenticatedRoute(contractsUser, "/campo")).toBe(false);
     expect(canAccessAuthenticatedRoute(contractsUser, "/escala")).toBe(false);

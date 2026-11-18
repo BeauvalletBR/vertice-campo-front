@@ -54,6 +54,7 @@ import {
 import { exportPedidosMiPdf } from "@/lib/pedidos-mi-report";
 import {
   type PedidoMi,
+  type PedidoMiCatalogClient,
   type PedidoMiItemPayload,
   type PedidoMiPanel,
   type PedidoMiPayload,
@@ -106,8 +107,11 @@ type FormItem = {
   unidade: string;
   pesoPedido: string;
   precoPedido: string;
+  dtaMinProducao: string;
+  dtaMaxProducao: string;
   pesoSistema: number;
   precoSistema?: number | null;
+  productLookup: "idle" | "loading" | "found" | "error";
 };
 
 type FormState = {
@@ -140,8 +144,11 @@ const newItem = (): FormItem => ({
   unidade: "KG",
   pesoPedido: "",
   precoPedido: "",
+  dtaMinProducao: "",
+  dtaMaxProducao: "",
   pesoSistema: 0,
   precoSistema: null,
+  productLookup: "idle",
 });
 
 const emptyForm = (): FormState => ({
@@ -179,6 +186,12 @@ export default function PedidosMi() {
   const [lookingUp, setLookingUp] = useState(false);
   const [removing, setRemoving] = useState<PedidoMi | null>(null);
   const [showDatabaseQuery, setShowDatabaseQuery] = useState(false);
+  const [clientOptions, setClientOptions] = useState<PedidoMiCatalogClient[]>([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [showClientOptions, setShowClientOptions] = useState(false);
+  const [inlineOrderId, setInlineOrderId] = useState<number | null>(null);
+  const [inlineOrderValue, setInlineOrderValue] = useState("");
+  const [savingInlineOrder, setSavingInlineOrder] = useState<number | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; direction: "asc" | "desc" }>({
     key: "embarque",
     direction: "asc",
@@ -208,6 +221,26 @@ export default function PedidosMi() {
     // A busca textual é aplicada ao confirmar ou clicar em Atualizar.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateStart, dateEnd, status]);
+
+  useEffect(() => {
+    const searchValue = form?.cliente.trim() || "";
+    if (!form || form.seqcliente || searchValue.length < 2) {
+      setClientOptions([]);
+      setLoadingClients(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setLoadingClients(true);
+      void pedidosMiApi.getClients(searchValue)
+        .then((items) => {
+          setClientOptions(items);
+          setShowClientOptions(true);
+        })
+        .catch(() => setClientOptions([]))
+        .finally(() => setLoadingClients(false));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [form?.cliente, form?.seqcliente]);
 
   const sortedOrders = useMemo(() => {
     const items = [...(panel?.pedidos || [])];
@@ -257,8 +290,11 @@ export default function PedidosMi() {
         unidade: item.UNIDADE || "KG",
         pesoPedido: numberInput(item.PESO_PEDIDO),
         precoPedido: numberInput(item.PRECO_PEDIDO),
+        dtaMinProducao: inputDate(item.DTA_MIN_PRODUCAO),
+        dtaMaxProducao: inputDate(item.DTA_MAX_PRODUCAO),
         pesoSistema: Number(item.PESO_SISTEMA || 0),
         precoSistema: item.PRECO_SISTEMA,
+        productLookup: item.SEQPRODUTO ? "found" : "idle",
       })),
     });
   };
@@ -287,8 +323,11 @@ export default function PedidosMi() {
           unidade: item.UNIDADE || "KG",
           pesoPedido: numberInput(item.PESO_SISTEMA),
           precoPedido: numberInput(item.PRECO_SISTEMA),
+          dtaMinProducao: inputDate(item.DTAMINPRODUCAO),
+          dtaMaxProducao: inputDate(item.DTAMAXPRODUCAO),
           pesoSistema: Number(item.PESO_SISTEMA || 0),
           precoSistema: item.PRECO_SISTEMA,
+          productLookup: "found",
         })),
       }));
       toast.success("Dados do pedido carregados do ERP.");
@@ -305,10 +344,91 @@ export default function PedidosMi() {
       itens: current.itens.map((item) => item.key === key ? { ...item, [field]: value } : item),
     }));
 
+  const lookupProduct = async (key: string) => {
+    const current = form?.itens.find((item) => item.key === key);
+    if (!current?.seqproduto) return;
+    const seqproduto = Number(current.seqproduto);
+    if (!Number.isInteger(seqproduto) || seqproduto <= 0) return;
+    setForm((state) => state && ({
+      ...state,
+      itens: state.itens.map((item) => item.key === key ? { ...item, productLookup: "loading" } : item),
+    }));
+    try {
+      const product = await pedidosMiApi.getProduct(seqproduto);
+      setForm((state) => state && ({
+        ...state,
+        itens: state.itens.map((item) => item.key === key ? {
+          ...item,
+          produto: product.PRODUTO,
+          unidade: product.UNIDADE || "KG",
+          productLookup: "found",
+        } : item),
+      }));
+    } catch {
+      setForm((state) => state && ({
+        ...state,
+        itens: state.itens.map((item) => item.key === key ? {
+          ...item,
+          produto: "",
+          productLookup: "error",
+        } : item),
+      }));
+    }
+  };
+
+  const payloadFromOrder = (order: PedidoMi, nropedido: number | null): PedidoMiPayload => ({
+    nroempresa: order.NROEMPRESA,
+    nome_carga: order.NOME_CARGA,
+    nropedido,
+    nrocarga: order.NROCARGA || null,
+    dta_embarque: inputDate(order.DTA_EMBARQUE),
+    seqcliente: order.SEQCLIENTE,
+    cliente: order.CLIENTE,
+    uf: order.UF || null,
+    status: order.STATUS,
+    observacao: order.OBSERVACAO || null,
+    versao: order.VERSAO,
+    itens: order.ITENS.map((item, index) => ({
+      id_item: item.ID_PEDIDO_MI_ITEM,
+      seqproduto: item.SEQPRODUTO,
+      produto: item.PRODUTO,
+      unidade: item.UNIDADE,
+      peso_pedido: item.PESO_PEDIDO,
+      preco_pedido: item.PRECO_PEDIDO,
+      dta_min_producao: inputDate(item.DTA_MIN_PRODUCAO) || null,
+      dta_max_producao: inputDate(item.DTA_MAX_PRODUCAO) || null,
+      ordem: item.ORDEM || index + 1,
+    })),
+  });
+
+  const saveInlineOrder = async (order: PedidoMi) => {
+    const normalized = inlineOrderValue.replace(/\D/g, "");
+    const nextOrder = normalized ? Number(normalized) : null;
+    if (nextOrder === (order.NROPEDIDO || null)) {
+      setInlineOrderId(null);
+      return;
+    }
+    setSavingInlineOrder(order.ID_PEDIDO_MI);
+    try {
+      await pedidosMiApi.update(order.ID_PEDIDO_MI, payloadFromOrder(order, nextOrder));
+      toast.success("Número do pedido atualizado.");
+      setInlineOrderId(null);
+      await loadPanel(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível atualizar o pedido.");
+    } finally {
+      setSavingInlineOrder(null);
+    }
+  };
+
   const save = async () => {
     if (!form) return;
     if (!form.nomeCarga.trim() || !form.dtaEmbarque || !form.cliente.trim()) {
       toast.error("Preencha carga, embarque e cliente.");
+      return;
+    }
+    if (form.itens.some((item) => item.seqproduto && item.productLookup === "error")) {
+      toast.error("Corrija os códigos de produto não encontrados antes de salvar.");
       return;
     }
     const validItems = form.itens.filter((item) => item.produto.trim());
@@ -323,6 +443,8 @@ export default function PedidosMi() {
       unidade: item.unidade || "KG",
       peso_pedido: parseNumber(item.pesoPedido),
       preco_pedido: item.precoPedido.trim() ? parseNumber(item.precoPedido) : null,
+      dta_min_producao: item.dtaMinProducao || null,
+      dta_max_producao: item.dtaMaxProducao || null,
       ordem: index + 1,
     }));
     const payload: PedidoMiPayload = {
@@ -456,7 +578,36 @@ export default function PedidosMi() {
                       <tr key={`order-${order.ID_PEDIDO_MI}`} className="border-t border-[#D5E0EA] bg-white hover:bg-[#F7FAFD]">
                         <td className="px-2 py-3 text-center"><button onClick={() => setExpanded((current) => { const next = new Set(current); if (isOpen) next.delete(order.ID_PEDIDO_MI); else next.add(order.ID_PEDIDO_MI); return next; })} className="rounded-lg border border-[#C6D6E5] p-1.5 text-[#1B58A0] hover:bg-[#EDF4FB]">{isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button></td>
                         <td className="px-3 py-3 font-black text-[#123A68]">{order.NOME_CARGA}<span className="mt-0.5 block text-[10px] font-semibold text-[#7790A7]">Carga ERP {order.NROCARGA || "-"}</span></td>
-                        <td className="px-3 py-3 font-bold text-[#1B58A0]">{order.NROPEDIDO || "Manual"}</td>
+                        <td className="px-3 py-3 font-bold text-[#1B58A0]">
+                          {inlineOrderId === order.ID_PEDIDO_MI ? (
+                            <Input
+                              autoFocus
+                              inputMode="numeric"
+                              value={inlineOrderValue}
+                              disabled={savingInlineOrder === order.ID_PEDIDO_MI}
+                              onChange={(event) => setInlineOrderValue(event.target.value.replace(/\D/g, ""))}
+                              onBlur={() => void saveInlineOrder(order)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") event.currentTarget.blur();
+                                if (event.key === "Escape") setInlineOrderId(null);
+                              }}
+                              className="h-8 w-28 text-xs font-bold"
+                              placeholder="Manual"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              title="Clique para alterar o número do pedido"
+                              onClick={() => {
+                                setInlineOrderId(order.ID_PEDIDO_MI);
+                                setInlineOrderValue(order.NROPEDIDO ? String(order.NROPEDIDO) : "");
+                              }}
+                              className="rounded px-1 py-0.5 text-left hover:bg-blue-50 hover:underline"
+                            >
+                              {order.NROPEDIDO || "Manual"}
+                            </button>
+                          )}
+                        </td>
                         <td className="max-w-[260px] px-3 py-3 font-bold text-[#173D6E]">{order.CLIENTE}<span className="block text-[10px] font-semibold text-[#7790A7]">{order.UF || "UF não informada"}</span></td>
                         <td className="px-3 py-3 font-bold text-[#365675]">{formatDate(order.DTA_EMBARQUE)}</td>
                         <td className="px-3 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${statusStyle[order.STATUS]}`}>{order.STATUS}</span>{order.STATUS_PEDIDO_ERP && <span className="mt-1 block text-[9px] font-semibold text-[#7890A6]">ERP: {order.STATUS_PEDIDO_ERP}</span>}</td>
@@ -465,7 +616,7 @@ export default function PedidosMi() {
                         <td className="px-3 py-3 font-black text-[#123A68]">{kg.format(system)} kg</td>
                         <td className="px-3 py-3"><div className="flex justify-end gap-1"><Button size="icon" variant="outline" onClick={() => openEdit(order)} className="h-8 w-8 border-[#BDD0E1] text-[#1B58A0]"><Pencil className="h-3.5 w-3.5" /></Button><Button size="icon" variant="outline" onClick={() => setRemoving(order)} className="h-8 w-8 border-red-200 text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button></div></td>
                       </tr>,
-                      isOpen && <tr key={`items-${order.ID_PEDIDO_MI}`} className="bg-[#F8FBFD]"><td colSpan={10} className="p-3"><div className="overflow-hidden rounded-xl border border-[#D1DEEA] bg-white"><table className="w-full text-[11px]"><thead className="bg-[#F0F5F9] text-[#526D86]"><tr><th className="px-3 py-2 text-left">Cód. produto</th><th className="px-3 py-2 text-left">Descrição do produto</th><th className="px-3 py-2 text-right">Total pedido</th><th className="px-3 py-2 text-right">Preço pedido</th><th className="px-3 py-2 text-right">Sistema</th><th className="px-3 py-2 text-right">Preço sistema</th><th className="px-3 py-2 text-right">Diferença peso</th></tr></thead><tbody>{order.ITENS.map((item) => <tr key={item.ID_PEDIDO_MI_ITEM || `${item.SEQPRODUTO}-${item.ORDEM}`} className="border-t border-[#DFE8F0]"><td className="px-3 py-2 font-black text-[#1B58A0]">{item.SEQPRODUTO || "Manual"}</td><td className="px-3 py-2 font-bold text-[#173D6E]">{item.PRODUTO}</td><td className="px-3 py-2 text-right font-bold">{kg.format(item.PESO_PEDIDO)} kg</td><td className="px-3 py-2 text-right">{item.PRECO_PEDIDO == null ? "-" : money.format(item.PRECO_PEDIDO)}</td><td className="px-3 py-2 text-right font-bold">{kg.format(item.PESO_SISTEMA)} kg</td><td className="px-3 py-2 text-right">{item.PRECO_SISTEMA == null ? "-" : money.format(item.PRECO_SISTEMA)}</td><td className={`px-3 py-2 text-right font-black ${item.DIFERENCA_PESO < 0 ? "text-red-600" : item.DIFERENCA_PESO > 0 ? "text-emerald-700" : "text-[#365675]"}`}>{kg.format(item.DIFERENCA_PESO)} kg</td></tr>)}</tbody></table></div>{order.OBSERVACAO && <p className="mt-2 text-xs font-medium text-[#60758A]"><strong>Observação:</strong> {order.OBSERVACAO}</p>}</td></tr>,
+                      isOpen && <tr key={`items-${order.ID_PEDIDO_MI}`} className="bg-[#F8FBFD]"><td colSpan={10} className="p-3"><div className="overflow-x-auto rounded-xl border border-[#D1DEEA] bg-white"><table className="w-full min-w-[1050px] text-[11px]"><thead className="bg-[#F0F5F9] text-[#526D86]"><tr><th className="px-3 py-2 text-left">Cód. produto</th><th className="px-3 py-2 text-left">Descrição do produto</th><th className="px-3 py-2 text-left">Produção mínima</th><th className="px-3 py-2 text-left">Produção máxima</th><th className="px-3 py-2 text-right">Total pedido</th><th className="px-3 py-2 text-right">Preço pedido</th><th className="px-3 py-2 text-right">Sistema</th><th className="px-3 py-2 text-right">Preço sistema</th><th className="px-3 py-2 text-right">Diferença peso</th></tr></thead><tbody>{order.ITENS.map((item) => <tr key={item.ID_PEDIDO_MI_ITEM || `${item.SEQPRODUTO}-${item.ORDEM}`} className="border-t border-[#DFE8F0]"><td className="px-3 py-2 font-black text-[#1B58A0]">{item.SEQPRODUTO || "Manual"}</td><td className="px-3 py-2 font-bold text-[#173D6E]">{item.PRODUTO}</td><td className="px-3 py-2">{formatDate(item.DTA_MIN_PRODUCAO)}</td><td className="px-3 py-2">{formatDate(item.DTA_MAX_PRODUCAO)}</td><td className="px-3 py-2 text-right font-bold">{kg.format(item.PESO_PEDIDO)} kg</td><td className="px-3 py-2 text-right">{item.PRECO_PEDIDO == null ? "-" : money.format(item.PRECO_PEDIDO)}</td><td className="px-3 py-2 text-right font-bold">{kg.format(item.PESO_SISTEMA)} kg</td><td className="px-3 py-2 text-right">{item.PRECO_SISTEMA == null ? "-" : money.format(item.PRECO_SISTEMA)}</td><td className={`px-3 py-2 text-right font-black ${item.DIFERENCA_PESO < 0 ? "text-red-600" : item.DIFERENCA_PESO > 0 ? "text-emerald-700" : "text-[#365675]"}`}>{kg.format(item.DIFERENCA_PESO)} kg</td></tr>)}</tbody></table></div>{order.OBSERVACAO && <p className="mt-2 text-xs font-medium text-[#60758A]"><strong>Observação:</strong> {order.OBSERVACAO}</p>}</td></tr>,
                     ];
                   })}
                 </tbody>
@@ -524,14 +675,64 @@ export default function PedidosMi() {
               <div><Label>Nome da carga *</Label><Input className="mt-1.5" value={form.nomeCarga} onChange={(event) => setForm({ ...form, nomeCarga: event.target.value })} placeholder="Ex.: BITRUCK VALCIR" /></div>
               <div><Label>Nº da carga</Label><Input className="mt-1.5" value={form.nrocarga} onChange={(event) => setForm({ ...form, nrocarga: event.target.value })} placeholder="ERP ou manual" /></div>
               <div><Label>Data de embarque *</Label><Input className="mt-1.5" type="date" value={form.dtaEmbarque} onChange={(event) => setForm({ ...form, dtaEmbarque: event.target.value })} /></div>
-              <div className="sm:col-span-2"><Label>Cliente *</Label><Input className="mt-1.5" value={form.cliente} onChange={(event) => setForm({ ...form, cliente: event.target.value })} /></div>
+              <div className="relative sm:col-span-2">
+                <Label>Cliente *</Label>
+                <Input
+                  className="mt-1.5"
+                  value={form.cliente}
+                  onFocus={() => setShowClientOptions(true)}
+                  onBlur={() => window.setTimeout(() => setShowClientOptions(false), 150)}
+                  onChange={(event) => {
+                    setForm({ ...form, cliente: event.target.value, seqcliente: null });
+                    setShowClientOptions(true);
+                  }}
+                  placeholder="Digite o código ou nome do cliente"
+                />
+                {form.seqcliente && <p className="mt-1 text-[10px] font-bold text-emerald-700">Cliente selecionado: {form.seqcliente} - {form.cliente}</p>}
+                {showClientOptions && !form.seqcliente && form.cliente.trim().length >= 2 && (
+                  <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-[#BFD0DF] bg-white p-1 shadow-xl">
+                    {loadingClients ? (
+                      <div className="flex items-center px-3 py-3 text-xs text-[#60758A]"><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Buscando clientes...</div>
+                    ) : clientOptions.length ? clientOptions.map((client) => (
+                      <button
+                        type="button"
+                        key={client.SEQPESSOA}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setForm((current) => current && ({ ...current, seqcliente: client.SEQPESSOA, cliente: client.NOMERAZAO }));
+                          setShowClientOptions(false);
+                        }}
+                        className="block w-full rounded-md px-3 py-2 text-left text-xs font-semibold text-[#173D6E] hover:bg-[#EDF4FB]"
+                      >
+                        <strong>{client.SEQPESSOA}</strong> - {client.NOMERAZAO}
+                      </button>
+                    )) : <p className="px-3 py-3 text-xs font-semibold text-amber-700">Nenhum cliente encontrado.</p>}
+                  </div>
+                )}
+              </div>
               <div><Label>UF</Label><Input className="mt-1.5" maxLength={2} value={form.uf} onChange={(event) => setForm({ ...form, uf: event.target.value.toUpperCase() })} /></div>
               <div><Label>Status</Label><Select value={form.status} onValueChange={(value: PedidoMiStatus) => setForm({ ...form, status: value })}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDENTE">Pendente</SelectItem><SelectItem value="PROGRAMADO">Programado</SelectItem><SelectItem value="CARREGADO">Carregado</SelectItem><SelectItem value="CANCELADO">Cancelado</SelectItem></SelectContent></Select></div>
             </div>
 
             <div className="overflow-hidden rounded-xl border border-[#CAD9E6]">
               <div className="flex items-center justify-between bg-[#EAF1F7] px-4 py-3"><div><h3 className="font-black text-[#123A68]">Produtos do pedido</h3><p className="text-xs text-[#668096]">Pedido é o valor planejado; Sistema vem do ERP.</p></div><Button type="button" size="sm" variant="outline" onClick={() => setForm({ ...form, itens: [...form.itens, newItem()] })} className="border-[#AFC5D8] text-[#173D6E]"><Plus className="mr-1 h-4 w-4" />Produto</Button></div>
-              <div className="overflow-x-auto"><table className="w-full min-w-[930px] text-xs"><thead className="bg-[#F5F8FB] text-[#526C84]"><tr><th className="px-3 py-2 text-left">Cód. produto</th><th className="px-3 py-2 text-left">Descrição</th><th className="px-3 py-2 text-left">Un.</th><th className="px-3 py-2 text-right">Total pedido</th><th className="px-3 py-2 text-right">Preço pedido</th><th className="px-3 py-2 text-right">Sistema</th><th className="px-3 py-2 text-right">Preço sistema</th><th className="w-10" /></tr></thead><tbody>{form.itens.map((item) => <tr key={item.key} className="border-t border-[#DFE7EF]"><td className="p-2"><Input inputMode="numeric" value={item.seqproduto} onChange={(event) => updateItem(item.key, "seqproduto", event.target.value.replace(/\D/g, ""))} placeholder="Opcional" /></td><td className="p-2"><Input value={item.produto} onChange={(event) => updateItem(item.key, "produto", event.target.value)} /></td><td className="p-2"><Input value={item.unidade} onChange={(event) => updateItem(item.key, "unidade", event.target.value.toUpperCase())} /></td><td className="p-2"><Input inputMode="decimal" value={item.pesoPedido} onChange={(event) => updateItem(item.key, "pesoPedido", event.target.value)} className="text-right font-bold" /></td><td className="p-2"><Input inputMode="decimal" value={item.precoPedido} onChange={(event) => updateItem(item.key, "precoPedido", event.target.value)} className="text-right" /></td><td className="px-3 py-2 text-right font-black text-[#173D6E]">{kg.format(item.pesoSistema)} kg</td><td className="px-3 py-2 text-right">{item.precoSistema == null ? "-" : money.format(item.precoSistema)}</td><td className="p-2"><Button type="button" size="icon" variant="ghost" disabled={form.itens.length === 1} onClick={() => setForm({ ...form, itens: form.itens.filter((current) => current.key !== item.key) })} className="h-8 w-8 text-red-600 hover:bg-red-50"><X className="h-4 w-4" /></Button></td></tr>)}</tbody></table></div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1250px] text-xs">
+                  <thead className="bg-[#F5F8FB] text-[#526C84]"><tr><th className="px-3 py-2 text-left">Cód. produto</th><th className="px-3 py-2 text-left">Descrição</th><th className="px-3 py-2 text-left">Un.</th><th className="px-3 py-2 text-left">Produção mínima</th><th className="px-3 py-2 text-left">Produção máxima</th><th className="px-3 py-2 text-right">Total pedido</th><th className="px-3 py-2 text-right">Preço pedido</th><th className="px-3 py-2 text-right">Sistema</th><th className="px-3 py-2 text-right">Preço sistema</th><th className="w-10" /></tr></thead>
+                  <tbody>{form.itens.map((item) => <tr key={item.key} className="border-t border-[#DFE7EF]">
+                    <td className="p-2 align-top"><Input inputMode="numeric" value={item.seqproduto} onChange={(event) => setForm((current) => current && ({ ...current, itens: current.itens.map((currentItem) => currentItem.key === item.key ? { ...currentItem, seqproduto: event.target.value.replace(/\D/g, ""), produto: "", productLookup: "idle" } : currentItem) }))} onBlur={() => void lookupProduct(item.key)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void lookupProduct(item.key); } }} placeholder="Opcional" /></td>
+                    <td className="p-2 align-top"><Input value={item.produto} disabled={item.productLookup === "loading" || Boolean(item.seqproduto)} onChange={(event) => updateItem(item.key, "produto", event.target.value)} placeholder={item.productLookup === "loading" ? "Buscando..." : item.productLookup === "error" ? "Produto não encontrado" : "Descrição do produto"} className={item.productLookup === "error" ? "border-red-400 bg-red-50 text-red-700" : ""} />{item.productLookup === "error" && <span className="mt-1 block text-[10px] font-bold text-red-600">Código não encontrado.</span>}</td>
+                    <td className="p-2 align-top"><Input value={item.unidade} onChange={(event) => updateItem(item.key, "unidade", event.target.value.toUpperCase())} /></td>
+                    <td className="p-2 align-top"><Input type="date" value={item.dtaMinProducao} onChange={(event) => updateItem(item.key, "dtaMinProducao", event.target.value)} /></td>
+                    <td className="p-2 align-top"><Input type="date" value={item.dtaMaxProducao} onChange={(event) => updateItem(item.key, "dtaMaxProducao", event.target.value)} /></td>
+                    <td className="p-2 align-top"><Input inputMode="decimal" value={item.pesoPedido} onChange={(event) => updateItem(item.key, "pesoPedido", event.target.value)} className="text-right font-bold" /></td>
+                    <td className="p-2 align-top"><Input inputMode="decimal" value={item.precoPedido} onChange={(event) => updateItem(item.key, "precoPedido", event.target.value)} className="text-right" /></td>
+                    <td className="px-3 py-3 text-right align-top font-black text-[#173D6E]">{kg.format(item.pesoSistema)} kg</td>
+                    <td className="px-3 py-3 text-right align-top">{item.precoSistema == null ? "-" : money.format(item.precoSistema)}</td>
+                    <td className="p-2 align-top"><Button type="button" size="icon" variant="ghost" disabled={form.itens.length === 1} onClick={() => setForm({ ...form, itens: form.itens.filter((current) => current.key !== item.key) })} className="h-8 w-8 text-red-600 hover:bg-red-50"><X className="h-4 w-4" /></Button></td>
+                  </tr>)}</tbody>
+                </table>
+              </div>
             </div>
             <div><Label>Observação</Label><Textarea className="mt-1.5" value={form.observacao} onChange={(event) => setForm({ ...form, observacao: event.target.value })} placeholder="Informações adicionais da carga ou do planejamento" /></div>
             <div className="flex justify-end gap-2 border-t border-[#D5E0EA] pt-4"><Button variant="outline" onClick={() => setForm(null)} disabled={saving}>Cancelar</Button><Button onClick={() => void save()} disabled={saving} className="min-w-36 bg-[#173D6E] font-bold hover:bg-[#102E53]">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Salvar</Button></div>

@@ -9,6 +9,8 @@ export interface PedidoMiItem {
   UNIDADE: string;
   PESO_PEDIDO: number;
   PRECO_PEDIDO?: number | null;
+  DTA_MIN_PRODUCAO?: string | null;
+  DTA_MAX_PRODUCAO?: string | null;
   ORDEM: number;
   PESO_SISTEMA: number;
   PRECO_SISTEMA?: number | null;
@@ -42,6 +44,19 @@ export interface PedidoMiErpItem {
   UNIDADE: string;
   PESO_SISTEMA: number;
   PRECO_SISTEMA?: number | null;
+  DTAMINPRODUCAO?: string | null;
+  DTAMAXPRODUCAO?: string | null;
+}
+
+export interface PedidoMiCatalogProduct {
+  SEQPRODUTO: number;
+  PRODUTO: string;
+  UNIDADE: string;
+}
+
+export interface PedidoMiCatalogClient {
+  SEQPESSOA: number;
+  NOMERAZAO: string;
 }
 
 export interface PedidoMiErp {
@@ -80,6 +95,8 @@ export interface PedidoMiItemPayload {
   unidade?: string;
   peso_pedido: number;
   preco_pedido?: number | null;
+  dta_min_producao?: string | null;
+  dta_max_producao?: string | null;
   ordem?: number;
 }
 
@@ -142,6 +159,12 @@ export const pedidosMiApi = {
     request<PedidoMiErp>(
       `/pedidos-mi/erp/${nropedido}${nroempresa ? `?nroempresa=${nroempresa}` : ""}`,
     ),
+  getProduct: (seqproduto: number) =>
+    request<PedidoMiCatalogProduct>(`/pedidos-mi/catalogo/produtos/${seqproduto}`),
+  getClients: (search: string) => {
+    const params = new URLSearchParams({ busca: search });
+    return request<PedidoMiCatalogClient[]>(`/pedidos-mi/catalogo/clientes?${params.toString()}`);
+  },
   create: (payload: PedidoMiPayload) =>
     request<{ success: boolean; id_pedido_mi: number; message: string }>("/pedidos-mi", {
       method: "POST",

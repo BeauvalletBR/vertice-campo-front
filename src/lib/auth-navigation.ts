@@ -28,6 +28,9 @@ export const normalizeAuthenticatedRoute = (value: unknown): string | null => {
   if (url.pathname === "/contratos" || url.pathname.startsWith("/contratos/")) {
     return route;
   }
+  if (url.pathname === "/projecao-pecas" || url.pathname.startsWith("/projecao-pecas/")) {
+    return route;
+  }
   if (url.pathname === "/pedidos-mi" || url.pathname.startsWith("/pedidos-mi/")) {
     return route;
   }
@@ -67,6 +70,9 @@ export const canAccessAuthenticatedRoute = (
   }
   if (pathname === "/contratos" || pathname.startsWith("/contratos/")) {
     return hasAccessToRule(user, APP_ROUTE_ACCESS.contratos);
+  }
+  if (pathname === "/projecao-pecas" || pathname.startsWith("/projecao-pecas/")) {
+    return hasAccessToRule(user, APP_ROUTE_ACCESS.projecaoPecas);
   }
   if (pathname === "/pedidos-mi" || pathname.startsWith("/pedidos-mi/")) {
     return hasAccessToRule(user, APP_ROUTE_ACCESS.pedidosMi);

@@ -6,6 +6,7 @@ import {
   FlaskConical,
   LayoutDashboard,
   MapPin,
+  PackageSearch,
   UserCog,
   Users,
 } from "lucide-react";
@@ -74,6 +75,13 @@ const START_OPTIONS: StartOption[] = [
     route: "/contratos",
     icon: FileSignature,
     access: APP_ROUTE_ACCESS.contratos,
+  },
+  {
+    title: "Projeção peças",
+    description: "Área PCP preparada para as futuras projeções de peças.",
+    route: "/projecao-pecas",
+    icon: PackageSearch,
+    access: APP_ROUTE_ACCESS.projecaoPecas,
   },
   {
     title: "Pedidos MI",
