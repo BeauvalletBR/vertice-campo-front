@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownUp,
   CalendarDays,
@@ -14,9 +14,11 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   Trash2,
   Truck,
+  TriangleAlert,
   Weight,
   X,
 } from "lucide-react";
@@ -73,14 +75,40 @@ const money = new Intl.NumberFormat("pt-BR", {
 });
 
 const PEDIDOS_MI_CONSULTA_SQL = `SELECT
-    H.*,
-    I.*
+    H.NOME_CARGA AS CARGA,
+    H.NROCARGA,
+    H.DTA_EMBARQUE,
+    H.NROPEDIDO,
+    H.SEQCLIENTE,
+    H.CLIENTE,
+    H.UF,
+    H.STATUS,
+    I.SEQPRODUTO,
+    NVL(
+        (SELECT MAX(CAD.PRODUTO)
+           FROM CONTROLADORIA.BBV_CADASTROPRODUTO CAD
+          WHERE CAD.SEQPRODUTO = I.SEQPRODUTO),
+        I.PRODUTO
+    ) AS PRODUTO,
+    I.UNIDADE,
+    I.PESO_PEDIDO,
+    I.PRECO_PEDIDO,
+    I.DTA_MIN_PRODUCAO,
+    I.DTA_MAX_PRODUCAO,
+    SUM(I.PESO_PEDIDO) OVER (
+        PARTITION BY H.NOME_CARGA, H.NROCARGA, H.DTA_EMBARQUE
+    ) AS PESO_TOTAL_CARGA,
+    SUM(I.PESO_PEDIDO) OVER (
+        PARTITION BY H.ID_PEDIDO_MI
+    ) AS PESO_TOTAL_PEDIDO
 FROM VERTICE.VCO_PEDIDO_MI H
 LEFT JOIN VERTICE.VCO_PEDIDO_MI_ITEM I
        ON I.ID_PEDIDO_MI = H.ID_PEDIDO_MI
+WHERE H.ATIVO = 'S'
 ORDER BY
-    H.DTA_EMBARQUE DESC,
-    H.ID_PEDIDO_MI,
+    H.DTA_EMBARQUE,
+    H.NOME_CARGA,
+    H.NROPEDIDO,
     I.ORDEM;`;
 
 const formatDate = (value?: string | null) => {
@@ -98,6 +126,23 @@ const parseNumber = (value: string) => {
 
 const numberInput = (value?: number | null) =>
   value == null ? "" : String(value).replace(".", ",");
+
+const copyText = async (text: string) => {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!copied) throw new Error("Falha ao copiar");
+};
 
 type FormItem = {
   key: string;
@@ -117,6 +162,7 @@ type FormItem = {
 type FormState = {
   id?: number;
   versao?: number;
+  addingToLoad?: boolean;
   nomeCarga: string;
   nropedido: string;
   nrocarga: string;
@@ -152,6 +198,7 @@ const newItem = (): FormItem => ({
 });
 
 const emptyForm = (): FormState => ({
+  addingToLoad: false,
   nomeCarga: "",
   nropedido: "",
   nrocarga: "",
@@ -186,6 +233,7 @@ export default function PedidosMi() {
   const [lookingUp, setLookingUp] = useState(false);
   const [removing, setRemoving] = useState<PedidoMi | null>(null);
   const [showDatabaseQuery, setShowDatabaseQuery] = useState(false);
+  const [creatingLoad, setCreatingLoad] = useState(false);
   const [clientOptions, setClientOptions] = useState<PedidoMiCatalogClient[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
   const [showClientOptions, setShowClientOptions] = useState(false);
@@ -264,11 +312,52 @@ export default function PedidosMi() {
     });
   }, [panel?.pedidos, sort]);
 
+  const loadGroups = useMemo(() => {
+    const groups = new Map<string, {
+      key: string;
+      name: string;
+      loadNumber: string;
+      shippingDate: string;
+      orders: PedidoMi[];
+    }>();
+    sortedOrders.forEach((order) => {
+      const name = order.NOME_CARGA.trim() || "Carga sem nome";
+      const loadNumber = String(order.NROCARGA || "");
+      const shippingDate = inputDate(order.DTA_EMBARQUE);
+      const key = `${name.toLocaleUpperCase("pt-BR")}|${loadNumber}|${shippingDate}`;
+      const group = groups.get(key) || {
+        key,
+        name,
+        loadNumber,
+        shippingDate,
+        orders: [],
+      };
+      group.orders.push(order);
+      groups.set(key, group);
+    });
+    return Array.from(groups.values());
+  }, [sortedOrders]);
+
   const changeSort = (key: SortKey) =>
     setSort((current) => ({
       key,
       direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
     }));
+
+  const clearFilters = async () => {
+    setSearch("");
+    setDateStart("");
+    setDateEnd("");
+    setStatus("TODOS");
+    setRefreshing(true);
+    try {
+      setPanel(await pedidosMiApi.getPanel());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível limpar os filtros.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const openEdit = (order: PedidoMi) => {
     setForm({
@@ -300,6 +389,19 @@ export default function PedidosMi() {
     });
   };
 
+  const openAddOrderToLoad = (orders: PedidoMi[]) => {
+    const reference = orders[0];
+    if (!reference) return;
+    setForm({
+      ...emptyForm(),
+      addingToLoad: true,
+      nomeCarga: reference.NOME_CARGA,
+      nrocarga: String(reference.NROCARGA || ""),
+      dtaEmbarque: inputDate(reference.DTA_EMBARQUE),
+      status: reference.STATUS === "CANCELADO" ? "PENDENTE" : reference.STATUS,
+    });
+  };
+
   const lookupErp = async () => {
     if (!form) return;
     const orderNumber = Number(form.nropedido);
@@ -312,8 +414,8 @@ export default function PedidosMi() {
       const erp = await pedidosMiApi.getErpOrder(orderNumber);
       setForm((current) => current && ({
         ...current,
-        nrocarga: String(erp.NROCARGA || current.nrocarga),
-        dtaEmbarque: inputDate(erp.DTAEMBARQUE) || current.dtaEmbarque,
+        nrocarga: current.addingToLoad ? current.nrocarga : String(erp.NROCARGA || current.nrocarga),
+        dtaEmbarque: current.addingToLoad ? current.dtaEmbarque : inputDate(erp.DTAEMBARQUE) || current.dtaEmbarque,
         seqcliente: erp.SEQCLIENTE,
         cliente: erp.CLIENTE || current.cliente,
         uf: erp.UF || current.uf,
@@ -443,7 +545,7 @@ export default function PedidosMi() {
     }
   };
 
-  const save = async () => {
+  const save = async (addAnotherOrder = false) => {
     if (!form) return;
     if (!form.nomeCarga.trim() || !form.dtaEmbarque || !form.cliente.trim()) {
       toast.error("Preencha carga, embarque e cliente.");
@@ -486,8 +588,19 @@ export default function PedidosMi() {
     try {
       if (form.id) await pedidosMiApi.update(form.id, payload);
       else await pedidosMiApi.create(payload);
-      toast.success(form.id ? "Lançamento atualizado." : "Lançamento incluído.");
-      setForm(null);
+      toast.success(form.id ? "Pedido atualizado." : "Pedido incluído na carga.");
+      if (!form.id && addAnotherOrder) {
+        setForm({
+          ...emptyForm(),
+          addingToLoad: true,
+          nomeCarga: form.nomeCarga,
+          nrocarga: form.nrocarga,
+          dtaEmbarque: form.dtaEmbarque,
+          status: form.status,
+        });
+      } else {
+        setForm(null);
+      }
       await loadPanel(true);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível salvar.");
@@ -535,14 +648,14 @@ export default function PedidosMi() {
             <Button variant="outline" onClick={() => void exportPedidosMiPdf(sortedOrders)} disabled={!sortedOrders.length} className="border-emerald-300 text-emerald-800 hover:bg-emerald-50">
               <FileDown className="mr-2 h-4 w-4" />PDF
             </Button>
-            <Button onClick={() => setForm(emptyForm())} className="bg-[#173D6E] font-bold hover:bg-[#102E53]">
-              <Plus className="mr-2 h-4 w-4" />Novo lançamento
+            <Button onClick={() => setCreatingLoad(true)} className="bg-[#173D6E] font-bold hover:bg-[#102E53]">
+              <Plus className="mr-2 h-4 w-4" />Nova carga
             </Button>
           </div>
         </header>
 
         <Card className="border-[#CFDCE8] bg-white p-3 shadow-sm">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_0.72fr_0.72fr_0.72fr_auto]">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_0.72fr_0.72fr_0.72fr_auto_auto]">
             <div>
               <Label className="text-[10px] font-black uppercase tracking-wider text-[#526B83]">Carga, pedido, cliente ou produto</Label>
               <div className="relative mt-1.5">
@@ -557,6 +670,7 @@ export default function PedidosMi() {
               <Select value={status} onValueChange={setStatus}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TODOS">Todos</SelectItem><SelectItem value="PENDENTE">Pendente</SelectItem><SelectItem value="PROGRAMADO">Programado</SelectItem><SelectItem value="CARREGADO">Carregado</SelectItem><SelectItem value="CANCELADO">Cancelado</SelectItem></SelectContent></Select>
             </div>
             <Button onClick={() => void loadPanel(true)} className="self-end bg-[#1B58A0] hover:bg-[#154781]"><Search className="mr-2 h-4 w-4" />Filtrar</Button>
+            <Button variant="outline" onClick={() => void clearFilters()} disabled={refreshing} className="self-end border-[#B8CADB] text-[#173D6E]"><RotateCcw className="mr-2 h-4 w-4" />Limpar filtros</Button>
           </div>
         </Card>
 
@@ -574,12 +688,76 @@ export default function PedidosMi() {
         )}
 
         <Card className="overflow-hidden border-[#C9D7E4] bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-[#D4E0EA] px-4 py-3"><div><h2 className="font-black text-[#123A68]">Planejamento de cargas</h2><p className="text-xs text-[#6A8197]">{sortedOrders.length} lançamento(s) no recorte atual</p></div></div>
+          <div className="flex items-center justify-between border-b border-[#D4E0EA] px-4 py-3"><div><h2 className="font-black text-[#123A68]">Planejamento de cargas</h2><p className="text-xs text-[#6A8197]">{loadGroups.length} carga(s) · {sortedOrders.length} pedido(s) no recorte atual</p></div></div>
           {loading ? (
             <div className="flex h-64 items-center justify-center text-[#55718D]"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Buscando dados...</div>
           ) : !sortedOrders.length ? (
             <div className="flex h-64 flex-col items-center justify-center text-center"><Truck className="h-10 w-10 text-[#A8B9C9]" /><p className="mt-3 font-bold text-[#365675]">Nenhum lançamento encontrado</p><p className="mt-1 text-sm text-[#71869A]">Inclua uma carga manualmente ou busque um pedido do ERP.</p></div>
           ) : (
+            <>
+            <div className="space-y-4 p-3">
+              {loadGroups.map((group) => {
+                const groupPlanned = group.orders.reduce((total, order) => total + order.ITENS.reduce((sum, item) => sum + Number(item.PESO_PEDIDO || 0), 0), 0);
+                const groupSystem = group.orders.reduce((total, order) => total + order.ITENS.reduce((sum, item) => sum + Number(item.PESO_SISTEMA || 0), 0), 0);
+                return <section key={`excel-${group.key}`} className="overflow-hidden rounded-xl border border-[#CFDCE8] bg-white shadow-sm">
+                  <header className="flex flex-col gap-3 border-b border-[#D4E0EA] bg-[#F7FAFD] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-[#365675]">
+                      <span className="flex items-center gap-2 text-base font-black text-[#123A68]"><Truck className="h-4 w-4" />{group.name}</span>
+                      <span><strong>{group.orders.length}</strong> pedido(s)</span>
+                      <span>Carga ERP: <strong>{group.loadNumber || "-"}</strong></span>
+                      <span>Embarque: <strong>{formatDate(group.shippingDate)}</strong></span>
+                      <span>Total: <strong>{kg.format(groupPlanned)} kg</strong></span>
+                    </div>
+                    <Button type="button" size="sm" onClick={() => openAddOrderToLoad(group.orders)} className="shrink-0 bg-[#173D6E] font-bold hover:bg-[#102E53]"><Plus className="mr-1.5 h-4 w-4" />Adicionar pedido</Button>
+                  </header>
+                  <table className="w-full table-fixed border-collapse text-[10px] xl:text-[11px]">
+                    <thead className="bg-[#EAF1F7] text-[#355675]">
+                      <tr>
+                        <th className="w-[7%] px-1.5 py-2 text-left">Nº pedido</th>
+                        <th className="w-[12%] px-1.5 py-2 text-left">Cliente</th>
+                        <th className="w-[5%] px-1.5 py-2 text-left">UF</th>
+                        <th className="w-[6%] px-1.5 py-2 text-left">Cód.</th>
+                        <th className="w-[17%] px-1.5 py-2 text-left">Descrição do produto</th>
+                        <th className="w-[7%] px-1.5 py-2 text-right">Total pedido</th>
+                        <th className="w-[7%] px-1.5 py-2 text-right">Preço pedido</th>
+                        <th className="w-[7%] px-1.5 py-2 text-right">Sistema</th>
+                        <th className="w-[7%] px-1.5 py-2 text-right">Preço sistema</th>
+                        <th className="w-[7%] px-1.5 py-2 text-right">Dif. peso</th>
+                        <th className="w-[7%] px-1.5 py-2 text-right">Dif. preço</th>
+                        <th className="w-[7%] px-1.5 py-2 text-center">Status</th>
+                        <th className="w-[4%] px-1 py-2 text-center">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.orders.flatMap((order) => order.ITENS.map((item, itemIndex) => {
+                        const priceDifference = item.DIFERENCA_PRECO == null ? null : Number(item.DIFERENCA_PRECO);
+                        return <tr key={`flat-${order.ID_PEDIDO_MI}-${item.ID_PEDIDO_MI_ITEM || item.ORDEM}`} className="border-t border-[#D6E1EA] odd:bg-white even:bg-[#F7F9FC]">
+                          <td className="px-1.5 py-2 font-black text-[#1B58A0]">
+                            {itemIndex === 0 && inlineOrderId === order.ID_PEDIDO_MI ? <Input autoFocus inputMode="numeric" value={inlineOrderValue} disabled={savingInlineOrder === order.ID_PEDIDO_MI} onChange={(event) => setInlineOrderValue(event.target.value.replace(/\D/g, ""))} onBlur={() => void saveInlineOrder(order)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setInlineOrderId(null); }} className="h-7 px-1 text-[10px]" /> : <button type="button" title="Clique para alterar o pedido" onClick={() => { setInlineOrderId(order.ID_PEDIDO_MI); setInlineOrderValue(order.NROPEDIDO ? String(order.NROPEDIDO) : ""); }} className="hover:underline">{order.NROPEDIDO || "Manual"}</button>}
+                          </td>
+                          <td className="break-words px-1.5 py-2 font-semibold text-[#173D6E]">{order.CLIENTE}</td>
+                          <td className="px-1.5 py-2 font-bold text-[#526D86]">{order.UF || "-"}</td>
+                          <td className="px-1.5 py-2 font-black text-[#1B58A0]">{item.SEQPRODUTO || "Manual"}</td>
+                          <td className="break-words px-1.5 py-2 font-semibold text-[#173D6E]">{item.PRODUTO || "Descrição não informada"}</td>
+                          <td className="px-1.5 py-2 text-right font-bold">{kg.format(item.PESO_PEDIDO)} kg</td>
+                          <td className="px-1.5 py-2 text-right">{item.PRECO_PEDIDO == null ? "-" : money.format(item.PRECO_PEDIDO)}</td>
+                          <td className="px-1.5 py-2 text-right font-bold">{kg.format(item.PESO_SISTEMA)} kg</td>
+                          <td className="px-1.5 py-2 text-right">{item.PRECO_SISTEMA == null ? "-" : money.format(item.PRECO_SISTEMA)}</td>
+                          <td className={`px-1.5 py-2 text-right font-black ${Number(item.DIFERENCA_PESO) === 0 ? "text-[#365675]" : "text-red-600"}`}>{kg.format(item.DIFERENCA_PESO)} kg</td>
+                          <td className={`px-1.5 py-2 text-right font-black ${priceDifference == null || Math.abs(priceDifference) <= 0.0001 ? "text-[#365675]" : "bg-amber-50 text-amber-800"}`}>{priceDifference == null ? "-" : money.format(priceDifference)}</td>
+                          <td className="px-1 py-2 text-center"><Select value={order.STATUS} disabled={savingInlineStatus === order.ID_PEDIDO_MI} onValueChange={(value: PedidoMiStatus) => void saveInlineStatus(order, value)}><SelectTrigger className={`mx-auto h-7 w-full min-w-0 px-1 text-[9px] font-black ${statusStyle[order.STATUS]}`}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDENTE">Pendente</SelectItem><SelectItem value="PROGRAMADO">Programado</SelectItem><SelectItem value="CARREGADO">Carregado</SelectItem><SelectItem value="CANCELADO">Cancelado</SelectItem></SelectContent></Select></td>
+                          <td className="px-1 py-2">{itemIndex === 0 && <div className="flex justify-center gap-0.5"><Button size="icon" variant="ghost" title="Editar pedido e produtos" onClick={() => openEdit(order)} className="h-7 w-7 text-[#1B58A0]"><Pencil className="h-3.5 w-3.5" /></Button><Button size="icon" variant="ghost" title="Remover pedido" onClick={() => setRemoving(order)} className="h-7 w-7 text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button></div>}</td>
+                        </tr>;
+                      }))}
+                    </tbody>
+                    <tfoot className="border-t-2 border-[#B8CADB] bg-[#F7FAFD] font-black text-[#123A68]">
+                      <tr><td colSpan={5} className="px-3 py-2 text-right">TOTAL DA CARGA</td><td className="px-1.5 py-2 text-right">{kg.format(groupPlanned)} kg</td><td /><td className="px-1.5 py-2 text-right">{kg.format(groupSystem)} kg</td><td /><td className="px-1.5 py-2 text-right">{kg.format(groupSystem - groupPlanned)} kg</td><td colSpan={3} /></tr>
+                    </tfoot>
+                  </table>
+                </section>;
+              })}
+            </div>
+            {false && <div className="hidden">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1320px] border-collapse text-[12px]">
                 <thead className="bg-[#EAF1F7] text-[#355675]">
@@ -591,11 +769,31 @@ export default function PedidosMi() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedOrders.map((order) => {
+                  {loadGroups.map((group) => {
+                    const groupPlanned = group.orders.reduce((total, order) => total + order.ITENS.reduce((sum, item) => sum + Number(item.PESO_PEDIDO || 0), 0), 0);
+                    const groupSystem = group.orders.reduce((total, order) => total + order.ITENS.reduce((sum, item) => sum + Number(item.PESO_SISTEMA || 0), 0), 0);
+                    return <Fragment key={group.key}>
+                      <tr className="border-t-2 border-[#9EB8CF] bg-[#DCE9F4]">
+                        <td colSpan={10} className="px-4 py-3">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-[#365675]">
+                              <span className="flex items-center gap-2 text-sm font-black text-[#123A68]"><Truck className="h-4 w-4" />{group.name}</span>
+                              <span><strong>{group.orders.length}</strong> pedido(s)</span>
+                              <span>Carga ERP: <strong>{group.loadNumber || "-"}</strong></span>
+                              <span>Embarque: <strong>{formatDate(group.shippingDate)}</strong></span>
+                              <span>Planejado: <strong>{kg.format(groupPlanned)} kg</strong></span>
+                              <span>Sistema: <strong>{kg.format(groupSystem)} kg</strong></span>
+                            </div>
+                            <Button type="button" size="sm" onClick={() => openAddOrderToLoad(group.orders)} className="shrink-0 bg-[#173D6E] font-bold hover:bg-[#102E53]"><Plus className="mr-1.5 h-4 w-4" />Adicionar pedido</Button>
+                          </div>
+                        </td>
+                      </tr>
+                      {group.orders.map((order) => {
                     const isOpen = expanded.has(order.ID_PEDIDO_MI);
                     const planned = order.ITENS.reduce((sum, item) => sum + Number(item.PESO_PEDIDO || 0), 0);
                     const system = order.ITENS.reduce((sum, item) => sum + Number(item.PESO_SISTEMA || 0), 0);
                     const difference = system - planned;
+                    const hasPriceDifference = order.ITENS.some((item) => item.DIFERENCA_PRECO != null && Math.abs(Number(item.DIFERENCA_PRECO)) > 0.0001);
                     return [
                       <tr key={`order-${order.ID_PEDIDO_MI}`} className="border-t border-[#D5E0EA] bg-white hover:bg-[#F7FAFD]">
                         <td className="px-2 py-3 text-center"><button onClick={() => setExpanded((current) => { const next = new Set(current); if (isOpen) next.delete(order.ID_PEDIDO_MI); else next.add(order.ID_PEDIDO_MI); return next; })} className="rounded-lg border border-[#C6D6E5] p-1.5 text-[#1B58A0] hover:bg-[#EDF4FB]">{isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button></td>
@@ -654,16 +852,23 @@ export default function PedidosMi() {
                           {order.STATUS_PEDIDO_ERP && <span className="mt-1 block text-[9px] font-semibold text-[#7890A6]">ERP: {order.STATUS_PEDIDO_ERP}</span>}
                         </td>
                         <td className="px-3 py-3 font-black text-[#123A68]">{kg.format(planned)} kg</td>
-                        <td className={`px-3 py-3 font-black ${difference < 0 ? "text-red-600" : difference > 0 ? "text-emerald-700" : "text-[#365675]"}`}>{kg.format(difference)} kg</td>
+                        <td className={`px-3 py-3 font-black ${difference < 0 ? "text-red-600" : difference > 0 ? "text-emerald-700" : "text-[#365675]"}`}>
+                          {kg.format(difference)} kg
+                          {hasPriceDifference && <span className="mt-1 flex w-fit items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[9px] font-black text-amber-800"><TriangleAlert className="h-3 w-3" />Preço divergente</span>}
+                        </td>
                         <td className="px-3 py-3 font-black text-[#123A68]">{kg.format(system)} kg</td>
-                        <td className="px-3 py-3"><div className="flex justify-end gap-1"><Button size="icon" variant="outline" onClick={() => openEdit(order)} className="h-8 w-8 border-[#BDD0E1] text-[#1B58A0]"><Pencil className="h-3.5 w-3.5" /></Button><Button size="icon" variant="outline" onClick={() => setRemoving(order)} className="h-8 w-8 border-red-200 text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button></div></td>
+                        <td className="px-3 py-3"><div className="flex justify-end gap-1"><Button size="icon" variant="outline" title="Editar pedido e produtos" onClick={() => openEdit(order)} className="h-8 w-8 border-[#BDD0E1] text-[#1B58A0]"><Pencil className="h-3.5 w-3.5" /></Button><Button size="icon" variant="outline" title="Remover pedido" onClick={() => setRemoving(order)} className="h-8 w-8 border-red-200 text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button></div></td>
                       </tr>,
-                      isOpen && <tr key={`items-${order.ID_PEDIDO_MI}`} className="bg-[#F8FBFD]"><td colSpan={10} className="p-3"><div className="overflow-x-auto rounded-xl border border-[#D1DEEA] bg-white"><table className="w-full min-w-[1050px] text-[11px]"><thead className="bg-[#F0F5F9] text-[#526D86]"><tr><th className="px-3 py-2 text-left">Cód. produto</th><th className="px-3 py-2 text-left">Descrição do produto</th><th className="px-3 py-2 text-left">Produção mínima</th><th className="px-3 py-2 text-left">Produção máxima</th><th className="px-3 py-2 text-right">Total pedido</th><th className="px-3 py-2 text-right">Preço pedido</th><th className="px-3 py-2 text-right">Sistema</th><th className="px-3 py-2 text-right">Preço sistema</th><th className="px-3 py-2 text-right">Diferença peso</th></tr></thead><tbody>{order.ITENS.map((item) => <tr key={item.ID_PEDIDO_MI_ITEM || `${item.SEQPRODUTO}-${item.ORDEM}`} className="border-t border-[#DFE8F0]"><td className="px-3 py-2 font-black text-[#1B58A0]">{item.SEQPRODUTO || "Manual"}</td><td className="px-3 py-2 font-bold text-[#173D6E]">{item.PRODUTO}</td><td className="px-3 py-2">{formatDate(item.DTA_MIN_PRODUCAO)}</td><td className="px-3 py-2">{formatDate(item.DTA_MAX_PRODUCAO)}</td><td className="px-3 py-2 text-right font-bold">{kg.format(item.PESO_PEDIDO)} kg</td><td className="px-3 py-2 text-right">{item.PRECO_PEDIDO == null ? "-" : money.format(item.PRECO_PEDIDO)}</td><td className="px-3 py-2 text-right font-bold">{kg.format(item.PESO_SISTEMA)} kg</td><td className="px-3 py-2 text-right">{item.PRECO_SISTEMA == null ? "-" : money.format(item.PRECO_SISTEMA)}</td><td className={`px-3 py-2 text-right font-black ${item.DIFERENCA_PESO < 0 ? "text-red-600" : item.DIFERENCA_PESO > 0 ? "text-emerald-700" : "text-[#365675]"}`}>{kg.format(item.DIFERENCA_PESO)} kg</td></tr>)}</tbody></table></div>{order.OBSERVACAO && <p className="mt-2 text-xs font-medium text-[#60758A]"><strong>Observação:</strong> {order.OBSERVACAO}</p>}</td></tr>,
+                      isOpen && <tr key={`items-${order.ID_PEDIDO_MI}`} className="bg-[#F8FBFD]"><td colSpan={10} className="p-3"><div className="overflow-x-auto rounded-xl border border-[#D1DEEA] bg-white"><table className="w-full min-w-[1160px] text-[11px]"><thead className="bg-[#F0F5F9] text-[#526D86]"><tr><th className="px-3 py-2 text-left">Cód. produto</th><th className="px-3 py-2 text-left">Descrição do produto</th><th className="px-3 py-2 text-left">Produção mínima</th><th className="px-3 py-2 text-left">Produção máxima</th><th className="px-3 py-2 text-right">Total pedido</th><th className="px-3 py-2 text-right">Preço pedido</th><th className="px-3 py-2 text-right">Sistema</th><th className="px-3 py-2 text-right">Preço sistema</th><th className="px-3 py-2 text-right">Diferença peso</th><th className="px-3 py-2 text-right">Diferença preço</th></tr></thead><tbody>{order.ITENS.map((item) => { const priceDifference = item.DIFERENCA_PRECO == null ? null : Number(item.DIFERENCA_PRECO); return <tr key={item.ID_PEDIDO_MI_ITEM || `${item.SEQPRODUTO}-${item.ORDEM}`} className="border-t border-[#DFE8F0]"><td className="px-3 py-2 font-black text-[#1B58A0]">{item.SEQPRODUTO || "Manual"}</td><td className="px-3 py-2 font-bold text-[#173D6E]">{item.PRODUTO}</td><td className="px-3 py-2">{formatDate(item.DTA_MIN_PRODUCAO)}</td><td className="px-3 py-2">{formatDate(item.DTA_MAX_PRODUCAO)}</td><td className="px-3 py-2 text-right font-bold">{kg.format(item.PESO_PEDIDO)} kg</td><td className="px-3 py-2 text-right">{item.PRECO_PEDIDO == null ? "-" : money.format(item.PRECO_PEDIDO)}</td><td className="px-3 py-2 text-right font-bold">{kg.format(item.PESO_SISTEMA)} kg</td><td className="px-3 py-2 text-right">{item.PRECO_SISTEMA == null ? "-" : money.format(item.PRECO_SISTEMA)}</td><td className={`px-3 py-2 text-right font-black ${item.DIFERENCA_PESO < 0 ? "text-red-600" : item.DIFERENCA_PESO > 0 ? "text-emerald-700" : "text-[#365675]"}`}>{kg.format(item.DIFERENCA_PESO)} kg</td><td className={`px-3 py-2 text-right font-black ${priceDifference == null || Math.abs(priceDifference) <= 0.0001 ? "text-[#365675]" : "bg-amber-50 text-amber-800"}`}>{priceDifference == null ? "-" : money.format(priceDifference)}</td></tr>; })}</tbody></table></div>{order.OBSERVACAO && <p className="mt-2 text-xs font-medium text-[#60758A]"><strong>Observação:</strong> {order.OBSERVACAO}</p>}</td></tr>,
                     ];
+                      })}
+                    </Fragment>;
                   })}
                 </tbody>
               </table>
             </div>
+            </div>}
+            </>
           )}
         </Card>
       </div>
@@ -693,7 +898,7 @@ export default function PedidosMi() {
                 className="absolute right-3 top-3 h-9 w-9 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
                 title="Copiar consulta"
                 onClick={() => {
-                  void navigator.clipboard.writeText(PEDIDOS_MI_CONSULTA_SQL)
+                  void copyText(PEDIDOS_MI_CONSULTA_SQL)
                     .then(() => toast.success("Consulta copiada."))
                     .catch(() => toast.error("Não foi possível copiar a consulta."));
                 }}
@@ -708,15 +913,32 @@ export default function PedidosMi() {
         </DialogContent>
       </Dialog>
 
+      <NewMiLoadDialog
+        open={creatingLoad}
+        onOpenChange={setCreatingLoad}
+        onSaved={() => void loadPanel(true)}
+      />
+
       <Dialog open={Boolean(form)} onOpenChange={(open) => !open && !saving && setForm(null)}>
         <DialogContent className="max-h-[94vh] max-w-[96vw] overflow-x-hidden overflow-y-auto border-[#C7D7E5] xl:max-w-[96vw] 2xl:max-w-7xl">
-          <DialogHeader><DialogTitle className="flex items-center gap-2 text-xl font-black text-[#123A68]"><Truck className="h-5 w-5" />{form?.id ? "Editar lançamento MI" : "Novo lançamento MI"}</DialogTitle><DialogDescription>Informe o pedido para preencher pelo ERP ou deixe em branco para um lançamento totalmente manual.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2 text-xl font-black text-[#123A68]"><Truck className="h-5 w-5" />{form?.id ? "Editar pedido da carga" : form?.addingToLoad ? "Adicionar pedido à carga" : "Nova carga MI"}</DialogTitle><DialogDescription>{form?.addingToLoad ? "A carga já está preenchida. Informe o próximo pedido e adicione os produtos necessários." : "Crie a carga e informe o primeiro pedido. Depois você poderá continuar adicionando outros pedidos e produtos."}</DialogDescription></DialogHeader>
           {form && <div className="min-w-0 space-y-5">
             <div className="grid gap-3 rounded-xl border border-[#D2DFEA] bg-[#F7FAFD] p-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div><Label>Nº pedido ERP</Label><div className="mt-1.5 flex gap-2"><Input inputMode="numeric" value={form.nropedido} onChange={(event) => setForm({ ...form, nropedido: event.target.value.replace(/\D/g, "") })} placeholder="Opcional" /><Button type="button" onClick={() => void lookupErp()} disabled={!form.nropedido || lookingUp} className="shrink-0 bg-[#1B58A0] hover:bg-[#154781]">{lookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}<span className="ml-2 hidden xl:inline">Buscar</span></Button></div></div>
-              <div><Label>Nome da carga *</Label><Input className="mt-1.5" value={form.nomeCarga} onChange={(event) => setForm({ ...form, nomeCarga: event.target.value })} placeholder="Ex.: BITRUCK VALCIR" /></div>
-              <div><Label>Nº da carga</Label><Input className="mt-1.5" value={form.nrocarga} onChange={(event) => setForm({ ...form, nrocarga: event.target.value })} placeholder="ERP ou manual" /></div>
-              <div><Label>Data de embarque *</Label><Input className="mt-1.5" type="date" value={form.dtaEmbarque} onChange={(event) => setForm({ ...form, dtaEmbarque: event.target.value })} /></div>
+              {form.addingToLoad && <div className="sm:col-span-2 lg:col-span-4 rounded-xl border border-[#B8CADB] bg-white p-4">
+                <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm text-[#365675]">
+                  <span className="font-black text-[#123A68]"><Truck className="mr-2 inline h-4 w-4" />Carga selecionada</span>
+                  <span>Nome: <strong>{form.nomeCarga}</strong></span>
+                  <span>Nº da carga: <strong>{form.nrocarga || "-"}</strong></span>
+                  <span>Embarque: <strong>{formatDate(form.dtaEmbarque)}</strong></span>
+                  <span className="rounded-full bg-[#EAF1F7] px-2.5 py-1 text-[10px] font-black uppercase text-[#1B58A0]">Dados travados</span>
+                </div>
+              </div>}
+              <div><Label>Nº pedido ERP <span className="font-normal text-[#7890A6]">(opcional)</span></Label><div className="mt-1.5 flex gap-2"><Input inputMode="numeric" value={form.nropedido} onChange={(event) => setForm({ ...form, nropedido: event.target.value.replace(/\D/g, "") })} placeholder="Digite ou deixe vazio" /><Button type="button" onClick={() => void lookupErp()} disabled={!form.nropedido || lookingUp} className="shrink-0 bg-[#1B58A0] hover:bg-[#154781]">{lookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}<span className="ml-2 hidden xl:inline">Buscar</span></Button></div><p className="mt-1 text-[10px] font-semibold text-[#60758A]">Pode ficar sem número ou repetir um pedido já utilizado.</p></div>
+              {!form.addingToLoad && <>
+                <div><Label>Nome da carga *</Label><Input className="mt-1.5" value={form.nomeCarga} onChange={(event) => setForm({ ...form, nomeCarga: event.target.value })} placeholder="Ex.: BITRUCK VALCIR" /></div>
+                <div><Label>Nº da carga</Label><Input className="mt-1.5" value={form.nrocarga} onChange={(event) => setForm({ ...form, nrocarga: event.target.value })} placeholder="ERP ou manual" /></div>
+                <div><Label>Data de embarque *</Label><Input className="mt-1.5" type="date" value={form.dtaEmbarque} onChange={(event) => setForm({ ...form, dtaEmbarque: event.target.value })} /></div>
+              </>}
               <div className="relative sm:col-span-2">
                 <Label>Cliente *</Label>
                 <Input
@@ -741,7 +963,7 @@ export default function PedidosMi() {
                         key={client.SEQPESSOA}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => {
-                          setForm((current) => current && ({ ...current, seqcliente: client.SEQPESSOA, cliente: client.NOMERAZAO }));
+                          setForm((current) => current && ({ ...current, seqcliente: client.SEQPESSOA, cliente: client.NOMERAZAO, uf: client.UF || current.uf }));
                           setShowClientOptions(false);
                         }}
                         className="block w-full rounded-md px-3 py-2 text-left text-xs font-semibold text-[#173D6E] hover:bg-[#EDF4FB]"
@@ -762,20 +984,20 @@ export default function PedidosMi() {
                 <table className="w-full table-fixed text-xs">
                   <colgroup>
                     <col className="w-[10%]" />
-                    <col className="w-[15%]" />
-                    <col className="w-[6%]" />
-                    <col className="w-[13%]" />
-                    <col className="w-[13%]" />
-                    <col className="w-[10%]" />
-                    <col className="w-[10%]" />
-                    <col className="w-[8%]" />
+                    <col className="w-[23%]" />
+                    <col className="w-[5%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[7%]" />
                     <col className="w-[10%]" />
                     <col className="w-[5%]" />
                   </colgroup>
                   <thead className="bg-[#F5F8FB] text-[#526C84]"><tr><th className="px-3 py-2 text-left">Cód. produto</th><th className="px-3 py-2 text-left">Descrição</th><th className="px-3 py-2 text-left">Un.</th><th className="px-3 py-2 text-left">Produção mínima</th><th className="px-3 py-2 text-left">Produção máxima</th><th className="px-3 py-2 text-right">Total pedido</th><th className="px-3 py-2 text-right">Preço pedido</th><th className="px-3 py-2 text-right">Sistema</th><th className="px-3 py-2 text-right">Preço sistema</th><th className="w-10" /></tr></thead>
                   <tbody>{form.itens.map((item) => <tr key={item.key} className="border-t border-[#DFE7EF]">
                     <td className="p-1.5 align-top"><Input className="min-w-0 px-2" inputMode="numeric" value={item.seqproduto} onChange={(event) => setForm((current) => current && ({ ...current, itens: current.itens.map((currentItem) => currentItem.key === item.key ? { ...currentItem, seqproduto: event.target.value.replace(/\D/g, ""), produto: "", productLookup: "idle" } : currentItem) }))} onBlur={() => void lookupProduct(item.key)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void lookupProduct(item.key); } }} placeholder="Opcional" /></td>
-                    <td className="p-1.5 align-top"><Input value={item.produto} disabled={item.productLookup === "loading" || Boolean(item.seqproduto)} onChange={(event) => updateItem(item.key, "produto", event.target.value)} placeholder={item.productLookup === "loading" ? "Buscando..." : item.productLookup === "error" ? "Produto não encontrado" : "Descrição do produto"} className={`min-w-0 px-2 ${item.productLookup === "error" ? "border-red-400 bg-red-50 text-red-700" : ""}`} />{item.productLookup === "error" && <span className="mt-1 block text-[10px] font-bold text-red-600">Código não encontrado.</span>}</td>
+                    <td className="p-1.5 align-top"><Textarea rows={2} title={item.produto} value={item.produto} disabled={item.productLookup === "loading"} readOnly={Boolean(item.seqproduto)} onChange={(event) => updateItem(item.key, "produto", event.target.value)} placeholder={item.productLookup === "loading" ? "Buscando nome do produto..." : item.productLookup === "error" ? "Produto não encontrado" : "Descrição do produto"} className={`min-h-12 resize-none px-2 py-1.5 text-xs font-bold leading-4 ${item.productLookup === "error" ? "border-red-400 bg-red-50 text-red-700" : item.productLookup === "found" ? "border-emerald-300 bg-emerald-50 text-[#173D6E]" : ""}`} />{item.productLookup === "error" && <span className="mt-1 block text-[10px] font-bold text-red-600">Código não encontrado.</span>}</td>
                     <td className="p-1.5 align-top"><Input className="min-w-0 px-2" value={item.unidade} onChange={(event) => updateItem(item.key, "unidade", event.target.value.toUpperCase())} /></td>
                     <td className="p-1.5 align-top"><Input className="min-w-0 px-2" type="date" value={item.dtaMinProducao} onChange={(event) => updateItem(item.key, "dtaMinProducao", event.target.value)} /></td>
                     <td className="p-1.5 align-top"><Input className="min-w-0 px-2" type="date" value={item.dtaMaxProducao} onChange={(event) => updateItem(item.key, "dtaMaxProducao", event.target.value)} /></td>
@@ -789,7 +1011,11 @@ export default function PedidosMi() {
               </div>
             </div>
             <div><Label>Observação</Label><Textarea className="mt-1.5" value={form.observacao} onChange={(event) => setForm({ ...form, observacao: event.target.value })} placeholder="Informações adicionais da carga ou do planejamento" /></div>
-            <div className="flex justify-end gap-2 border-t border-[#D5E0EA] pt-4"><Button variant="outline" onClick={() => setForm(null)} disabled={saving}>Cancelar</Button><Button onClick={() => void save()} disabled={saving} className="min-w-36 bg-[#173D6E] font-bold hover:bg-[#102E53]">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Salvar</Button></div>
+            <div className="flex flex-wrap justify-end gap-2 border-t border-[#D5E0EA] pt-4">
+              <Button variant="outline" onClick={() => setForm(null)} disabled={saving}>Cancelar</Button>
+              {!form.id && <Button variant="outline" onClick={() => void save(true)} disabled={saving} className="border-emerald-300 font-bold text-emerald-800 hover:bg-emerald-50"><Plus className="mr-2 h-4 w-4" />Salvar e adicionar outro pedido</Button>}
+              <Button onClick={() => void save(false)} disabled={saving} className="min-w-36 bg-[#173D6E] font-bold hover:bg-[#102E53]">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Salvar pedido</Button>
+            </div>
           </div>}
         </DialogContent>
       </Dialog>
@@ -797,4 +1023,296 @@ export default function PedidosMi() {
       <AlertDialog open={Boolean(removing)} onOpenChange={(open) => !open && setRemoving(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remover este lançamento?</AlertDialogTitle><AlertDialogDescription>{removing ? `${removing.NOME_CARGA} · ${removing.CLIENTE}. O pedido do ERP não será alterado.` : ""}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => void remove()} className="bg-red-600 hover:bg-red-700">Remover</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     </div>
   );
+}
+
+type LoadDraftOrder = {
+  key: string;
+  nropedido: string;
+  seqcliente?: number | null;
+  cliente: string;
+  uf: string;
+  status: PedidoMiStatus;
+  observacao: string;
+  itens: FormItem[];
+  lookingUp: boolean;
+};
+
+type LoadDraft = {
+  nomeCarga: string;
+  nrocarga: string;
+  dtaEmbarque: string;
+  orders: LoadDraftOrder[];
+};
+
+const newLoadDraftOrder = (): LoadDraftOrder => ({
+  key: createItemKey(),
+  nropedido: "",
+  cliente: "",
+  uf: "",
+  status: "PENDENTE",
+  observacao: "",
+  itens: [newItem()],
+  lookingUp: false,
+});
+
+const emptyLoadDraft = (): LoadDraft => ({
+  nomeCarga: "",
+  nrocarga: "",
+  dtaEmbarque: "",
+  orders: [newLoadDraftOrder()],
+});
+
+function NewMiLoadDialog({
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState<LoadDraft>(emptyLoadDraft);
+  const [saving, setSaving] = useState(false);
+  const [activeClientOrder, setActiveClientOrder] = useState<string | null>(null);
+  const [clientOptions, setClientOptions] = useState<PedidoMiCatalogClient[]>([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+
+  const activeClient = draft.orders.find((order) => order.key === activeClientOrder);
+  const activeClientQuery = activeClient?.cliente.trim() || "";
+  const activeClientSequence = activeClient?.seqcliente || null;
+
+  useEffect(() => {
+    if (open) {
+      setDraft(emptyLoadDraft());
+      setActiveClientOrder(null);
+      setClientOptions([]);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !activeClientOrder || activeClientSequence || activeClientQuery.length < 2) {
+      setClientOptions([]);
+      setLoadingClients(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setLoadingClients(true);
+      void pedidosMiApi.getClients(activeClientQuery)
+        .then(setClientOptions)
+        .catch(() => setClientOptions([]))
+        .finally(() => setLoadingClients(false));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [activeClientOrder, activeClientQuery, activeClientSequence, open]);
+
+  const updateOrder = (key: string, values: Partial<LoadDraftOrder>) =>
+    setDraft((current) => ({
+      ...current,
+      orders: current.orders.map((order) => order.key === key ? { ...order, ...values } : order),
+    }));
+
+  const updateDraftItem = (orderKey: string, itemKey: string, values: Partial<FormItem>) =>
+    setDraft((current) => ({
+      ...current,
+      orders: current.orders.map((order) => order.key === orderKey ? {
+        ...order,
+        itens: order.itens.map((item) => item.key === itemKey ? { ...item, ...values } : item),
+      } : order),
+    }));
+
+  const lookupDraftOrder = async (orderKey: string) => {
+    const order = draft.orders.find((item) => item.key === orderKey);
+    const orderNumber = Number(order?.nropedido);
+    if (!Number.isInteger(orderNumber) || orderNumber <= 0) {
+      toast.error("Informe um número de pedido válido.");
+      return;
+    }
+    updateOrder(orderKey, { lookingUp: true });
+    try {
+      const erp = await pedidosMiApi.getErpOrder(orderNumber);
+      setDraft((current) => ({
+        ...current,
+        nrocarga: current.nrocarga || String(erp.NROCARGA || ""),
+        dtaEmbarque: current.dtaEmbarque || inputDate(erp.DTAEMBARQUE),
+        orders: current.orders.map((currentOrder) => currentOrder.key === orderKey ? {
+          ...currentOrder,
+          seqcliente: erp.SEQCLIENTE,
+          cliente: erp.CLIENTE || currentOrder.cliente,
+          uf: erp.UF || currentOrder.uf,
+          lookingUp: false,
+          itens: erp.ITENS.map((item) => ({
+            key: createItemKey(),
+            seqproduto: String(item.SEQPRODUTO),
+            produto: item.PRODUTO,
+            unidade: item.UNIDADE || "KG",
+            pesoPedido: numberInput(item.PESO_SISTEMA),
+            precoPedido: numberInput(item.PRECO_SISTEMA),
+            dtaMinProducao: inputDate(item.DTAMINPRODUCAO),
+            dtaMaxProducao: inputDate(item.DTAMAXPRODUCAO),
+            pesoSistema: Number(item.PESO_SISTEMA || 0),
+            precoSistema: item.PRECO_SISTEMA,
+            productLookup: "found",
+          })),
+        } : currentOrder),
+      }));
+      toast.success(`Pedido ${orderNumber} carregado com os produtos.`);
+    } catch (error) {
+      updateOrder(orderKey, { lookingUp: false });
+      toast.error(error instanceof Error ? error.message : "Pedido não encontrado no ERP.");
+    }
+  };
+
+  const lookupDraftProduct = async (orderKey: string, itemKey: string) => {
+    const item = draft.orders.find((order) => order.key === orderKey)?.itens.find((current) => current.key === itemKey);
+    const productCode = Number(item?.seqproduto);
+    if (!Number.isInteger(productCode) || productCode <= 0) return;
+    updateDraftItem(orderKey, itemKey, { productLookup: "loading" });
+    try {
+      const product = await pedidosMiApi.getProduct(productCode);
+      updateDraftItem(orderKey, itemKey, {
+        produto: product.PRODUTO,
+        unidade: product.UNIDADE || "KG",
+        productLookup: "found",
+      });
+    } catch (error) {
+      updateDraftItem(orderKey, itemKey, { produto: "", productLookup: "error" });
+      toast.error(error instanceof Error ? error.message : `Produto ${productCode} não encontrado.`);
+    }
+  };
+
+  const saveLoad = async () => {
+    if (!draft.nomeCarga.trim() || !draft.dtaEmbarque) {
+      toast.error("Informe o nome da carga e a data de embarque.");
+      return;
+    }
+    const invalidOrder = draft.orders.find((order) => !order.cliente.trim() || !order.itens.some((item) => item.produto.trim()));
+    if (invalidOrder) {
+      toast.error("Todos os pedidos precisam ter cliente e ao menos um produto válido.");
+      return;
+    }
+    setSaving(true);
+    let savedOrders = 0;
+    try {
+      for (const order of draft.orders) {
+        const items = order.itens.filter((item) => item.produto.trim());
+        await pedidosMiApi.create({
+          nome_carga: draft.nomeCarga.trim(),
+          nropedido: order.nropedido ? Number(order.nropedido) : null,
+          nrocarga: draft.nrocarga.trim() || null,
+          dta_embarque: draft.dtaEmbarque,
+          seqcliente: order.seqcliente,
+          cliente: order.cliente.trim(),
+          uf: order.uf.trim() || null,
+          status: order.status,
+          observacao: order.observacao.trim() || null,
+          itens: items.map((item, index) => ({
+            seqproduto: item.seqproduto ? Number(item.seqproduto) : null,
+            produto: item.produto.trim(),
+            unidade: item.unidade || "KG",
+            peso_pedido: parseNumber(item.pesoPedido),
+            preco_pedido: item.precoPedido.trim() ? parseNumber(item.precoPedido) : null,
+            dta_min_producao: item.dtaMinProducao || null,
+            dta_max_producao: item.dtaMaxProducao || null,
+            ordem: index + 1,
+          })),
+        });
+        savedOrders += 1;
+      }
+      toast.success(`Carga criada com ${savedOrders} pedido(s).`);
+      onOpenChange(false);
+      onSaved();
+    } catch (error) {
+      const prefix = savedOrders ? `${savedOrders} pedido(s) foram salvos. ` : "";
+      toast.error(prefix + (error instanceof Error ? error.message : "Não foi possível criar a carga."));
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <Dialog open={open} onOpenChange={(nextOpen) => !saving && onOpenChange(nextOpen)}>
+    <DialogContent className="max-h-[95vh] max-w-[98vw] overflow-y-auto border-[#C7D7E5] 2xl:max-w-[1540px]">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-xl font-black text-[#123A68]"><Truck className="h-5 w-5" />Nova carga MI</DialogTitle>
+        <DialogDescription>Cadastre a carga completa: adicione os pedidos e, dentro de cada pedido, todos os produtos.</DialogDescription>
+      </DialogHeader>
+
+      <div className="grid gap-3 rounded-xl border border-[#BFD0DF] bg-[#EAF1F7] p-4 sm:grid-cols-3">
+        <div><Label>Nome da carga *</Label><Input className="mt-1.5 bg-white" value={draft.nomeCarga} onChange={(event) => setDraft((current) => ({ ...current, nomeCarga: event.target.value }))} placeholder="Ex.: BITRUCK VALCIR" /></div>
+        <div><Label>Nº da carga</Label><Input className="mt-1.5 bg-white" value={draft.nrocarga} onChange={(event) => setDraft((current) => ({ ...current, nrocarga: event.target.value }))} placeholder="Preenchido pelo ERP ou manual" /></div>
+        <div><Label>Data de embarque *</Label><Input className="mt-1.5 bg-white" type="date" value={draft.dtaEmbarque} onChange={(event) => setDraft((current) => ({ ...current, dtaEmbarque: event.target.value }))} /></div>
+      </div>
+
+      <div className="space-y-4">
+        {draft.orders.map((order, orderIndex) => <section key={order.key} className="overflow-hidden rounded-xl border border-[#BFD0DF] bg-white">
+          <header className="flex items-center justify-between border-b border-[#D4E0EA] bg-[#EAF1F7] px-4 py-2.5 text-[#123A68]">
+            <div className="font-black">Pedido {orderIndex + 1}</div>
+            <Button type="button" size="sm" variant="ghost" disabled={draft.orders.length === 1} onClick={() => setDraft((current) => ({ ...current, orders: current.orders.filter((item) => item.key !== order.key) }))} className="h-8 text-red-600 hover:bg-red-50 hover:text-red-700"><Trash2 className="mr-1.5 h-4 w-4" />Remover pedido</Button>
+          </header>
+          <div className="grid gap-3 border-b border-[#D4E0EA] bg-[#F6F9FC] p-3 sm:grid-cols-2 lg:grid-cols-[0.8fr_1.4fr_0.4fr_0.7fr]">
+            <div><Label>Nº pedido ERP <span className="font-normal text-[#7890A6]">(opcional)</span></Label><div className="mt-1.5 flex gap-1.5"><Input inputMode="numeric" value={order.nropedido} onChange={(event) => updateOrder(order.key, { nropedido: event.target.value.replace(/\D/g, "") })} placeholder="Digite ou deixe vazio" /><Button type="button" size="icon" disabled={!order.nropedido || order.lookingUp} onClick={() => void lookupDraftOrder(order.key)} className="shrink-0 bg-[#1B58A0] hover:bg-[#154781]">{order.lookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}</Button></div><p className="mt-1 text-[10px] font-semibold text-[#60758A]">Pode repetir ou ficar sem número.</p></div>
+            <div className="relative">
+              <Label>Cliente *</Label>
+              <Input
+                className="mt-1.5"
+                value={order.cliente}
+                onFocus={() => setActiveClientOrder(order.key)}
+                onBlur={() => window.setTimeout(() => setActiveClientOrder((current) => current === order.key ? null : current), 180)}
+                onChange={(event) => {
+                  updateOrder(order.key, { cliente: event.target.value, seqcliente: null });
+                  setActiveClientOrder(order.key);
+                }}
+                placeholder="Digite o código ou nome do cliente"
+              />
+              {order.seqcliente && <p className="mt-1 text-[10px] font-bold text-emerald-700">Cliente selecionado: {order.seqcliente} - {order.cliente}</p>}
+              {activeClientOrder === order.key && !order.seqcliente && order.cliente.trim().length >= 2 && <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-[#BFD0DF] bg-white p-1 shadow-xl">
+                {loadingClients ? <div className="flex items-center px-3 py-3 text-xs text-[#60758A]"><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Buscando clientes...</div> : clientOptions.length ? clientOptions.map((client) => <button
+                  type="button"
+                  key={client.SEQPESSOA}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    updateOrder(order.key, {
+                      seqcliente: client.SEQPESSOA,
+                      cliente: client.NOMERAZAO,
+                      uf: client.UF || order.uf,
+                    });
+                    setActiveClientOrder(null);
+                    setClientOptions([]);
+                  }}
+                  className="block w-full rounded-md px-3 py-2 text-left text-xs font-semibold text-[#173D6E] hover:bg-[#EDF4FB]"
+                ><strong>{client.SEQPESSOA}</strong> - {client.NOMERAZAO}{client.UF ? <span className="ml-2 text-[#7890A6]">({client.UF})</span> : null}</button>) : <p className="px-3 py-3 text-xs font-semibold text-amber-700">Nenhum cliente encontrado.</p>}
+              </div>}
+            </div>
+            <div><Label>UF</Label><Input className="mt-1.5" maxLength={2} value={order.uf} onChange={(event) => updateOrder(order.key, { uf: event.target.value.toUpperCase() })} /></div>
+            <div><Label>Status</Label><Select value={order.status} onValueChange={(value: PedidoMiStatus) => updateOrder(order.key, { status: value })}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDENTE">Pendente</SelectItem><SelectItem value="PROGRAMADO">Programado</SelectItem><SelectItem value="CARREGADO">Carregado</SelectItem><SelectItem value="CANCELADO">Cancelado</SelectItem></SelectContent></Select></div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1050px] table-fixed text-[11px]">
+              <thead className="bg-[#EAF1F7] text-[#526C84]"><tr><th className="w-[9%] px-2 py-2 text-left">Cód.</th><th className="w-[29%] px-2 py-2 text-left">Descrição do produto</th><th className="w-[6%] px-2 py-2 text-left">Un.</th><th className="w-[10%] px-2 py-2 text-left">Produção mínima</th><th className="w-[10%] px-2 py-2 text-left">Produção máxima</th><th className="w-[10%] px-2 py-2 text-right">Total pedido</th><th className="w-[10%] px-2 py-2 text-right">Preço pedido</th><th className="w-[9%] px-2 py-2 text-right">Sistema</th><th className="w-[7%]" /></tr></thead>
+              <tbody>{order.itens.map((item) => <tr key={item.key} className="border-t border-[#DFE7EF]">
+                <td className="p-1.5"><Input inputMode="numeric" value={item.seqproduto} onChange={(event) => updateDraftItem(order.key, item.key, { seqproduto: event.target.value.replace(/\D/g, ""), produto: "", productLookup: "idle" })} onBlur={() => void lookupDraftProduct(order.key, item.key)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void lookupDraftProduct(order.key, item.key); } }} className="h-8 px-2" placeholder="Código" /></td>
+                <td className="p-1.5"><Textarea rows={2} title={item.produto} value={item.produto} disabled={item.productLookup === "loading"} readOnly={Boolean(item.seqproduto)} onChange={(event) => updateDraftItem(order.key, item.key, { produto: event.target.value })} className={`min-h-12 resize-none px-2 py-1.5 text-xs font-bold leading-4 ${item.productLookup === "error" ? "border-red-400 bg-red-50" : item.productLookup === "found" ? "border-emerald-300 bg-emerald-50 text-[#173D6E]" : ""}`} placeholder={item.productLookup === "loading" ? "Buscando nome do produto..." : item.productLookup === "error" ? "Produto não encontrado" : "Nome automático ou manual"} /></td>
+                <td className="p-1.5"><Input value={item.unidade} onChange={(event) => updateDraftItem(order.key, item.key, { unidade: event.target.value.toUpperCase() })} className="h-8 px-2" /></td>
+                <td className="p-1.5"><Input type="date" value={item.dtaMinProducao} onChange={(event) => updateDraftItem(order.key, item.key, { dtaMinProducao: event.target.value })} className="h-8 px-2" /></td>
+                <td className="p-1.5"><Input type="date" value={item.dtaMaxProducao} onChange={(event) => updateDraftItem(order.key, item.key, { dtaMaxProducao: event.target.value })} className="h-8 px-2" /></td>
+                <td className="p-1.5"><Input inputMode="decimal" value={item.pesoPedido} onChange={(event) => updateDraftItem(order.key, item.key, { pesoPedido: event.target.value })} className="h-8 px-2 text-right font-bold" /></td>
+                <td className="p-1.5"><Input inputMode="decimal" value={item.precoPedido} onChange={(event) => updateDraftItem(order.key, item.key, { precoPedido: event.target.value })} className="h-8 px-2 text-right" /></td>
+                <td className="px-2 py-2 text-right font-black text-[#173D6E]">{kg.format(item.pesoSistema)} kg</td>
+                <td className="px-1 py-1.5 text-center"><Button type="button" size="icon" variant="ghost" disabled={order.itens.length === 1} onClick={() => updateOrder(order.key, { itens: order.itens.filter((current) => current.key !== item.key) })} className="h-8 w-8 text-red-600"><X className="h-4 w-4" /></Button></td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+          <div className="flex flex-col gap-2 border-t border-[#D4E0EA] bg-[#F8FAFC] p-3 sm:flex-row sm:items-center sm:justify-between">
+            <Button type="button" size="sm" variant="outline" onClick={() => updateOrder(order.key, { itens: [...order.itens, newItem()] })} className="border-[#AFC5D8] text-[#173D6E]"><Plus className="mr-1.5 h-4 w-4" />Adicionar produto</Button>
+            <Input value={order.observacao} onChange={(event) => updateOrder(order.key, { observacao: event.target.value })} placeholder="Observação do pedido" className="sm:max-w-md" />
+          </div>
+        </section>)}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#D4E0EA] pt-4">
+        <Button type="button" variant="outline" onClick={() => setDraft((current) => ({ ...current, orders: [...current.orders, newLoadDraftOrder()] }))} disabled={saving} className="border-emerald-300 font-bold text-emerald-800 hover:bg-emerald-50"><Plus className="mr-2 h-4 w-4" />Adicionar outro pedido</Button>
+        <div className="flex gap-2"><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button><Button type="button" onClick={() => void saveLoad()} disabled={saving} className="min-w-44 bg-[#173D6E] font-bold hover:bg-[#102E53]">{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Salvar carga completa</Button></div>
+      </div>
+    </DialogContent>
+  </Dialog>;
 }

@@ -66,8 +66,16 @@ export async function exportPedidosMiPdf(pedidos: PedidoMi[]) {
     align: "right",
   });
 
-  const rows = pedidos.flatMap((pedido) =>
-    pedido.ITENS.map((item, index) => [
+  const rows = pedidos.flatMap((pedido) => {
+    const plannedTotal = pedido.ITENS.reduce(
+      (sum, item) => sum + Number(item.PESO_PEDIDO || 0),
+      0,
+    );
+    const systemTotal = pedido.ITENS.reduce(
+      (sum, item) => sum + Number(item.PESO_SISTEMA || 0),
+      0,
+    );
+    const itemRows = pedido.ITENS.map((item, index) => [
       index === 0 ? pedido.NOME_CARGA : "",
       index === 0 ? String(pedido.NROPEDIDO || "-") : "",
       index === 0 ? pedido.CLIENTE : "",
@@ -79,9 +87,24 @@ export async function exportPedidosMiPdf(pedidos: PedidoMi[]) {
       `${weight.format(Number(item.PESO_SISTEMA || 0))} kg`,
       item.PRECO_SISTEMA == null ? "-" : currency.format(item.PRECO_SISTEMA),
       `${weight.format(Number(item.DIFERENCA_PESO || 0))} kg`,
+      item.DIFERENCA_PRECO == null ? "-" : currency.format(item.DIFERENCA_PRECO),
       index === 0 ? pedido.STATUS : "",
-    ]),
-  );
+    ]);
+    return [
+      ...itemRows,
+      [
+        "", "", "", "", "",
+        `TOTAL DO PEDIDO ${pedido.NROPEDIDO || "MANUAL"}`,
+        `${weight.format(plannedTotal)} kg`,
+        "",
+        `${weight.format(systemTotal)} kg`,
+        "",
+        `${weight.format(systemTotal - plannedTotal)} kg`,
+        "",
+        "",
+      ],
+    ];
+  });
 
   autoTable(doc, {
     startY: 28,
@@ -89,7 +112,7 @@ export async function exportPedidosMiPdf(pedidos: PedidoMi[]) {
     head: [[
       "Carga", "Nº pedido", "Cliente", "Embarque", "Cód. produto",
       "Descrição do produto", "Total pedido", "Preço pedido", "Sistema",
-      "Preço sistema", "Diferença peso", "Status",
+      "Preço sistema", "Diferença peso", "Diferença preço", "Status",
     ]],
     body: rows,
     theme: "grid",
@@ -110,24 +133,39 @@ export async function exportPedidosMiPdf(pedidos: PedidoMi[]) {
     },
     alternateRowStyles: { fillColor: [246, 249, 252] },
     columnStyles: {
-      0: { cellWidth: 24 },
-      1: { cellWidth: 15, halign: "center" },
-      2: { cellWidth: 35 },
-      3: { cellWidth: 18, halign: "center" },
-      4: { cellWidth: 17, halign: "center" },
-      5: { cellWidth: 47 },
-      6: { cellWidth: 19, halign: "right" },
-      7: { cellWidth: 20, halign: "right" },
-      8: { cellWidth: 18, halign: "right" },
-      9: { cellWidth: 20, halign: "right" },
-      10: { cellWidth: 20, halign: "right" },
-      11: { cellWidth: 18, halign: "center" },
+      0: { cellWidth: 20 },
+      1: { cellWidth: 14, halign: "center" },
+      2: { cellWidth: 30 },
+      3: { cellWidth: 16, halign: "center" },
+      4: { cellWidth: 14, halign: "center" },
+      5: { cellWidth: 38 },
+      6: { cellWidth: 17, halign: "right" },
+      7: { cellWidth: 18, halign: "right" },
+      8: { cellWidth: 17, halign: "right" },
+      9: { cellWidth: 18, halign: "right" },
+      10: { cellWidth: 17, halign: "right" },
+      11: { cellWidth: 18, halign: "right" },
+      12: { cellWidth: 15, halign: "center" },
     },
     didParseCell: (data) => {
-      if (data.section !== "body" || data.column.index !== 10) return;
+      if (data.section !== "body") return;
+      const rawRow = data.row.raw as unknown[];
+      const isTotalRow = String(rawRow?.[5] || "").startsWith("TOTAL DO PEDIDO");
+      if (isTotalRow) {
+        data.cell.styles.fillColor = [230, 238, 246];
+        data.cell.styles.textColor = [23, 61, 110];
+        data.cell.styles.fontStyle = "bold";
+        return;
+      }
+      if (data.column.index !== 10 && data.column.index !== 11) return;
       const numeric = Number(String(data.cell.raw).replace(/[^\d,-]/g, "").replace(".", "").replace(",", "."));
-      if (numeric < 0) data.cell.styles.textColor = [198, 40, 40];
-      if (numeric > 0) data.cell.styles.textColor = [4, 128, 93];
+      if (data.column.index === 11 && numeric !== 0) {
+        data.cell.styles.fillColor = [255, 247, 225];
+        data.cell.styles.textColor = [146, 92, 10];
+      } else {
+        if (numeric < 0) data.cell.styles.textColor = [198, 40, 40];
+        if (numeric > 0) data.cell.styles.textColor = [4, 128, 93];
+      }
       data.cell.styles.fontStyle = "bold";
     },
     didDrawPage: () => {

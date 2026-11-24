@@ -57,6 +57,7 @@ export interface PedidoMiCatalogProduct {
 export interface PedidoMiCatalogClient {
   SEQPESSOA: number;
   NOMERAZAO: string;
+  UF?: string | null;
 }
 
 export interface PedidoMiErp {
