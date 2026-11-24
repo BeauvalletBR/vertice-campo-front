@@ -1,7 +1,7 @@
 import { getAuthHeaders, getBackendUrl } from "@/services/api";
 
 export interface ContractAllocationDetail {
-  ORIGEM: "ORDEM_PRODUCAO" | "RESERVA_PEDIDO" | "MANUAL" | "PLANILHA" | "EXPEDICAO" | "MAIS_6_MESES";
+  ORIGEM: "ORDEM_PRODUCAO" | "RESERVA_PEDIDO" | "MANUAL" | "PLANILHA" | "FILA" | "EXPEDICAO" | "MAIS_6_MESES";
   NUMERO_ORDEM?: number | string | null;
   NROCARGA?: number | string | null;
   NROPEDIDO?: number | string | null;
@@ -51,7 +51,7 @@ export interface ContractProduct {
   LIMITE_RESERVA: number; SALDO_CONTRATO: number; VERSAO_RESERVA?: number | null;
   VERSAO_RESERVA_6_MESES?: number | null;
   PESO_MAIS_6_MESES_ERP?: number; PESO_DISPONIVEL_REGULAR?: number;
-  ORIGEM_RESERVA?: "MANUAL" | "PLANILHA"; SUBGRUPO_GER_REND?: string | null;
+  ORIGEM_RESERVA?: "MANUAL" | "PLANILHA" | "FILA"; SUBGRUPO_GER_REND?: string | null;
   MAT_PRIMA?: string | null; RESFCONG?: string | null; PROPORCAO_CORTE?: number | null;
   META_PRODUTO?: number | null;
   VALIDADE?: number | null; TIPOVALIDADE?: "D" | "M" | "A" | null;
@@ -183,6 +183,21 @@ export interface ContractsPanelResponse {
   expedicao_configurada?: boolean;
   reservas_pedidos_configurada?: boolean;
   pesos_analiticos_configurados?: boolean;
+  fila_produto_configurada?: boolean;
+  fila_produtos?: ContractProductQueueItem[];
+}
+
+export interface ContractProductQueueItem {
+  ID_FILA_PRODUTO: number;
+  SEQPRODUTO: number;
+  SEQCONTRATO: number;
+  POSICAO: number;
+  STATUS: "ATIVO" | "CONCLUIDO";
+  VERSAO: number;
+  CRIADO_EM?: string | null;
+  CRIADO_POR_NOME?: string | null;
+  ATUALIZADO_EM?: string | null;
+  ATUALIZADO_POR_NOME?: string | null;
 }
 
 export interface ContractConfigPayload {
@@ -245,6 +260,10 @@ export const contractsApi = {
   },
   setDisregarded: (payload: { seqcontrato: number; desconsiderado: boolean; observacao?: string | null; versao: number | null }) => request<{ success: boolean; message: string }>("/contratos/desconsiderar", { method: "PUT", body: JSON.stringify(payload) }),
   saveReservation: (payload: { seqcontrato: number; seqproduto: number; peso_reservado: number; versao: number | null }) => request<{ success: boolean; message: string }>("/contratos/reserva", { method: "PUT", body: JSON.stringify(payload) }),
+  addProductQueue: (payload: { seqproduto: number; seqcontrato: number }) => request<{ success: boolean; message: string; item: ContractProductQueueItem }>("/contratos/fila-produto", { method: "POST", body: JSON.stringify(payload) }),
+  moveProductQueue: (id: number, payload: { direcao: "CIMA" | "BAIXO"; versao: number | null }) => request<{ success: boolean; message: string }>(`/contratos/fila-produto/${id}/mover`, { method: "PUT", body: JSON.stringify(payload) }),
+  removeProductQueue: (id: number, versao: number | null) => request<{ success: boolean; message: string }>(`/contratos/fila-produto/${id}${versao == null ? "" : `?versao=${versao}`}`, { method: "DELETE" }),
+  processProductQueue: (seqproduto?: number) => request<{ success: boolean; alocacoes: number; peso_alocado: number; erros?: string[]; message: string }>("/contratos/fila-produto/processar", { method: "POST", body: JSON.stringify({ seqproduto: seqproduto ?? null }) }),
   saveAgedReservation: (payload: { seqcontrato: number; seqproduto: number; peso_reservado: number; versao: number | null }) => request<{ success: boolean; message: string }>("/contratos/reserva-6-meses", { method: "PUT", body: JSON.stringify(payload) }),
   saveStockTreatment: (payload: { seqproduto: number; situacao?: "SEPARADO" | "DISPONIVEL" | "REPROCESSO"; data_reprocesso?: string | null; sem_venda?: boolean; versao?: number | null }) => request<{ success: boolean; message: string }>("/contratos/estoque/tratamento", { method: "PUT", body: JSON.stringify(payload) }),
   saveStockLotTreatment: (payload: { seqproduto: number; data_producao: string; lote?: string | null; seqembalagem?: string | number | null; peso_referencia: number; situacao: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR"; data_reprocesso?: string | null; observacao?: string | null; versao?: number | null }) => request<{ success: boolean; message: string; chave_lote: string }>("/contratos/estoque/lote/tratamento", { method: "PUT", body: JSON.stringify(payload) }),

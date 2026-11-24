@@ -125,9 +125,9 @@ export async function exportContractsPlanningToExcel({
         sold,
         allocated,
         allocated - sold,
-        productIndex === 0 ? isoWeek(contract.DTA_EMBARQUE_ERP) : null,
-        productIndex === 0 ? parseDate(contract.DTA_EMBARQUE_PLANEJADA) : null,
-        productIndex === 0 ? isoWeek(contract.DTA_EMBARQUE_PLANEJADA) : null,
+        isoWeek(contract.DTA_EMBARQUE_ERP),
+        parseDate(contract.DTA_EMBARQUE_PLANEJADA),
+        isoWeek(contract.DTA_EMBARQUE_PLANEJADA),
         productStatus(contract, allocated, sold),
         productIndex === 0 ? contract.OBSERVACAO || "" : "",
       ];
@@ -206,23 +206,25 @@ export async function exportContractsPlanningToExcel({
     cell.alignment = { horizontal: "center", vertical: "middle" };
     cell.border = border;
   });
-  stock.forEach((item) => {
-    const row = stockSheet.addRow({
-      produto: item.SEQPRODUTO,
-      descricao: item.DESCRPRODUTO,
-      erp: asNumber(item.PESODISPONIVEL),
-      op: asNumber(item.PESO_ATRELADO_ORDEM),
-      manual: asNumber(item.PESO_RESERVADO_VERTICE),
-      livre: asNumber(item.PESO_LIVRE_VERTICE),
-      vendido: asNumber(item.PESO_VENDIDO_ATIVO),
-      semVenda: asNumber(item.ESTOQUE_SEM_VENDA),
+  [...stock]
+    .sort((first, second) => asNumber(second.PESO_LIVRE_VERTICE) - asNumber(first.PESO_LIVRE_VERTICE))
+    .forEach((item) => {
+      const row = stockSheet.addRow({
+        produto: item.SEQPRODUTO,
+        descricao: item.DESCRPRODUTO,
+        erp: asNumber(item.PESODISPONIVEL),
+        op: asNumber(item.PESO_ATRELADO_ORDEM),
+        manual: asNumber(item.PESO_RESERVADO_VERTICE),
+        livre: asNumber(item.PESO_LIVRE_VERTICE),
+        vendido: asNumber(item.PESO_VENDIDO_ATIVO),
+        semVenda: asNumber(item.ESTOQUE_SEM_VENDA),
+      });
+      row.font = { name: "Arial", size: 9 };
+      row.eachCell({ includeEmpty: true }, (cell, column) => {
+        cell.border = border;
+        if (column >= 3) cell.numFmt = '#,##0.000 "kg"';
+      });
     });
-    row.font = { name: "Arial", size: 9 };
-    row.eachCell({ includeEmpty: true }, (cell, column) => {
-      cell.border = border;
-      if (column >= 3) cell.numFmt = '#,##0.000 "kg"';
-    });
-  });
   stockSheet.autoFilter = `A1:H${Math.max(1, stockSheet.rowCount)}`;
 
   const withoutSaleSheet = workbook.addWorksheet("ESTOQUE SEM VENDA", {
@@ -249,7 +251,7 @@ export async function exportContractsPlanningToExcel({
   withoutSaleSheet.getRow(1).height = 32;
   stock
     .filter((item) => asNumber(item.ESTOQUE_SEM_VENDA) > 0 && asNumber(item.PESO_LIVRE_VERTICE) > 0)
-    .sort((first, second) => asNumber(second.ESTOQUE_SEM_VENDA) - asNumber(first.ESTOQUE_SEM_VENDA))
+    .sort((first, second) => asNumber(second.PESODISPONIVEL) - asNumber(first.PESODISPONIVEL))
     .forEach((item) => {
       const row = withoutSaleSheet.addRow({
         produto: item.SEQPRODUTO,

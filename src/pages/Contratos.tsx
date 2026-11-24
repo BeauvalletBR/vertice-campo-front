@@ -22,6 +22,7 @@ import {
   LockKeyhole,
   Minus,
   Pencil,
+  Plus,
   PackageSearch,
   RefreshCw,
   RotateCcw,
@@ -59,6 +60,7 @@ import {
 } from "@/components/ui/table";
 import {
   type ContractProduct,
+  type ContractProductQueueItem,
   type ContractStock,
   type ContractStockLot,
   type ContractsPanelResponse,
@@ -95,6 +97,25 @@ const formatDateTime = (value: string | null | undefined) => {
     ? formatDate(value)
     : parsed.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 };
+
+const latestManualAllocationDetail = (product: ContractProduct) =>
+  [...(product.DETALHES_ATRELAMENTO || [])]
+    .filter((detail) => detail.EDITAVEL && Boolean(detail.DATA_RENDIMENTO || detail.DATA_INICIO || detail.DATA_EMBARQUE))
+    .sort((first, second) => {
+      const firstDate = new Date(first.DATA_RENDIMENTO || first.DATA_INICIO || first.DATA_EMBARQUE || 0).getTime();
+      const secondDate = new Date(second.DATA_RENDIMENTO || second.DATA_INICIO || second.DATA_EMBARQUE || 0).getTime();
+      return secondDate - firstDate;
+    })[0] || null;
+
+const allocationDetailDate = (detail: ContractProduct["DETALHES_ATRELAMENTO"][number] | null) =>
+  detail?.DATA_RENDIMENTO || detail?.DATA_INICIO || detail?.DATA_EMBARQUE || null;
+
+const releasedOldStockWeight = (item: ContractStock) => Math.min(
+  Math.max(0, Number(item.PESO_LIVRE_VERTICE || 0)),
+  (item.LOTES_ALOCAVEIS || item.LOTES_LIVRES || [])
+    .filter((lot) => lot.DECISAO_LOTE === "DISPONIVEL" || lot.SITUACAO_VALIDADE === "ACEITO_EXCECAO")
+    .reduce((sum, lot) => sum + Math.max(0, Number(lot.PESO_LIVRE_ESTIMADO || 0)), 0),
+);
 
 const inputDate = (value: string | null | undefined) =>
   value ? String(value).slice(0, 10) : "";
@@ -418,8 +439,10 @@ export default function Contratos() {
   const syncStock = async () => {
     setSyncingStock(true);
     try {
+      await contractsApi.getPanel(true);
+      const queueResult = await contractsApi.processProductQueue();
       setData(await contractsApi.getPanel(true));
-      toast.success("Estoque e ordens de produção sincronizados.");
+      toast.success(queueResult.peso_alocado > 0 ? queueResult.message : "Estoque, ordens e filas sincronizados.");
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -764,6 +787,67 @@ export default function Contratos() {
     }
   };
 
+  const refreshAfterQueueChange = async (productId: number, message: string) => {
+    const result = await contractsApi.processProductQueue(productId);
+    toast.success(result.peso_alocado > 0 ? result.message : message);
+    await loadPanel(true);
+  };
+
+  const addToProductQueue = async (productId: number, contractId: number) => {
+    const key = `queue-add-${productId}-${contractId}`;
+    setSaving(key);
+    try {
+      const result = await contractsApi.addProductQueue({ seqproduto: productId, seqcontrato: contractId });
+      setData((current) => current && ({
+        ...current,
+        fila_produtos: [
+          ...(current.fila_produtos || []).filter((item) => !(
+            item.SEQPRODUTO === productId && item.SEQCONTRATO === contractId
+          )),
+          result.item,
+        ],
+      }));
+      toast.success(result.message);
+      void refreshAfterQueueChange(productId, "Fila processada.").catch((error) => {
+        toast.error(errorMessage(error));
+        void loadPanel(true);
+      });
+    } catch (error) {
+      toast.error(errorMessage(error));
+      await loadPanel(true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const moveProductQueue = async (item: ContractProductQueueItem, direction: "CIMA" | "BAIXO") => {
+    setSaving(`queue-move-${item.ID_FILA_PRODUTO}`);
+    try {
+      const result = await contractsApi.moveProductQueue(item.ID_FILA_PRODUTO, { direcao: direction, versao: item.VERSAO });
+      toast.success(result.message);
+      await loadPanel(true);
+    } catch (error) {
+      toast.error(errorMessage(error));
+      await loadPanel(true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const removeFromProductQueue = async (item: ContractProductQueueItem) => {
+    setSaving(`queue-remove-${item.ID_FILA_PRODUTO}`);
+    try {
+      const result = await contractsApi.removeProductQueue(item.ID_FILA_PRODUTO, item.VERSAO);
+      toast.success(result.message);
+      await loadPanel(true);
+    } catch (error) {
+      toast.error(errorMessage(error));
+      await loadPanel(true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const saveStockTreatment = async (
     item: ContractStock,
     changes: { situacao?: "SEPARADO" | "DISPONIVEL" | "REPROCESSO"; data_reprocesso?: string | null; sem_venda?: boolean },
@@ -1027,6 +1111,11 @@ export default function Contratos() {
             onExpedition={setExpeditionContract}
             onExport={exportPlanning}
             exporting={exporting}
+            onOpenAllocation={() => {
+              setPreferredAllocationContractId(null);
+              setSelectedStockProduct(null);
+              navigateToWorkspace("ALOCACAO", "/contratos/alocacao");
+            }}
             onAllocate={(productId, contractId) => {
               setPreferredAllocationContractId(contractId);
               setSelectedStockProduct(productId);
@@ -1160,6 +1249,11 @@ export default function Contratos() {
             onSaveTreatment={saveStockTreatment}
             agedConfigured={Boolean(data?.estoque_6m_configurado)}
             lotTreatmentConfigured={Boolean(data?.estoque_lote_acao_configurado)}
+            queueConfigured={Boolean(data?.fila_produto_configurada)}
+            queueItems={data?.fila_produtos || []}
+            onAddQueue={addToProductQueue}
+            onMoveQueue={moveProductQueue}
+            onRemoveQueue={removeFromProductQueue}
           />
         </div>
 
@@ -1259,6 +1353,7 @@ interface ContractsManagementLayoutProps {
   onExpedition: (contract: ExportContract) => void;
   onExport: () => Promise<void>;
   exporting: boolean;
+  onOpenAllocation: () => void;
   onAllocate: (productId: number, contractId: number) => void;
 }
 
@@ -1288,6 +1383,7 @@ function ContractsManagementLayout({
   onExpedition,
   onExport,
   exporting,
+  onOpenAllocation,
   onAllocate: openAllocation,
 }: ContractsManagementLayoutProps) {
   const [productFilter, setProductFilter] = useState("");
@@ -1409,6 +1505,21 @@ function ContractsManagementLayout({
         ) : <div className="py-12 text-center"><PackageSearch className="mx-auto h-10 w-10 text-[#A3B3C1]" /><p className="mt-3 text-sm font-bold text-[#60758A]">Abra um contrato e selecione um produto para consultar a composição.</p></div>}
       </CardContent></Card>
     </div>
+
+    <Card className="overflow-hidden border-[#BFD4E4] bg-[linear-gradient(135deg,#F7FBFE_0%,#EAF4FA_100%)] shadow-[0_6px_18px_rgba(23,61,110,0.06)]">
+      <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm"><Boxes className="h-5 w-5" /></div>
+          <div>
+            <h2 className="text-sm font-black text-[#102F53]">Ainda há saldo pendente nos contratos?</h2>
+            <p className="mt-1 text-xs leading-5 text-[#60758A]">Vá para Alocação de estoque para consultar o estoque disponível e vincular os pesos aos contratos que ainda precisam de cobertura.</p>
+          </div>
+        </div>
+        <Button type="button" onClick={onOpenAllocation} className="h-10 shrink-0 bg-emerald-700 px-5 font-black text-white hover:bg-emerald-800">
+          Ir para alocação de estoque<ChevronRight className="ml-2 h-4 w-4" />
+        </Button>
+      </CardContent>
+    </Card>
     <ContractRiskDialog contract={riskContract} onClose={() => setRiskContract(null)} />
   </div>;
 }
@@ -1498,6 +1609,11 @@ function contractCoverage(contract: ExportContract) {
 function ContractRiskDialog({ contract, onClose }: { contract: ExportContract | null; onClose: () => void }) {
   const coverage = contract ? contractCoverage(contract) : 0;
   const days = Number(contract?.PRAZO_DIAS ?? 0);
+  const productionForecast = inputDate(contract?.PREVISAO_TERMINO_PRODUCAO);
+  const shippingDate = inputDate(contract?.DTA_EMBARQUE_PLANEJADA || contract?.DTA_EMBARQUE_ERP);
+  const productionFinishesBeforeShipping = Boolean(
+    productionForecast && shippingDate && productionForecast <= shippingDate,
+  );
   const bottleneck = contract?.PRODUTOS.reduce<ContractProduct | null>((current, product) => (
     !current || Number(product.SALDO_CONTRATO || 0) > Number(current.SALDO_CONTRATO || 0) ? product : current
   ), null);
@@ -1525,6 +1641,14 @@ function ContractRiskDialog({ contract, onClose }: { contract: ExportContract | 
           <SummaryValue label="Cobertura" value={`${coverage.toFixed(1)}%`} tone="red" />
         </div>
         {bottleneck && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950"><p className="font-black">Maior saldo por produto</p><p>{bottleneck.SEQPRODUTO} · {bottleneck.DESCRICAO}: <strong>{formatKg(bottleneck.SALDO_CONTRATO)}</strong> ainda pendentes.</p></div>}
+        <div className={"rounded-lg border p-3 text-xs leading-5 " + (productionFinishesBeforeShipping ? "border-blue-200 bg-blue-50 text-blue-950" : "border-[#D5E0EA] bg-[#F7F9FB] text-[#365675]")}>
+          <p className="font-black">{productionFinishesBeforeShipping ? "A produção ainda pode terminar a tempo" : "Como este alerta é calculado"}</p>
+          {productionForecast ? (
+            <p>A conclusão da produção está prevista para <strong>{formatDate(productionForecast)}</strong>{productionFinishesBeforeShipping ? ", antes do embarque. Mesmo assim, essa previsão não entra na cobertura atual" : ". Essa previsão não entra na cobertura atual"}. O alerta considera somente o peso já expedido ou efetivamente vinculado por OP, pedido ou alocação manual.</p>
+          ) : (
+            <p>A previsão de produção não entra neste indicador. Ele considera somente o peso já expedido ou efetivamente vinculado por OP, pedido ou alocação manual.</p>
+          )}
+        </div>
         <p className="text-xs leading-5 text-[#60758A]">O sistema marca como risco contratos com embarque em até 7 dias e cobertura inferior a 98%.</p>
       </div>}
     </DialogContent>
@@ -1811,6 +1935,11 @@ interface StockAllocationWorkspaceProps {
   onSaveTreatment: (item: ContractStock, changes: { situacao?: "SEPARADO" | "DISPONIVEL" | "REPROCESSO"; data_reprocesso?: string | null; sem_venda?: boolean }) => Promise<void>;
   agedConfigured: boolean;
   lotTreatmentConfigured: boolean;
+  queueConfigured: boolean;
+  queueItems: ContractProductQueueItem[];
+  onAddQueue: (productId: number, contractId: number) => Promise<void>;
+  onMoveQueue: (item: ContractProductQueueItem, direction: "CIMA" | "BAIXO") => Promise<void>;
+  onRemoveQueue: (item: ContractProductQueueItem) => Promise<void>;
 }
 
 function StockAllocationWorkspace({
@@ -1846,6 +1975,11 @@ function StockAllocationWorkspace({
   onSaveTreatment,
   agedConfigured,
   lotTreatmentConfigured,
+  queueConfigured,
+  queueItems,
+  onAddQueue,
+  onMoveQueue,
+  onRemoveQueue,
 }: StockAllocationWorkspaceProps) {
   const [allocationView, setAllocationView] = useState<"DISPONIVEIS" | "ALOCADOS" | "REVISAR_DATAS" | "MAIS_6_MESES">(section);
   const [allocationSource, setAllocationSource] = useState<"REGULAR" | "MAIS_6_MESES">("REGULAR");
@@ -1944,17 +2078,26 @@ function StockAllocationWorkspace({
     item.SITUACAO_6_MESES === "DISPONIVEL",
   );
   const dateReviewItems = stock.map((item) => {
-    const reviewLots = item.LOTES_REVISAO || (item.LOTES_LIVRES || []).filter((lot) =>
+    const pendingReviewLots = item.LOTES_REVISAO || (item.LOTES_LIVRES || []).filter((lot) =>
       lot.SITUACAO_VALIDADE === "INCOMPATIVEL" || lot.SITUACAO_VALIDADE === "SEM_DATA",
     );
-    const trackedReviewWeight = reviewLots.reduce(
-      (sum, lot) => sum + Math.max(0, Number(lot.PESO_LIVRE_ESTIMADO || 0)),
-      0,
+    const releasedReviewLots = (item.LOTES_ALOCAVEIS || []).filter((lot) =>
+      lot.SITUACAO_VALIDADE === "ACEITO_EXCECAO"
+      || lot.DECISAO_LOTE === "DISPONIVEL"
+      || lot.DECISAO_LOTE === "ALOCAR",
     );
+    const reviewLots = Array.from(new Map(
+      [...pendingReviewLots, ...releasedReviewLots].map((lot) => [
+        lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`,
+        lot,
+      ]),
+    ).values());
+    // PESO_RETIDO_IDADE inclui estoque antigo e não prova falta de rastreio.
+    // A linha sintética só pode representar o residual explicitamente calculado
+    // pelo backend entre o estoque consolidado e os lotes físicos encontrados.
     const untrackedWeight = Math.max(
       0,
       Number(item.PESO_LIVRE_SEM_RASTREIO || 0),
-      Number(item.PESO_RETIDO_IDADE || 0) - trackedReviewWeight,
     );
     const reviewableLots: ContractStockLot[] = [
       ...reviewLots,
@@ -2043,6 +2186,15 @@ function StockAllocationWorkspace({
       toast.error("Selecione o contrato compatível que receberá este peso.");
       return;
     }
+    const lotWeight = Math.max(0, Number(lot.PESO_LIVRE_ESTIMADO || lot.PESO_DISPONIVEL_ESTIMADO || 0));
+    const maximumAllocation = target
+      ? Math.max(0, Math.min(lotWeight, Number(target.product.SALDO_CONTRATO || 0)))
+      : 0;
+    const requestedAllocation = Math.max(0, Number(targetWeight || 0));
+    if (decision === "ALOCAR" && requestedAllocation > maximumAllocation + 0.0005) {
+      toast.error(`O peso deste lote permite alocar no máximo ${formatKg(maximumAllocation)} neste contrato.`);
+      return;
+    }
     setLotSaving(key);
     try {
       const result = await contractsApi.saveStockLotTreatment({
@@ -2057,9 +2209,10 @@ function StockAllocationWorkspace({
       });
       toast.success(result.message);
       setLotDecisions((current) => ({ ...current, [key]: decision }));
+      await onSync();
       if (decision === "ALOCAR" && target) {
         const inputKey = `${target.contract.SEQCONTRATO}-${item.SEQPRODUTO}`;
-        const weight = Math.max(0, Number(targetWeight || 0));
+        const weight = requestedAllocation;
         setReservationInputs((current) => ({
           ...current,
           [inputKey]: allocationInputValue(weight),
@@ -2069,9 +2222,48 @@ function StockAllocationWorkspace({
         onSelectProduct(item.SEQPRODUTO);
         onNavigateSection("DISPONIVEIS");
       }
-      await onSync();
     } catch (error) {
       toast.error(errorMessage(error));
+    } finally {
+      setLotSaving(null);
+    }
+  };
+
+  const saveLotsBulk = async (
+    rows: Array<{ item: ContractStock; lot: ContractStockLot }>,
+    decision: "SEPARADO" | "DISPONIVEL" | "REPROCESSO",
+    reprocessDate?: string,
+  ) => {
+    if (!rows.length) return false;
+    if (decision === "REPROCESSO" && !reprocessDate) {
+      toast.error("Informe a data prevista para o reprocesso.");
+      return false;
+    }
+    if (rows.some(({ lot }) => lot.SINTETICO_SEM_RASTREIO)) {
+      toast.error("A seleção possui peso sem lote ou data rastreável. Corrija a origem antes de aplicar uma ação em lote.");
+      return false;
+    }
+    setLotSaving("bulk-review");
+    try {
+      for (const { item, lot } of rows) {
+        await contractsApi.saveStockLotTreatment({
+          seqproduto: item.SEQPRODUTO,
+          data_producao: String(lot.DTAPRODUCAO || "").slice(0, 10),
+          lote: lot.LOTE == null ? null : String(lot.LOTE),
+          seqembalagem: lot.SEQEMBALAGEM == null ? null : String(lot.SEQEMBALAGEM),
+          peso_referencia: Number(lot.PESO_LIVRE_ESTIMADO || lot.PESO_DISPONIVEL_ESTIMADO || 0),
+          situacao: decision,
+          data_reprocesso: decision === "REPROCESSO" ? reprocessDate : null,
+          versao: lot.VERSAO_DECISAO_LOTE,
+        });
+      }
+      toast.success(`${rows.length} lote(s) atualizados com sucesso.`);
+      await onSync();
+      return true;
+    } catch (error) {
+      toast.error(errorMessage(error));
+      await onSync();
+      return false;
     } finally {
       setLotSaving(null);
     }
@@ -2106,12 +2298,18 @@ function StockAllocationWorkspace({
     setReservationInputs={setReservationInputs}
     onSaveReservation={onSaveReservation}
     onSaveLotTreatment={saveLotTreatment}
+    onSaveLotsBulk={saveLotsBulk}
     onReviewProduct={(productId) => {
       onSearchChange(String(productId));
       onSelectProduct(null);
       onNavigateSection("REVISAR_DATAS");
     }}
       lotSaving={lotSaving}
+    queueConfigured={queueConfigured}
+    queueItems={queueItems}
+    onAddQueue={onAddQueue}
+    onMoveQueue={onMoveQueue}
+    onRemoveQueue={onRemoveQueue}
     />
   </>;
 
@@ -2514,8 +2712,14 @@ interface ModernStockOperationsLayoutProps {
   setReservationInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onSaveReservation: (contract: ExportContract, product: ContractProduct, fallbackWeight?: number, inputMode?: ReservationInputMode) => Promise<void>;
   onSaveLotTreatment: (item: ContractStock, lot: ContractStockLot, decision: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR", reprocessDateOverride?: string, targetContractId?: number, targetWeight?: number) => Promise<void>;
+  onSaveLotsBulk: (rows: Array<{ item: ContractStock; lot: ContractStockLot }>, decision: "SEPARADO" | "DISPONIVEL" | "REPROCESSO", reprocessDate?: string) => Promise<boolean>;
   onReviewProduct: (productId: number) => void;
   lotSaving: string | null;
+  queueConfigured: boolean;
+  queueItems: ContractProductQueueItem[];
+  onAddQueue: (productId: number, contractId: number) => Promise<void>;
+  onMoveQueue: (item: ContractProductQueueItem, direction: "CIMA" | "BAIXO") => Promise<void>;
+  onRemoveQueue: (item: ContractProductQueueItem) => Promise<void>;
 }
 
 function ModernStockOperationsLayout({
@@ -2545,21 +2749,47 @@ function ModernStockOperationsLayout({
   setReservationInputs,
   onSaveReservation,
   onSaveLotTreatment,
+  onSaveLotsBulk,
   onReviewProduct,
   lotSaving,
+  queueConfigured,
+  queueItems,
+  onAddQueue,
+  onMoveQueue,
+  onRemoveQueue,
 }: ModernStockOperationsLayoutProps) {
   const [selectedCandidateKey, setSelectedCandidateKey] = useState("");
   const [selectedAllocatedKey, setSelectedAllocatedKey] = useState("");
   const [selectedReviewKey, setSelectedReviewKey] = useState("");
-  const [reviewDecision, setReviewDecision] = useState<"SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR">("SEPARADO");
+  const [selectedReviewKeys, setSelectedReviewKeys] = useState<Set<string>>(new Set());
+  const [bulkReviewDecision, setBulkReviewDecision] = useState<"" | "SEPARADO" | "DISPONIVEL" | "REPROCESSO">("");
+  const [bulkReviewDate, setBulkReviewDate] = useState("");
+  const allocatedTopScrollRef = useRef<HTMLDivElement | null>(null);
+  const allocatedTableScrollRef = useRef<HTMLDivElement | null>(null);
+  const [reviewDecision, setReviewDecision] = useState<"" | "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR">("");
   const [reviewReprocessDate, setReviewReprocessDate] = useState("");
   const [availableSort, setAvailableSort] = useState<TableSortState<"PRODUTO" | "DESCRICAO" | "ESTOQUE" | "OP" | "PEDIDO" | "MANUAL" | "LIVRE" | "CONTRATOS">>({ key: "LIVRE", direction: "desc" });
   const [lotSort, setLotSort] = useState<TableSortState<"DATA" | "PESO" | "SITUACAO">>({ key: "DATA", direction: "asc" });
   const [candidateSort, setCandidateSort] = useState<TableSortState<"CONTRATO" | "CLIENTE" | "EMBARQUE" | "SALDO" | "ELEGIVEL">>({ key: "EMBARQUE", direction: "asc" });
-  const [allocatedSort, setAllocatedSort] = useState<TableSortState<"PRODUTO" | "CONTRATO" | "CONTRATADO" | "EXPEDIDO" | "OP" | "PEDIDO" | "MANUAL" | "TOTAL" | "ATENDIDO" | "SALDO" | "SITUACAO">>({ key: "CONTRATO", direction: "asc" });
+  const [allocatedSort, setAllocatedSort] = useState<TableSortState<"PRODUTO" | "CONTRATO" | "CONTRATADO" | "EXPEDIDO" | "OP" | "PEDIDO" | "MANUAL" | "MOVIMENTACAO" | "TOTAL" | "ATENDIDO" | "SALDO" | "SITUACAO">>({ key: "CONTRATO", direction: "asc" });
   const [reviewSort, setReviewSort] = useState<TableSortState<"PRODUTO" | "LOTE" | "DATA" | "PESO" | "CONTRATOS" | "MOTIVO">>({ key: "DATA", direction: "asc" });
+  const [reviewDecisionFilter, setReviewDecisionFilter] = useState<ReviewDecisionFilterValue>("TODOS");
+
+  const reviewRowsByDecision = reviewRows.filter(({ lot }) => {
+    if (reviewDecisionFilter === "TODOS") return true;
+    if (reviewDecisionFilter === "A_DEFINIR") return !lot.DECISAO_LOTE;
+    if (reviewDecisionFilter === "DISPONIVEL") {
+      return lot.DECISAO_LOTE === "DISPONIVEL" || lot.DECISAO_LOTE === "ALOCAR";
+    }
+    return lot.DECISAO_LOTE === reviewDecisionFilter;
+  });
 
   const candidateKey = (contractId: number, productId: number) => `${contractId}-${productId}`;
+  const syncAllocatedHorizontalScroll = (source: "top" | "table") => {
+    const origin = source === "top" ? allocatedTopScrollRef.current : allocatedTableScrollRef.current;
+    const target = source === "top" ? allocatedTableScrollRef.current : allocatedTopScrollRef.current;
+    if (origin && target && target.scrollLeft !== origin.scrollLeft) target.scrollLeft = origin.scrollLeft;
+  };
   useEffect(() => {
     if (!selectedStock) {
       setSelectedCandidateKey("");
@@ -2595,15 +2825,15 @@ function ModernStockOperationsLayout({
     }));
   }, [selectedAllocatedKey]);
   useEffect(() => {
-    const keys = reviewRows.map(({ item, lot }) => lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`);
+    const keys = reviewRowsByDecision.map(({ item, lot }) => lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`);
     if (!keys.includes(selectedReviewKey)) setSelectedReviewKey(keys[0] || "");
-  }, [reviewRows.map(({ item, lot }) => lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`).join("|")]);
+  }, [reviewDecisionFilter, reviewRowsByDecision.map(({ item, lot }) => lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`).join("|")]);
 
   const selectedCandidate = selectedContracts.find(({ contract, product }) => candidateKey(contract.SEQCONTRATO, product.SEQPRODUTO) === selectedCandidateKey) || null;
   const selectedAllocated = allocatedItems.find(({ contract, product }) => candidateKey(contract.SEQCONTRATO, product.SEQPRODUTO) === selectedAllocatedKey) || null;
-  const selectedReview = reviewRows.find(({ item, lot }) => (lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`) === selectedReviewKey) || null;
+  const selectedReview = reviewRowsByDecision.find(({ item, lot }) => (lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`) === selectedReviewKey) || null;
   useEffect(() => {
-    setReviewDecision(selectedReview?.lot.DECISAO_LOTE || "SEPARADO");
+    setReviewDecision(selectedReview?.lot.DECISAO_LOTE || "");
     setReviewReprocessDate(inputDate(selectedReview?.lot.DTA_REPROCESSO_LOTE));
   }, [selectedReviewKey, selectedReview?.lot.DECISAO_LOTE, selectedReview?.lot.DTA_REPROCESSO_LOTE]);
 
@@ -2647,6 +2877,7 @@ function ModernStockOperationsLayout({
       OP: Number(product.PESO_ATRELADO_ORDEM || 0),
       PEDIDO: Number(product.PESO_RESERVADO_PEDIDO_LIQUIDO ?? product.PESO_RESERVADO_PEDIDO ?? 0),
       MANUAL: Number(product.PESO_RESERVADO_MANUAL || 0),
+      MOVIMENTACAO: allocationDetailDate(latestManualAllocationDetail(product)) || "",
       TOTAL: Number(product.PESO_ATRELADO_TOTAL || 0),
       ATENDIDO: Number(product.PESO_EXPEDIDO || 0) + Number(product.PESO_ATRELADO_TOTAL || 0),
       SALDO: Number(product.SALDO_CONTRATO || 0),
@@ -2654,7 +2885,7 @@ function ModernStockOperationsLayout({
     });
     return compareTableValues(value(first)[allocatedSort.key], value(second)[allocatedSort.key], allocatedSort.direction);
   });
-  const sortedReviewRows = [...reviewRows].sort((first, second) => {
+  const sortedReviewRows = [...reviewRowsByDecision].sort((first, second) => {
     const value = ({ item, lot }: { item: ContractStock; lot: ContractStockLot }) => ({
       PRODUTO: item.SEQPRODUTO,
       LOTE: lot.LOTE,
@@ -2665,6 +2896,48 @@ function ModernStockOperationsLayout({
     });
     return compareTableValues(value(first)[reviewSort.key], value(second)[reviewSort.key], reviewSort.direction);
   });
+  const reviewRowKey = ({ item, lot }: { item: ContractStock; lot: ContractStockLot }) =>
+    lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`;
+  const visibleReviewKeys = sortedReviewRows.map(reviewRowKey);
+  const selectedVisibleReviewRows = sortedReviewRows.filter((row) => selectedReviewKeys.has(reviewRowKey(row)));
+  const allVisibleReviewRowsSelected = visibleReviewKeys.length > 0
+    && visibleReviewKeys.every((key) => selectedReviewKeys.has(key));
+  const filteredReviewWeight = sortedReviewRows.reduce(
+    (sum, { lot }) => sum + Number(lot.PESO_LIVRE_ESTIMADO || 0),
+    0,
+  );
+  const selectedReviewWeight = selectedVisibleReviewRows.reduce(
+    (sum, { lot }) => sum + Number(lot.PESO_LIVRE_ESTIMADO || 0),
+    0,
+  );
+  const toggleAllVisibleReviewRows = () => setSelectedReviewKeys((current) => {
+    const next = new Set(current);
+    visibleReviewKeys.forEach((key) => {
+      if (allVisibleReviewRowsSelected) next.delete(key);
+      else next.add(key);
+    });
+    return next;
+  });
+  const applyBulkReviewDecision = async () => {
+    if (!bulkReviewDecision) {
+      toast.warning("Selecione a ação que deseja aplicar.");
+      return;
+    }
+    if (!selectedVisibleReviewRows.length) {
+      toast.warning("Marque ao menos uma linha visível.");
+      return;
+    }
+    const saved = await onSaveLotsBulk(
+      selectedVisibleReviewRows,
+      bulkReviewDecision,
+      bulkReviewDecision === "REPROCESSO" ? bulkReviewDate : undefined,
+    );
+    if (saved) {
+      setSelectedReviewKeys(new Set());
+      setBulkReviewDecision("");
+      setBulkReviewDate("");
+    }
+  };
 
   const stockTotal = selectedStock ? Math.max(0, Number(selectedStock.PESODISPONIVEL || 0)) : 0;
   const stockSegments = selectedStock ? [
@@ -2679,10 +2952,21 @@ function ModernStockOperationsLayout({
     return <div className="space-y-4">
       {!selectedStock ? <>
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><OverviewMetric icon={Weight} label="Estoque físico ERP" value={formatKg(totalErpStock)} tone="blue" /><OverviewMetric icon={Factory} label="Protegido por OP" value={formatKg(totalOrderStock)} tone="blue" /><OverviewMetric icon={LockKeyhole} label="Reservado em pedido" value={formatKg(totalOrderReservation)} tone="blue" /><OverviewMetric icon={Boxes} label="Estoque realmente livre" value={formatKg(totalFreeStock)} tone="green" /><OverviewMetric icon={ShieldAlert} label="Lotes em revisão" value={String(validityAlertCount)} tone={validityAlertCount > 0 ? "red" : "green"} /></section>
-        <Card className="overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><WorkspaceToolbar title="Produtos disponíveis para alocação" description="Selecione um produto para comparar os contratos candidatos." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="max-h-[66vh] overflow-auto"><Table><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Descrição" sortKey="DESCRICAO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Estoque físico" sortKey="ESTOQUE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="OP" sortKey="OP" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Pedido" sortKey="PEDIDO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Manual" sortKey="MANUAL" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Livre" sortKey="LIVRE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="center" /><TableHead className="text-right">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedStock.map((item) => { const candidateCount = contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)).length; return <TableRow key={item.SEQPRODUTO} className="hover:bg-[#F7FAFC]"><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell><TableCell className="text-xs font-bold text-[#304D68]"><span>{item.DESCRPRODUTO}</span>{(item.LOTES_LIVRES || item.LOTES_ESTOQUE || []).some((lot) => lot.DECISAO_LOTE === "DISPONIVEL") && <span className="ml-2 inline-flex rounded-full border border-orange-300 bg-orange-50 px-2 py-1 text-[9px] font-black uppercase text-orange-800">Produto antigo liberado</span>}</TableCell><NumberCell value={item.PESODISPONIVEL} /><NumberCell value={item.PESO_ATRELADO_ORDEM} /><NumberCell value={item.PESO_RESERVADO_PEDIDO_LIQUIDO ?? item.PESO_RESERVADO_PEDIDO} /><NumberCell value={item.PESO_RESERVADO_VERTICE} /><TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(item.PESO_LIVRE_VERTICE)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => onSelectProduct(item.SEQPRODUTO)} className="border-[#8FB1CE] text-[#174A78]"><Boxes className="mr-2 h-3.5 w-3.5" />Analisar e alocar</Button></TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card>
-      </> : <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(270px,0.72fr)_minmax(420px,1.15fr)_minmax(300px,0.82fr)]">
-        <Card className="h-fit border-[#CBD8E3] shadow-sm"><CardContent className="space-y-4 p-4"><button type="button" onClick={() => onSelectProduct(null)} className="text-xs font-black text-blue-700 hover:underline">← Escolher outro produto</button><div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="font-mono text-sm font-black text-blue-700">{selectedStock.SEQPRODUTO}</p><p className="mt-1 text-base font-black text-[#102F53]">{selectedStock.DESCRPRODUTO}</p></div><div><h3 className="text-sm font-black text-[#102F53]">Distribuição do peso no estoque</h3><div className="mt-3 flex h-7 overflow-hidden rounded-md bg-[#E6EDF3]">{stockSegments.map((segment) => <div key={segment.label} className={segment.color} style={{ width: `${stockTotal > 0 ? Math.max(0, segment.value / stockTotal * 100) : 0}%` }} title={`${segment.label}: ${formatKg(segment.value)}`} />)}</div><div className="mt-3 space-y-2">{stockSegments.map((segment) => <SummaryLine key={segment.label} label={segment.label} value={formatKg(segment.value)} />)}</div></div><div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Estoque realmente livre</p><p className="mt-1 text-2xl font-black text-emerald-800">{formatKg(selectedStock.PESO_LIVRE_VERTICE)}</p></div><div><h3 className="text-sm font-black text-[#102F53]">Lotes livres do produto</h3><div className="mt-2 max-h-52 overflow-auto rounded-lg border border-[#D8E2EA]"><Table><TableHeader className="bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produção" sortKey="DATA" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Peso" sortKey="PESO" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Situação" sortKey="SITUACAO" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} /></TableRow></TableHeader><TableBody>{sortedLots.map((lot, index) => <TableRow key={lot.CHAVE_LOTE || index}><TableCell className="text-xs font-bold">{formatDate(lot.DTAPRODUCAO)}</TableCell><TableCell className="text-right text-xs font-black">{formatKg(lot.PESO_LIVRE_ESTIMADO)}</TableCell><TableCell><ValidityBadge status={lot.SITUACAO_VALIDADE} /></TableCell></TableRow>)}</TableBody></Table></div></div></CardContent></Card>
-        <Card className="min-w-0 overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><div className="border-b border-[#DCE5ED] px-4 py-4"><h2 className="text-lg font-black text-[#102F53]">Contratos candidatos</h2><p className="text-xs text-[#667B90]">Produtos que utilizam o SEQPRODUTO {selectedStock.SEQPRODUTO}</p></div><div className="max-h-[70vh] overflow-auto p-3">{selectedContracts.length === 0 ? <div className="rounded-lg border border-dashed p-8 text-center text-sm font-semibold text-[#6B7F92]">Nenhum contrato ativo possui este produto.</div> : <div className="min-w-[610px] space-y-2"><div className="grid grid-cols-[auto_0.7fr_1.25fr_0.8fr_0.8fr_0.8fr] items-center gap-3 px-3 text-[9px] font-black uppercase tracking-wider text-[#526A80]"><span className="w-4" /><CandidateSortButton label="Contrato" sortKey="CONTRATO" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Cliente" sortKey="CLIENTE" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Embarque" sortKey="EMBARQUE" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Saldo" sortKey="SALDO" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} align="right" /><CandidateSortButton label="Liberado" sortKey="ELEGIVEL" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} align="right" /></div>{sortedCandidates.map(({ contract, product }) => { const key = candidateKey(contract.SEQCONTRATO, product.SEQPRODUTO); const selectedRow = key === selectedCandidateKey; const eligibility = Number(product.PESO_ESTOQUE_ELEGIVEL || 0); return <button type="button" key={key} onClick={() => setSelectedCandidateKey(key)} className={`grid w-full grid-cols-[auto_0.7fr_1.25fr_0.8fr_0.8fr_0.8fr] items-center gap-3 rounded-lg border p-3 text-left ${selectedRow ? "border-blue-500 bg-blue-50 ring-1 ring-blue-200" : "border-[#D3DEE7] bg-white hover:bg-[#F7FAFC]"}`}><span className={`h-4 w-4 rounded-full border-2 ${selectedRow ? "border-blue-600 bg-blue-600 ring-2 ring-blue-100" : "border-[#AFC1D1]"}`} /><span className="font-mono text-xs font-black text-[#173D6E]">{contract.NROCONTRATO}</span><span className="truncate text-xs font-bold text-[#304D68]">{contract.NOMERAZAO}</span><span className="text-xs font-bold text-[#526A80]">{formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</span><span className="text-right text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</span><span className="text-right text-xs font-black text-emerald-700">{formatKg(eligibility)}</span></button>; })}</div>}</div>{selectedCandidate && Number(selectedCandidate.product.PESO_ESTOQUE_INCOMPATIVEL || 0) > 0 && <div className="m-3 flex flex-col gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs font-semibold text-orange-900 sm:flex-row sm:items-center sm:justify-between"><span><AlertTriangle className="mr-2 inline h-4 w-4" />{formatKg(selectedCandidate.product.PESO_ESTOQUE_INCOMPATIVEL)} estão retidos por terem mais de seis meses ou não possuírem data rastreável.</span><Button type="button" size="sm" variant="outline" onClick={() => onReviewProduct(selectedStock.SEQPRODUTO)} className="shrink-0 border-orange-300 bg-white text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar datas</Button></div>}</CardContent></Card>
+        <Card className="overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><WorkspaceToolbar title="Produtos disponíveis para alocação" description="Selecione um produto para comparar os contratos candidatos." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="max-h-[66vh] overflow-auto"><Table><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Descrição" sortKey="DESCRICAO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Estoque físico" sortKey="ESTOQUE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="OP" sortKey="OP" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Pedido" sortKey="PEDIDO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Manual" sortKey="MANUAL" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Livre" sortKey="LIVRE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="center" /><TableHead className="text-right">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedStock.map((item) => <AvailableStockRows key={item.SEQPRODUTO} item={item} candidateCount={contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)).length} onSelect={onSelectProduct} />)}</TableBody></Table></div></CardContent></Card>
+      </> : <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(250px,0.68fr)_minmax(400px,1.18fr)_minmax(285px,0.78fr)]">
+        <ProductAllocationQueue
+          product={selectedStock}
+          candidates={selectedContracts}
+          selectedCandidate={selectedCandidate}
+          items={queueItems.filter((item) => item.SEQPRODUTO === selectedStock.SEQPRODUTO)}
+          configured={queueConfigured}
+          saving={saving}
+          onAdd={onAddQueue}
+          onMove={onMoveQueue}
+          onRemove={onRemoveQueue}
+        />
+        <Card className="h-fit border-[#CBD8E3] shadow-sm"><CardContent className="space-y-3 p-3"><button type="button" onClick={() => onSelectProduct(null)} className="text-[10px] font-black text-blue-700 hover:underline">← Escolher outro produto</button><div className="rounded-lg border border-blue-200 bg-blue-50 p-3"><p className="font-mono text-xs font-black text-blue-700">{selectedStock.SEQPRODUTO}</p><p className="mt-1 text-sm font-black leading-tight text-[#102F53]">{selectedStock.DESCRPRODUTO}</p></div><div><h3 className="text-xs font-black text-[#102F53]">Distribuição do peso no estoque</h3><div className="mt-2 flex h-5 overflow-hidden rounded-md bg-[#E6EDF3]">{stockSegments.map((segment) => <div key={segment.label} className={segment.color} style={{ width: `${stockTotal > 0 ? Math.max(0, segment.value / stockTotal * 100) : 0}%` }} title={`${segment.label}: ${formatKg(segment.value)}`} />)}</div><div className="mt-2 space-y-1">{stockSegments.map((segment) => <SummaryLine key={segment.label} label={segment.label} value={formatKg(segment.value)} />)}</div></div><div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-emerald-700">Estoque realmente livre</p><p className="mt-1 text-xl font-black text-emerald-800">{formatKg(selectedStock.PESO_LIVRE_VERTICE)}</p></div><div><h3 className="text-xs font-black text-[#102F53]">Lotes livres do produto</h3><div className="mt-2 overflow-x-auto rounded-lg border border-[#D8E2EA]"><Table className="text-[10px]"><TableHeader className="bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produção" sortKey="DATA" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Peso" sortKey="PESO" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Situação" sortKey="SITUACAO" sort={lotSort} onSort={(key) => setLotSort((current) => nextTableSort(current, key))} /></TableRow></TableHeader><TableBody>{sortedLots.map((lot, index) => <TableRow key={lot.CHAVE_LOTE || index}><TableCell className="text-[10px] font-bold">{formatDate(lot.DTAPRODUCAO)}</TableCell><TableCell className="text-right text-[10px] font-black">{formatKg(lot.PESO_LIVRE_ESTIMADO)}</TableCell><TableCell><ValidityBadge status={lot.SITUACAO_VALIDADE} /></TableCell></TableRow>)}</TableBody></Table></div></div></CardContent></Card>
+        <Card className="min-w-0 overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><div className="border-b border-[#DCE5ED] px-3 py-3"><h2 className="text-base font-black text-[#102F53]">Contratos candidatos</h2><p className="text-[10px] text-[#667B90]">Produtos que utilizam o SEQPRODUTO {selectedStock.SEQPRODUTO}</p></div><div className="overflow-x-auto p-2">{selectedContracts.length === 0 ? <div className="rounded-lg border border-dashed p-6 text-center text-xs font-semibold text-[#6B7F92]">Nenhum contrato ativo possui este produto.</div> : <div className="min-w-[560px] space-y-1.5"><div className="grid grid-cols-[auto_0.7fr_1.25fr_0.8fr_0.8fr_0.8fr] items-center gap-2 px-2 text-[8px] font-black uppercase tracking-wider text-[#526A80]"><span className="w-3" /><CandidateSortButton label="Contrato" sortKey="CONTRATO" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Cliente" sortKey="CLIENTE" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Embarque" sortKey="EMBARQUE" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} /><CandidateSortButton label="Saldo" sortKey="SALDO" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} align="right" /><CandidateSortButton label="Liberado" sortKey="ELEGIVEL" sort={candidateSort} onSort={(key) => setCandidateSort((current) => nextTableSort(current, key))} align="right" /></div>{sortedCandidates.map(({ contract, product }) => { const key = candidateKey(contract.SEQCONTRATO, product.SEQPRODUTO); const selectedRow = key === selectedCandidateKey; const eligibility = Number(product.PESO_ESTOQUE_ELEGIVEL || 0); return <button type="button" key={key} onClick={() => setSelectedCandidateKey(key)} className={`grid w-full grid-cols-[auto_0.7fr_1.25fr_0.8fr_0.8fr_0.8fr] items-center gap-2 rounded-lg border p-2 text-left ${selectedRow ? "border-blue-500 bg-blue-50 ring-1 ring-blue-200" : "border-[#D3DEE7] bg-white hover:bg-[#F7FAFC]"}`}><span className={`h-3 w-3 rounded-full border-2 ${selectedRow ? "border-blue-600 bg-blue-600 ring-2 ring-blue-100" : "border-[#AFC1D1]"}`} /><span className="font-mono text-[10px] font-black text-[#173D6E]">{contract.NROCONTRATO}</span><span className="truncate text-[10px] font-bold text-[#304D68]">{contract.NOMERAZAO}</span><span className="text-[10px] font-bold text-[#526A80]">{formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</span><span className="text-right text-[10px] font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</span><span className="text-right text-[10px] font-black text-emerald-700">{formatKg(eligibility)}</span></button>; })}</div>}{selectedCandidate && <CandidateContractDetails contract={selectedCandidate.contract} selectedProductId={selectedStock.SEQPRODUTO} />}</div>{selectedCandidate && Number(selectedCandidate.product.PESO_ESTOQUE_INCOMPATIVEL || 0) > 0 && <div className="m-2 flex flex-col gap-2 rounded-lg border border-orange-200 bg-orange-50 p-2 text-[10px] font-semibold text-orange-900 sm:flex-row sm:items-center sm:justify-between"><span><AlertTriangle className="mr-1 inline h-3.5 w-3.5" />{formatKg(selectedCandidate.product.PESO_ESTOQUE_INCOMPATIVEL)} estão retidos por terem mais de seis meses ou não possuírem data rastreável.</span><Button type="button" size="sm" variant="outline" onClick={() => onReviewProduct(selectedStock.SEQPRODUTO)} className="h-8 shrink-0 border-orange-300 bg-white text-[10px] text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-1 h-3.5 w-3.5" />Revisar datas</Button></div>}</CardContent></Card>
         <AllocationEditor candidate={selectedCandidate} selectedStock={selectedStock} configured={configured} saving={saving} reservationInputs={reservationInputs} setReservationInputs={setReservationInputs} onSave={onSaveReservation} onReviewDates={() => onReviewProduct(selectedStock.SEQPRODUTO)} />
       </div>}
     </div>;
@@ -2701,8 +2985,16 @@ function ModernStockOperationsLayout({
         <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_370px]">
           <Card className="min-w-0 overflow-hidden border-[#CBD8E3]">
             <CardContent className="p-0">
-              <div className="max-h-[68vh] overflow-auto">
-                <Table className="min-w-[1180px]">
+              <div
+                ref={allocatedTopScrollRef}
+                onScroll={() => syncAllocatedHorizontalScroll("top")}
+                className="h-5 overflow-x-auto overflow-y-hidden border-b border-[#DCE5ED] bg-[#F7F9FB]"
+                aria-label="Rolagem horizontal da tabela de alocações"
+              >
+                <div className="h-px w-[1360px]" />
+              </div>
+              <div className="max-h-[68vh] overflow-x-hidden overflow-y-auto">
+                <Table containerRef={allocatedTableScrollRef} onContainerScroll={() => syncAllocatedHorizontalScroll("table")} containerClassName="[scrollbar-width:none] [&::-webkit-scrollbar]:hidden" className="min-w-[1360px] text-[10px] [&_td]:p-2 [&_th]:h-9 [&_th]:px-2">
                   <TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]">
                     <TableRow>
                       <SortableTableHead label="Produto" sortKey="PRODUTO" sort={allocatedSort} onSort={(key) => setAllocatedSort((current) => nextTableSort(current, key))} />
@@ -2712,6 +3004,7 @@ function ModernStockOperationsLayout({
                       <SortableTableHead label="OP" sortKey="OP" sort={allocatedSort} onSort={(key) => setAllocatedSort((current) => nextTableSort(current, key))} align="right" />
                       <SortableTableHead label="Pedido líquido" sortKey="PEDIDO" sort={allocatedSort} onSort={(key) => setAllocatedSort((current) => nextTableSort(current, key))} align="right" />
                       <SortableTableHead label="Manual" sortKey="MANUAL" sort={allocatedSort} onSort={(key) => setAllocatedSort((current) => nextTableSort(current, key))} align="right" />
+                      <SortableTableHead label="Última movimentação" sortKey="MOVIMENTACAO" sort={allocatedSort} onSort={(key) => setAllocatedSort((current) => nextTableSort(current, key))} />
                       <SortableTableHead label="Ainda reservado" sortKey="TOTAL" sort={allocatedSort} onSort={(key) => setAllocatedSort((current) => nextTableSort(current, key))} align="right" />
                       <SortableTableHead label="Total atendido" sortKey="ATENDIDO" sort={allocatedSort} onSort={(key) => setAllocatedSort((current) => nextTableSort(current, key))} align="right" />
                       <SortableTableHead label="Saldo" sortKey="SALDO" sort={allocatedSort} onSort={(key) => setAllocatedSort((current) => nextTableSort(current, key))} align="right" />
@@ -2722,6 +3015,8 @@ function ModernStockOperationsLayout({
                     {sortedAllocated.map(({ contract, product }) => {
                       const key = candidateKey(contract.SEQCONTRATO, product.SEQPRODUTO);
                       const totalAttended = Number(product.PESO_EXPEDIDO || 0) + Number(product.PESO_ATRELADO_TOTAL || 0);
+                      const lastManualMovement = latestManualAllocationDetail(product);
+                      const lastManualMovementDate = allocationDetailDate(lastManualMovement);
                       return (
                         <TableRow key={key} onClick={() => setSelectedAllocatedKey(key)} className={`cursor-pointer ${key === selectedAllocatedKey ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : "hover:bg-[#F7FAFC]"}`}>
                           <TableCell><p className="font-mono text-xs font-black text-blue-700">{product.SEQPRODUTO}</p><p className="text-[10px] font-bold text-[#526A80]">{product.DESCRICAO}</p></TableCell>
@@ -2731,6 +3026,16 @@ function ModernStockOperationsLayout({
                           <NumberCell value={product.PESO_ATRELADO_ORDEM} />
                           <NumberCell value={product.PESO_RESERVADO_PEDIDO_LIQUIDO ?? product.PESO_RESERVADO_PEDIDO} />
                           <TableCell className="text-right text-xs font-black text-amber-700">{formatKg(product.PESO_RESERVADO_MANUAL)}</TableCell>
+                          <TableCell>
+                            {lastManualMovementDate ? (
+                              <div className="inline-flex min-w-[145px] items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1.5 text-blue-800" title={`Última movimentação manual${lastManualMovement?.USUARIO ? ` por ${lastManualMovement.USUARIO}` : ""}`}>
+                                <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                                <div><p className="text-[10px] font-black leading-tight">{formatDateTime(lastManualMovementDate)}</p><p className="mt-0.5 max-w-[120px] truncate text-[9px] font-semibold text-blue-600">{lastManualMovement?.USUARIO || "Operador não informado"}</p></div>
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-black uppercase text-slate-500" title="Esta linha possui somente vínculos do ERP, sem movimentação manual registrada no Vértice."><LockKeyhole className="h-3 w-3" />Somente ERP</span>
+                            )}
+                          </TableCell>
                           <NumberCell value={product.PESO_ATRELADO_TOTAL} />
                           <TableCell className="text-right text-xs font-black text-[#173D6E]">{formatKg(totalAttended)}</TableCell>
                           <TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(product.SALDO_CONTRATO)}</TableCell>
@@ -2752,19 +3057,42 @@ function ModernStockOperationsLayout({
 
   const semData = reviewRows.filter(({ lot }) => !lot.DTAPRODUCAO || lot.SITUACAO_VALIDADE === "SEM_DATA");
   const olderThanSixMonths = reviewRows.filter(({ lot }) => lot.SITUACAO_VALIDADE === "INCOMPATIVEL");
+  const undefinedDecision = reviewRows.filter(({ lot }) => !lot.DECISAO_LOTE);
   const reprocessing = reviewRows.filter(({ lot }) => lot.DECISAO_LOTE === "REPROCESSO");
-  const separated = reviewRows.filter(({ lot }) => lot.DECISAO_LOTE === "SEPARADO" || !lot.DECISAO_LOTE);
+  const separated = reviewRows.filter(({ lot }) => lot.DECISAO_LOTE === "SEPARADO");
+  const released = reviewRows.filter(({ lot }) => lot.DECISAO_LOTE === "DISPONIVEL" || lot.DECISAO_LOTE === "ALOCAR");
   return <div className="space-y-4">
-    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <ReviewMetric tone="red" title="Estoque com mais de 6 meses" rows={olderThanSixMonths} />
       <ReviewMetric tone="orange" title="Sem data de produção rastreável" rows={semData} />
       <ReviewMetric tone="blue" title="Encaminhado para reprocesso" rows={reprocessing} />
       <ReviewMetric tone="green" title="Mantido separado" rows={separated} />
+      <OverviewMetric icon={Weight} label="Peso exibido pelo filtro" value={formatKg(filteredReviewWeight)} tone="blue" />
     </section>
+    <ReviewDecisionFilter
+      value={reviewDecisionFilter}
+      onChange={setReviewDecisionFilter}
+      counts={{ TODOS: reviewRows.length, A_DEFINIR: undefinedDecision.length, REPROCESSO: reprocessing.length, SEPARADO: separated.length, DISPONIVEL: released.length }}
+    />
     <WorkspaceToolbar title="Lotes que exigem decisão" description="Produtos acima de seis meses ou sem data ficam fora do estoque livre até uma decisão operacional." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} />
+    <Card className="border-[#CBD8E3] shadow-sm"><CardContent className="p-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="grid flex-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-blue-700">Resultado do filtro</p><p className="mt-1 text-lg font-black text-blue-900">{sortedReviewRows.length} linha(s)</p><p className="text-xs font-bold text-blue-700">{formatKg(filteredReviewWeight)}</p></div>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-emerald-700">Linhas marcadas</p><p className="mt-1 text-lg font-black text-emerald-900">{selectedVisibleReviewRows.length}</p><p className="text-xs font-bold text-emerald-700">{formatKg(selectedReviewWeight)}</p></div>
+          <label className="block"><span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-[#526A80]">Ação para as linhas marcadas</span><select value={bulkReviewDecision} onChange={(event) => setBulkReviewDecision(event.target.value as typeof bulkReviewDecision)} className="h-11 w-full rounded-md border border-input bg-white px-3 text-sm font-bold"><option value="">Selecionar ação</option><option value="SEPARADO">Manter separado</option><option value="DISPONIVEL">Disponibilizar para alocação</option><option value="REPROCESSO">Encaminhar para reprocesso</option></select></label>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          {bulkReviewDecision === "REPROCESSO" && <label className="block"><span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-[#526A80]">Data do reprocesso</span><Input type="date" value={bulkReviewDate} onChange={(event) => setBulkReviewDate(event.target.value)} className="h-11" /></label>}
+          <Button type="button" variant="outline" onClick={() => { onSearchChange(""); setReviewDecisionFilter("TODOS"); setSelectedReviewKeys(new Set()); }} className="h-11 border-[#AFC1D1] text-[#174A78]"><ChevronLeft className="mr-2 h-4 w-4" />Voltar para Revisão de datas</Button>
+          <Button type="button" disabled={!selectedVisibleReviewRows.length || !bulkReviewDecision || lotSaving === "bulk-review"} onClick={() => void applyBulkReviewDecision()} className="h-11 bg-[#173D6E] font-black text-white hover:bg-[#102F53]"><CheckCircle2 className="mr-2 h-4 w-4" />{lotSaving === "bulk-review" ? "Aplicando..." : `Aplicar em ${selectedVisibleReviewRows.length} linha(s)`}</Button>
+        </div>
+      </div>
+    </CardContent></Card>
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(390px,0.85fr)]">
       <Card className="min-w-0 overflow-hidden border-[#CBD8E3]"><CardContent className="p-0"><div className="max-h-[68vh] overflow-auto">
         <Table className="min-w-[760px]"><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow>
+          <TableHead className="w-12 text-center"><input type="checkbox" checked={allVisibleReviewRowsSelected} onChange={toggleAllVisibleReviewRows} aria-label="Marcar todas as linhas visíveis" className="h-4 w-4 cursor-pointer accent-[#173D6E]" /></TableHead>
           <SortableTableHead label="Produto" sortKey="PRODUTO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} />
           <SortableTableHead label="Lote" sortKey="LOTE" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} />
           <SortableTableHead label="Produção" sortKey="DATA" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} />
@@ -2772,10 +3100,11 @@ function ModernStockOperationsLayout({
           <SortableTableHead label="Contratos ativos" sortKey="CONTRATOS" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} align="center" />
           <SortableTableHead label="Motivo" sortKey="MOTIVO" sort={reviewSort} onSort={(key) => setReviewSort((current) => nextTableSort(current, key))} />
           <TableHead className="text-center">Ação</TableHead>
-        </TableRow></TableHeader><TableBody>{sortedReviewRows.map(({ item, lot }) => {
+        </TableRow></TableHeader><TableBody>{sortedReviewRows.length === 0 ? <TableRow><TableCell colSpan={8} className="h-28 text-center text-sm font-semibold text-[#667B90]">Nenhum item encontrado para esta decisão.</TableCell></TableRow> : sortedReviewRows.map(({ item, lot }) => {
           const key = lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`;
           const relatedContracts = compatibleContractsForLot(item.SEQPRODUTO, lot.DTAPRODUCAO, contracts);
           return <TableRow key={key} onClick={() => setSelectedReviewKey(key)} className={`cursor-pointer ${key === selectedReviewKey ? "bg-red-50 ring-1 ring-inset ring-red-200" : "hover:bg-[#F7FAFC]"}`}>
+            <TableCell className="text-center" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedReviewKeys.has(key)} onChange={(event) => setSelectedReviewKeys((current) => { const next = new Set(current); if (event.target.checked) next.add(key); else next.delete(key); return next; })} aria-label={`Marcar produto ${item.SEQPRODUTO}, lote ${lot.LOTE || "sem lote"}`} className="h-4 w-4 cursor-pointer accent-[#173D6E]" /></TableCell>
             <TableCell><p className="font-mono text-xs font-black text-[#173D6E]">{item.SEQPRODUTO}</p><p className="max-w-[180px] truncate text-[10px] font-bold text-[#526A80]">{item.DESCRPRODUTO}</p><LotDecisionBadge decision={lot.DECISAO_LOTE} /></TableCell>
             <TableCell className="text-xs font-bold">{lot.LOTE || "Sem lote"}</TableCell>
             <TableCell className="text-xs font-bold">{formatDate(lot.DTAPRODUCAO)}</TableCell>
@@ -2791,28 +3120,177 @@ function ModernStockOperationsLayout({
   </div>;
 }
 
+function AvailableStockRows({ item, candidateCount, onSelect }: { item: ContractStock; candidateCount: number; onSelect: (productId: number | null) => void }) {
+  const oldReleased = releasedOldStockWeight(item);
+  const totalFree = Math.max(0, Number(item.PESO_LIVRE_VERTICE || 0));
+  const regularFree = Math.max(0, totalFree - oldReleased);
+  const hasOldReleased = oldReleased > 0.0005;
+  const splitRows = hasOldReleased && regularFree > 0.0005;
+  const regularPhysical = Math.max(0, Number(item.PESODISPONIVEL || 0) - (splitRows ? oldReleased : 0));
+
+  const action = (label = "Analisar e alocar") => <TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => onSelect(item.SEQPRODUTO)} className="border-[#8FB1CE] text-[#174A78]"><Boxes className="mr-2 h-3.5 w-3.5" />{label}</Button></TableCell>;
+  const allocationCells = <><NumberCell value={item.PESO_ATRELADO_ORDEM} /><NumberCell value={item.PESO_RESERVADO_PEDIDO_LIQUIDO ?? item.PESO_RESERVADO_PEDIDO} /><NumberCell value={item.PESO_RESERVADO_VERTICE} /></>;
+
+  if (!splitRows) {
+    return <TableRow className={hasOldReleased ? "bg-orange-50/50 hover:bg-orange-50" : "hover:bg-[#F7FAFC]"}><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell><TableCell className="text-xs font-bold text-[#304D68]"><span>{item.DESCRPRODUTO}</span>{hasOldReleased && <span className="ml-2 inline-flex rounded-full border border-orange-300 bg-orange-50 px-2 py-1 text-[9px] font-black uppercase text-orange-800">Produto antigo liberado</span>}</TableCell><NumberCell value={item.PESODISPONIVEL} />{allocationCells}<TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(totalFree)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell>{action()}</TableRow>;
+  }
+
+  return <>
+    <TableRow className="hover:bg-[#F7FAFC]"><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell><TableCell><p className="text-xs font-bold text-[#304D68]">{item.DESCRPRODUTO}</p><span className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8px] font-black uppercase text-emerald-700">Estoque regular</span></TableCell><NumberCell value={regularPhysical} />{allocationCells}<TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(regularFree)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell>{action()}</TableRow>
+    <TableRow className="border-t border-orange-200 bg-orange-50/70 hover:bg-orange-50"><TableCell className="font-mono text-xs font-black text-orange-800">{item.SEQPRODUTO}</TableCell><TableCell><p className="text-xs font-bold text-[#304D68]">{item.DESCRPRODUTO}</p><span className="mt-1 inline-flex rounded-full border border-orange-300 bg-white px-2 py-0.5 text-[8px] font-black uppercase text-orange-800">Produto antigo liberado</span></TableCell><TableCell className="text-right text-xs font-black text-orange-800">{formatKg(oldReleased)}</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-black text-orange-800">{formatKg(oldReleased)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell>{action("Alocar antigo")}</TableRow>
+  </>;
+}
+
+function CandidateContractDetails({ contract, selectedProductId }: { contract: ExportContract; selectedProductId: number }) {
+  const totalContracted = contract.PRODUTOS.reduce((sum, product) => sum + Number(product.PESOCONTRATO || 0), 0);
+  const totalReserved = contract.PRODUTOS.reduce((sum, product) => sum + Number(product.PESO_ATRELADO_TOTAL || 0), 0);
+  const totalShipped = contract.PRODUTOS.reduce((sum, product) => sum + Number(product.PESO_EXPEDIDO || 0), 0);
+  const totalBalance = contract.PRODUTOS.reduce((sum, product) => sum + Number(product.SALDO_CONTRATO || 0), 0);
+  return (
+    <div className="mt-4 min-w-[610px] overflow-hidden rounded-xl border border-blue-200 bg-white shadow-sm">
+      <div className="border-b border-blue-100 bg-blue-50 p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-wider text-blue-600">Contrato selecionado</p>
+            <p className="mt-1 font-mono text-sm font-black text-[#173D6E]">{contract.NROCONTRATO}</p>
+            <p className="mt-0.5 text-xs font-bold text-[#304D68]">{contract.NOMERAZAO}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[9px] font-black uppercase tracking-wider text-[#60758A]">Embarque</p>
+            <p className="mt-1 text-xs font-black text-[#173D6E]">{formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</p>
+            <p className="mt-1 text-[9px] font-black uppercase text-blue-700">{contract.EM_EXPEDICAO ? "Em expedição" : contract.STATUS_OPERACIONAL || contract.STATUS_ERP}</p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-4 gap-2">
+          <MiniFact label="Contratado" value={formatKg(totalContracted)} />
+          <MiniFact label="Reservado" value={formatKg(totalReserved)} />
+          <MiniFact label="Expedido" value={formatKg(totalShipped)} />
+          <MiniFact label="Saldo" value={formatKg(totalBalance)} />
+        </div>
+      </div>
+      <div className="p-3">
+        <h3 className="mb-2 flex items-center gap-2 text-xs font-black text-[#102F53]"><Boxes className="h-4 w-4 text-emerald-700" />Produtos do contrato ({contract.PRODUTOS.length})</h3>
+        <div className="overflow-x-auto rounded-lg border border-[#D8E2EA]">
+          <Table className="min-w-[700px] text-[10px] [&_td]:p-2 [&_th]:h-8 [&_th]:px-2">
+            <TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><TableHead>Produto</TableHead><TableHead className="text-right">Contratado</TableHead><TableHead className="text-right">OP</TableHead><TableHead className="text-right">Pedido</TableHead><TableHead className="text-right">Manual</TableHead><TableHead className="text-right">Atendido</TableHead><TableHead className="text-right">Saldo</TableHead></TableRow></TableHeader>
+            <TableBody>{contract.PRODUTOS.map((product) => {
+              const attended = Number(product.PESO_EXPEDIDO || 0) + Number(product.PESO_ATRELADO_TOTAL || 0);
+              return <TableRow key={product.SEQPRODUTO} className={product.SEQPRODUTO === selectedProductId ? "bg-emerald-50 ring-1 ring-inset ring-emerald-200" : ""}><TableCell><p className="font-mono text-[10px] font-black text-blue-700">{product.SEQPRODUTO}</p><p className="max-w-[210px] truncate text-[9px] font-bold text-[#526A80]" title={product.DESCRICAO}>{product.DESCRICAO}</p></TableCell><NumberCell value={product.PESOCONTRATO} /><NumberCell value={product.PESO_ATRELADO_ORDEM} /><NumberCell value={product.PESO_RESERVADO_PEDIDO_LIQUIDO ?? product.PESO_RESERVADO_PEDIDO} /><NumberCell value={product.PESO_RESERVADO_MANUAL} /><TableCell className="text-right text-xs font-black text-[#173D6E]">{formatKg(attended)}</TableCell><TableCell className="text-right text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</TableCell></TableRow>;
+            })}</TableBody>
+          </Table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WorkspaceToolbar({ title, description, search, onSearchChange, syncing, onSync }: { title: string; description: string; search: string; onSearchChange: (value: string) => void; syncing: boolean; onSync: () => Promise<void> }) {
   return <Card className="border-[#CBD8E3] shadow-sm"><CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between"><div><h2 className="text-lg font-black text-[#102F53]">{title}</h2><p className="text-xs text-[#667B90]">{description}</p></div><div className="flex flex-col gap-2 sm:flex-row"><div className="relative min-w-[280px]"><Search className="absolute left-3 top-2.5 h-4 w-4 text-[#8396A9]" /><Input value={search} onChange={(event) => onSearchChange(event.target.value)} className="pl-9" placeholder="Produto, contrato ou cliente" /></div><Button variant="outline" onClick={() => void onSync()} disabled={syncing} className="border-[#AFC1D1] text-[#174A78]"><RefreshCw className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />{syncing ? "Atualizando..." : "Atualizar análise"}</Button></div></CardContent></Card>;
 }
 
+function ProductAllocationQueue({
+  product,
+  candidates,
+  selectedCandidate,
+  items,
+  configured,
+  saving,
+  onAdd,
+  onMove,
+  onRemove,
+}: {
+  product: ContractStock;
+  candidates: Array<{ contract: ExportContract; product: ContractProduct }>;
+  selectedCandidate: { contract: ExportContract; product: ContractProduct } | null;
+  items: ContractProductQueueItem[];
+  configured: boolean;
+  saving: string | null;
+  onAdd: (productId: number, contractId: number) => Promise<void>;
+  onMove: (item: ContractProductQueueItem, direction: "CIMA" | "BAIXO") => Promise<void>;
+  onRemove: (item: ContractProductQueueItem) => Promise<void>;
+}) {
+  const activeItems = items.filter((item) => item.STATUS === "ATIVO").sort((first, second) => first.POSICAO - second.POSICAO);
+  const completedItems = items.filter((item) => item.STATUS === "CONCLUIDO");
+  const contractById = new Map(candidates.map((entry) => [entry.contract.SEQCONTRATO, entry]));
+  const selectedAlreadyQueued = selectedCandidate
+    ? activeItems.some((item) => item.SEQCONTRATO === selectedCandidate.contract.SEQCONTRATO)
+    : false;
+
+  return <Card className="overflow-hidden border-blue-200 bg-[linear-gradient(135deg,#F8FBFE_0%,#EDF5FB_100%)] shadow-sm xl:col-span-3">
+    <CardContent className="p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-700 text-white"><LockKeyhole className="h-5 w-5" /></div>
+          <div><h2 className="text-sm font-black text-[#102F53]">Fila automática do produto {product.SEQPRODUTO}</h2><p className="mt-1 text-xs leading-5 text-[#60758A]">O estoque livre completa o primeiro contrato e, quando o saldo zerar, passa automaticamente para o próximo.</p></div>
+        </div>
+        {selectedCandidate && <Button type="button" disabled={!configured || selectedAlreadyQueued || saving === "queue-add-" + product.SEQPRODUTO + "-" + selectedCandidate.contract.SEQCONTRATO} onClick={() => void onAdd(product.SEQPRODUTO, selectedCandidate.contract.SEQCONTRATO)} className="shrink-0 bg-blue-700 font-black text-white hover:bg-blue-800"><Plus className="mr-2 h-4 w-4" />{selectedAlreadyQueued ? "Já está na fila" : "Adicionar contrato selecionado"}</Button>}
+      </div>
+      {!configured ? <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900">Execute <code>sql/migrar_fila_alocacao_contratos.sql</code> no banco para habilitar a fila automática.</div> : activeItems.length ? <div className="mt-4 grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
+        {activeItems.map((item, index) => {
+          const candidate = contractById.get(item.SEQCONTRATO);
+          return <div key={item.ID_FILA_PRODUTO} className="flex items-center gap-3 rounded-xl border border-blue-200 bg-white p-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-700 text-xs font-black text-white">{index + 1}</div>
+            <div className="min-w-0 flex-1"><p className="font-mono text-xs font-black text-[#173D6E]">{candidate?.contract.NROCONTRATO || "Contrato " + item.SEQCONTRATO}</p><p className="truncate text-[10px] font-semibold text-[#60758A]">{candidate?.contract.NOMERAZAO || "Contrato ativo"}</p><p className="mt-1 text-[10px] font-black text-orange-700">Saldo: {formatKg(candidate?.product.SALDO_CONTRATO)}</p></div>
+            <div className="flex shrink-0 gap-1"><Button type="button" size="icon" variant="outline" disabled={index === 0 || Boolean(saving)} onClick={() => void onMove(item, "CIMA")} className="h-8 w-8" title="Subir na fila"><ArrowUp className="h-3.5 w-3.5" /></Button><Button type="button" size="icon" variant="outline" disabled={index === activeItems.length - 1 || Boolean(saving)} onClick={() => void onMove(item, "BAIXO")} className="h-8 w-8" title="Descer na fila"><ArrowDown className="h-3.5 w-3.5" /></Button><Button type="button" size="icon" variant="outline" disabled={Boolean(saving)} onClick={() => void onRemove(item)} className="h-8 w-8 border-red-200 text-red-700" title="Retirar da fila"><X className="h-3.5 w-3.5" /></Button></div>
+          </div>;
+        })}
+      </div> : <div className="mt-3 rounded-lg border border-dashed border-blue-300 bg-white/70 p-4 text-center text-xs font-semibold text-[#60758A]">Selecione um contrato candidato abaixo e adicione-o como primeiro da fila.</div>}
+      {completedItems.length > 0 && <p className="mt-3 text-[10px] font-semibold text-emerald-700"><CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />{completedItems.length} contrato(s) já concluído(s) automaticamente para este produto.</p>}
+    </CardContent>
+  </Card>;
+}
+
 function AllocationEditor({ candidate, selectedStock, configured, saving, reservationInputs, setReservationInputs, onSave, onReviewDates }: { candidate: { contract: ExportContract; product: ContractProduct } | null; selectedStock: ContractStock; configured: boolean; saving: string | null; reservationInputs: Record<string, string>; setReservationInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>; onSave: ModernStockOperationsLayoutProps["onSaveReservation"]; onReviewDates: () => void }) {
+  const [adjustmentStep, setAdjustmentStep] = useState(500);
   if (!candidate) return <Card className="h-fit border-[#CBD8E3]"><CardContent className="py-14 text-center"><PackageSearch className="mx-auto h-10 w-10 text-[#A3B3C1]" /><p className="mt-3 text-sm font-bold text-[#60758A]">Selecione um contrato candidato.</p></CardContent></Card>;
   const { contract, product } = candidate;
   const key = `${contract.SEQCONTRATO}-${product.SEQPRODUTO}`;
   const suggestion = suggestedManualAddition(product);
-  const input = reservationInputs[key] ?? allocationInputValue(suggestion);
+  const input = reservationInputs[key] ?? allocationInputValue(0);
   const addition = Math.max(0, Number(String(input).replace(",", ".")) || 0);
   const currentManual = Number(product.PESO_RESERVADO_MANUAL || 0);
   const newManual = currentManual + addition;
+  const maximumAddition = Math.max(0, suggestion);
   const remaining = Math.max(0, Number(product.SALDO_CONTRATO || 0) - addition);
   const freeAfter = Math.max(0, Number(selectedStock.PESO_LIVRE_VERTICE || 0) - addition);
   const validityBlocked = Boolean(product.REGRA_VALIDADE_CONFIGURADA)
     && Number(product.PESO_ESTOQUE_ELEGIVEL || 0) <= 0
     && Number(product.PESO_ESTOQUE_INCOMPATIVEL || 0) > 0;
-  return <Card className="h-fit border-[#CBD8E3] shadow-sm xl:sticky xl:top-4"><CardContent className="space-y-4 p-4"><div><h2 className="text-lg font-black text-[#102F53]">Painel de alocação</h2><p className="text-xs text-[#667B90]">Defina o peso que será adicionado neste contrato.</p></div><div className="rounded-xl border border-blue-200 bg-blue-50 p-3"><p className="font-mono text-sm font-black text-blue-700">Contrato {contract.NROCONTRATO}</p><p className="mt-1 text-xs font-bold text-[#304D68]">{contract.NOMERAZAO}</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">Produto {product.SEQPRODUTO} · embarque {formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</p></div><div className="space-y-2"><SummaryLine label="Saldo do contrato" value={formatKg(product.SALDO_CONTRATO)} /><SummaryLine label="Estoque global livre" value={formatKg(selectedStock.PESO_LIVRE_VERTICE)} /><SummaryLine label="Estoque liberado" value={formatKg(product.PESO_ESTOQUE_ELEGIVEL)} /></div><div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3"><div className="flex items-center justify-between"><span className="text-xs font-black text-emerald-800">Sugestão de alocação</span><strong className="text-xl text-emerald-800">{formatKg(suggestion)}</strong></div></div>{validityBlocked && <Button type="button" variant="outline" onClick={onReviewDates} className="h-11 w-full border-orange-300 bg-orange-50 font-black text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar estoque com mais de 6 meses</Button>}<FilterField label="Peso a adicionar (kg)"><Input type="number" min="0" step="0.001" value={input} onChange={(event) => setReservationInputs((current) => ({ ...current, [key]: event.target.value }))} className="h-12 text-lg font-black" /></FilterField><div className="rounded-lg border border-[#D5E0E9] bg-[#F7F9FB] p-3"><SummaryLine label="Manual atual" value={formatKg(currentManual)} /><SummaryLine label="Novo total manual" value={formatKg(newManual)} /></div><div><h3 className="mb-2 text-sm font-black text-[#102F53]">Prévia do resultado</h3><div className="space-y-2 rounded-lg border border-[#D5E0E9] p-3"><SummaryLine label="Saldo restante do contrato" value={formatKg(remaining)} /><SummaryLine label="Estoque livre após operação" value={formatKg(freeAfter)} /></div></div><Button type="button" disabled={!configured || addition <= 0 || saving === key || validityBlocked} onClick={() => void onSave(contract, product, addition, "ADDITION")} className="h-12 w-full bg-emerald-700 text-white hover:bg-emerald-800"><CheckCircle2 className="mr-2 h-5 w-5" />{saving === key ? "Confirmando..." : validityBlocked ? "Revisar estoque com mais de 6 meses" : "Confirmar alocação"}</Button></CardContent></Card>;
+  const changeAddition = (direction: -1 | 1) => {
+    const requested = addition + direction * adjustmentStep;
+    const bounded = Math.min(maximumAddition, Math.max(0, requested));
+    setReservationInputs((current) => ({ ...current, [key]: allocationInputValue(bounded) }));
+  };
+  return <Card className="h-fit border-[#CBD8E3] shadow-sm xl:sticky xl:top-4"><CardContent className="space-y-3 p-3">
+    <div><h2 className="text-base font-black text-[#102F53]">Painel de alocação</h2><p className="text-[10px] text-[#667B90]">Transfira o peso disponível para este contrato.</p></div>
+    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3"><p className="font-mono text-sm font-black text-blue-700">Contrato {contract.NROCONTRATO}</p><p className="mt-1 text-xs font-bold text-[#304D68]">{contract.NOMERAZAO}</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">Produto {product.SEQPRODUTO} · embarque {formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</p></div>
+    <div className="space-y-2"><div className="flex items-center justify-between gap-3 text-xs"><span className="font-semibold text-[#60758A]">Saldo do contrato</span><strong className="font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</strong></div><SummaryLine label="Estoque liberado" value={formatKg(product.PESO_ESTOQUE_ELEGIVEL)} /></div>
+    <div className="grid grid-cols-2 gap-2">
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-emerald-700">Disponível para alocar</p><p className="mt-1 text-xl font-black text-emerald-800">{formatKg(freeAfter)}</p><p className="mt-1 text-[9px] font-semibold text-emerald-700">Atual: {formatKg(selectedStock.PESO_LIVRE_VERTICE)}</p></div>
+      <div className="rounded-xl border border-blue-200 bg-blue-50 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-blue-700">Alocado manualmente</p><p className="mt-1 text-xl font-black text-blue-800">{formatKg(newManual)}</p><p className="mt-1 text-[9px] font-semibold text-blue-700">Atual: {formatKg(currentManual)}</p></div>
+    </div>
+    <div className="rounded-xl border border-[#CBD8E3] bg-white p-3">
+      <p className="text-center text-[10px] font-black uppercase tracking-wider text-[#526A80]">Ajustar peso a adicionar</p>
+      <div className="mt-3 grid grid-cols-[52px_1fr_52px] items-center gap-3">
+        <Button type="button" variant="outline" onClick={() => changeAddition(-1)} disabled={addition <= 0 || saving === key} className="h-12 border-red-200 bg-red-50 px-0 text-red-700 hover:bg-red-100" aria-label={`Diminuir ${formatKg(adjustmentStep)}`}><Minus className="h-6 w-6" /></Button>
+        <div className="relative">
+          <Input type="number" min="0.001" step="0.001" value={adjustmentStep} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setAdjustmentStep(Math.max(0.001, Number(String(event.target.value).replace(",", ".")) || 0.001))} className="h-12 appearance-none px-7 pb-4 text-center text-lg font-black text-[#173D6E] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" aria-label="Peso por clique" />
+          <span className="pointer-events-none absolute right-2 top-2.5 text-[9px] font-black text-[#71869A]">kg</span>
+          <span className="pointer-events-none absolute bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[8px] font-black uppercase text-[#71869A]">por clique</span>
+        </div>
+        <Button type="button" variant="outline" onClick={() => changeAddition(1)} disabled={addition >= maximumAddition || saving === key || validityBlocked} className="h-12 border-emerald-200 bg-emerald-50 px-0 text-emerald-700 hover:bg-emerald-100" aria-label={`Aumentar ${formatKg(adjustmentStep)}`}><Plus className="h-6 w-6" /></Button>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-1.5">{[500, 1000, 1500].map((step) => <button type="button" key={step} onClick={() => setAdjustmentStep(step)} className={`rounded-md border px-1 py-2 text-[10px] font-black transition ${adjustmentStep === step ? "border-blue-500 bg-blue-600 text-white" : "border-[#CBD8E3] bg-[#F7F9FB] text-[#526A80] hover:bg-blue-50"}`}>{kgFormatter.format(step)} kg</button>)}</div>
+      <p className="mt-2 text-center text-[9px] font-semibold text-[#71869A]">Máximo disponível para este contrato: {formatKg(maximumAddition)}</p>
+    </div>
+    {validityBlocked && <Button type="button" variant="outline" onClick={onReviewDates} className="h-11 w-full border-orange-300 bg-orange-50 font-black text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar estoque com mais de 6 meses</Button>}
+    <Button type="button" disabled={!configured || addition <= 0 || saving === key || validityBlocked} onClick={() => void onSave(contract, product, addition, "ADDITION")} className="h-12 w-full bg-emerald-700 text-white hover:bg-emerald-800"><CheckCircle2 className="mr-2 h-5 w-5" />{saving === key ? "Confirmando..." : validityBlocked ? "Revisar estoque com mais de 6 meses" : "Confirmar alocação"}</Button>
+    <div><h3 className="mb-2 text-sm font-black text-[#102F53]">Prévia do resultado</h3><div className="space-y-2 rounded-lg border border-[#D5E0E9] p-3"><SummaryLine label="Peso a adicionar" value={formatKg(addition)} /><SummaryLine label="Saldo restante do contrato" value={formatKg(remaining)} /><SummaryLine label="Estoque livre após operação" value={formatKg(freeAfter)} /></div></div>
+  </CardContent></Card>;
 }
 
 function ManualAllocationEditor({ allocation, totalFreeStock, configured, saving, reservationInputs, setReservationInputs, onSave, onReviewDates }: { allocation: { contract: ExportContract; product: ContractProduct } | null; totalFreeStock: number; configured: boolean; saving: string | null; reservationInputs: Record<string, string>; setReservationInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>; onSave: ModernStockOperationsLayoutProps["onSaveReservation"]; onReviewDates?: () => void }) {
+  const [adjustmentStep, setAdjustmentStep] = useState(500);
   if (!allocation) return <Card className="h-fit border-[#CBD8E3]"><CardContent className="py-14 text-center"><Pencil className="mx-auto h-9 w-9 text-[#A3B3C1]" /><p className="mt-3 text-sm font-bold text-[#60758A]">Selecione uma alocação para ajustar.</p></CardContent></Card>;
   const { contract, product } = allocation;
   totalFreeStock = Math.max(0, Number(product.PESO_LIVRE_VERTICE || 0));
@@ -2821,48 +3299,92 @@ function ManualAllocationEditor({ allocation, totalFreeStock, configured, saving
   const input = reservationInputs[key] ?? allocationInputValue(currentManual);
   const nextManual = Math.max(0, Number(String(input).replace(",", ".")) || 0);
   const delta = nextManual - currentManual;
+  const maximumManual = Math.max(currentManual, Number(product.LIMITE_RESERVA || 0));
+  const availableAfter = Math.max(0, totalFreeStock - delta);
   const newTotal = Math.max(0, Number(product.PESO_ATRELADO_TOTAL || 0) + delta);
   const shipped = Number(product.PESO_EXPEDIDO || 0);
   const currentAttended = shipped + Number(product.PESO_ATRELADO_TOTAL || 0);
   const newAttended = shipped + newTotal;
-  const increaseBlockedByValidity = delta > 0
-    && Boolean(product.REGRA_VALIDADE_CONFIGURADA)
+  const lastManualMovement = latestManualAllocationDetail(product);
+  const lastManualMovementDate = allocationDetailDate(lastManualMovement);
+  const changeManualAllocation = (direction: -1 | 1) => {
+    const requested = nextManual + direction * adjustmentStep;
+    const bounded = Math.min(maximumManual, Math.max(0, requested));
+    setReservationInputs((current) => ({
+      ...current,
+      [key]: allocationInputValue(bounded),
+    }));
+  };
+  const increaseUnavailableByValidity = Boolean(product.REGRA_VALIDADE_CONFIGURADA)
     && Number(product.PESO_ESTOQUE_ELEGIVEL || 0) <= 0
     && Number(product.PESO_ESTOQUE_INCOMPATIVEL || 0) > 0;
+  const increaseBlockedByValidity = delta > 0 && increaseUnavailableByValidity;
   return (
     <Card className="h-fit border-[#CBD8E3] shadow-sm xl:sticky xl:top-4">
-      <CardContent className="space-y-4 p-4">
-        <div><h2 className="flex items-center gap-2 text-lg font-black text-[#102F53]"><Pencil className="h-5 w-5" />Ajustar alocação manual</h2><p className="text-xs text-[#667B90]">Produto {product.SEQPRODUTO} · {product.DESCRICAO}</p></div>
+      <CardContent className="space-y-3 p-3">
+        <div><h2 className="flex items-center gap-2 text-base font-black text-[#102F53]"><Pencil className="h-4 w-4" />Ajustar alocação manual</h2><p className="text-[10px] text-[#667B90]">Produto {product.SEQPRODUTO} · {product.DESCRICAO}</p></div>
         <div className="grid grid-cols-2 gap-2 border-y border-[#DCE5ED] py-3">
           <MiniFact label="Contrato" value={contract.NROCONTRATO} />
           <MiniFact label="Contratado" value={formatKg(product.PESOCONTRATO)} />
           <MiniFact label="Já expedido" value={formatKg(shipped)} />
           <MiniFact label="Situação" value={Number(product.SALDO_CONTRATO || 0) <= 0 ? "Atendido" : "Parcial"} />
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <SummaryValue label="Manual atual" value={formatKg(currentManual)} />
-          <SummaryValue label="Novo total manual" value={formatKg(nextManual)} tone={nextManual <= currentManual ? "green" : "blue"} />
+        <div className={`rounded-lg border p-3 ${lastManualMovementDate ? "border-blue-200 bg-blue-50" : "border-slate-200 bg-slate-50"}`}>
+          <div className="flex items-start gap-2">
+            <Clock3 className={`mt-0.5 h-4 w-4 shrink-0 ${lastManualMovementDate ? "text-blue-700" : "text-slate-500"}`} />
+            <div>
+              <p className={`text-[10px] font-black uppercase tracking-wider ${lastManualMovementDate ? "text-blue-700" : "text-slate-500"}`}>Última movimentação manual</p>
+              <p className="mt-1 text-sm font-black text-[#173D6E]">{lastManualMovementDate ? formatDateTime(lastManualMovementDate) : "Sem movimentação manual"}</p>
+              <p className="mt-0.5 text-[10px] font-semibold text-[#60758A]">{lastManualMovementDate ? lastManualMovement?.USUARIO || "Operador não informado" : "Os pesos exibidos nesta linha vieram somente do ERP."}</p>
+            </div>
+          </div>
         </div>
-        <FilterField label="Novo total manual"><Input type="number" min="0" step="0.001" value={input} onChange={(event) => setReservationInputs((current) => ({ ...current, [key]: event.target.value }))} className="h-12 text-lg font-black" /></FilterField>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <p className="text-[9px] font-black uppercase tracking-wider text-emerald-700">Disponível para alocar</p>
+            <p className="mt-1 text-xl font-black text-emerald-800">{formatKg(availableAfter)}</p>
+            <p className="mt-1 text-[9px] font-semibold text-emerald-700">Atual: {formatKg(totalFreeStock)}</p>
+          </div>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+            <p className="text-[9px] font-black uppercase tracking-wider text-blue-700">Alocado manualmente</p>
+            <p className="mt-1 text-xl font-black text-blue-800">{formatKg(nextManual)}</p>
+            <p className="mt-1 text-[9px] font-semibold text-blue-700">Atual: {formatKg(currentManual)}</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-[#CBD8E3] bg-white p-3">
+          <p className="text-center text-[10px] font-black uppercase tracking-wider text-[#526A80]">Ajustar peso alocado</p>
+          <div className="mt-3 grid grid-cols-[52px_1fr_52px] items-center gap-3">
+            <Button type="button" variant="outline" onClick={() => changeManualAllocation(-1)} disabled={nextManual <= 0 || saving === key} className="h-12 border-red-200 bg-red-50 px-0 text-red-700 hover:bg-red-100" aria-label={`Diminuir ${formatKg(adjustmentStep)}`}><Minus className="h-6 w-6" /></Button>
+            <div className="relative">
+              <Input type="number" min="0.001" step="0.001" value={adjustmentStep} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setAdjustmentStep(Math.max(0.001, Number(String(event.target.value).replace(",", ".")) || 0.001))} className="h-12 appearance-none px-7 pb-4 text-center text-lg font-black text-[#173D6E] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" aria-label="Peso por clique" />
+              <span className="pointer-events-none absolute right-2 top-2.5 text-[9px] font-black text-[#71869A]">kg</span>
+              <span className="pointer-events-none absolute bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[8px] font-black uppercase text-[#71869A]">por clique</span>
+            </div>
+            <Button type="button" variant="outline" onClick={() => changeManualAllocation(1)} disabled={nextManual >= maximumManual || saving === key || increaseUnavailableByValidity} className="h-12 border-emerald-200 bg-emerald-50 px-0 text-emerald-700 hover:bg-emerald-100" aria-label={`Aumentar ${formatKg(adjustmentStep)}`}><Plus className="h-6 w-6" /></Button>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-1.5">
+            {[500, 1000, 1500].map((step) => <button type="button" key={step} onClick={() => setAdjustmentStep(step)} className={`rounded-md border px-1 py-2 text-[10px] font-black transition ${adjustmentStep === step ? "border-blue-500 bg-blue-600 text-white" : "border-[#CBD8E3] bg-[#F7F9FB] text-[#526A80] hover:bg-blue-50"}`}>{kgFormatter.format(step)} kg</button>)}
+          </div>
+          <p className="mt-2 text-center text-[9px] font-semibold text-[#71869A]">Limite para este contrato: {formatKg(maximumManual)}</p>
+        </div>
         {increaseBlockedByValidity && onReviewDates && <Button type="button" variant="outline" onClick={onReviewDates} className="h-11 w-full border-orange-300 bg-orange-50 font-black text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar estoque com mais de 6 meses</Button>}
+        <Button type="button" disabled={!configured || saving === key || nextManual === currentManual || increaseBlockedByValidity} onClick={() => void onSave(contract, product, nextManual, "TOTAL")} className="h-12 w-full bg-emerald-700 hover:bg-emerald-800"><CheckCircle2 className="mr-2 h-5 w-5" />{saving === key ? "Salvando..." : increaseBlockedByValidity ? "Revisar estoque com mais de 6 meses" : "Confirmar alteração"}</Button>
         <div>
           <h3 className="mb-2 text-sm font-black text-[#102F53]">Prévia do impacto</h3>
           <div className="space-y-2 rounded-lg border border-[#D5E0E9] p-3">
             <SummaryLine label={delta <= 0 ? "Peso devolvido ao disponível" : "Peso retirado do disponível"} value={formatKg(Math.abs(delta))} />
-            <SummaryLine label="Estoque livre global" value={`${formatKg(totalFreeStock)} → ${formatKg(totalFreeStock - delta)}`} />
             <SummaryLine label="Saldo pendente" value={`${formatKg(product.SALDO_CONTRATO)} → ${formatKg(Math.max(0, Number(product.SALDO_CONTRATO || 0) - delta))}`} />
             <SummaryLine label="Total ainda reservado" value={formatKg(newTotal)} />
             <SummaryLine label="Total atendido" value={`${formatKg(currentAttended)} → ${formatKg(newAttended)}`} />
           </div>
         </div>
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-900"><LockKeyhole className="mr-2 inline h-4 w-4" />O saldo considera o que já foi expedido e o que permanece reservado. Esta operação altera somente a reserva manual; OP e pedido permanecem protegidos.</div>
-        <Button type="button" disabled={!configured || saving === key || nextManual === currentManual || increaseBlockedByValidity} onClick={() => void onSave(contract, product, nextManual, "TOTAL")} className="h-12 w-full bg-emerald-700 hover:bg-emerald-800"><CheckCircle2 className="mr-2 h-5 w-5" />{saving === key ? "Salvando..." : increaseBlockedByValidity ? "Revisar estoque com mais de 6 meses" : "Confirmar alteração"}</Button>
       </CardContent>
     </Card>
   );
 }
 
-function ReviewDecisionPanel({ selected, contracts, decision, onDecisionChange, reprocessDate, onReprocessDateChange, saving, onSave }: { selected: { item: ContractStock; lot: ContractStockLot } | null; contracts: ExportContract[]; decision: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR"; onDecisionChange: (value: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR") => void; reprocessDate: string; onReprocessDateChange: (value: string) => void; saving: string | null; onSave: ModernStockOperationsLayoutProps["onSaveLotTreatment"] }) {
+function ReviewDecisionPanel({ selected, contracts, decision, onDecisionChange, reprocessDate, onReprocessDateChange, saving, onSave }: { selected: { item: ContractStock; lot: ContractStockLot } | null; contracts: ExportContract[]; decision: "" | "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR"; onDecisionChange: (value: "" | "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR") => void; reprocessDate: string; onReprocessDateChange: (value: string) => void; saving: string | null; onSave: ModernStockOperationsLayoutProps["onSaveLotTreatment"] }) {
   if (!selected) return <Card className="h-fit border-[#CBD8E3]"><CardContent className="py-14 text-center"><CalendarDays className="mx-auto h-10 w-10 text-[#A3B3C1]" /><p className="mt-3 text-sm font-bold text-[#60758A]">Selecione um lote para revisar.</p></CardContent></Card>;
   const { item, lot } = selected;
   const compatible = compatibleContractsForLot(item.SEQPRODUTO, lot.DTAPRODUCAO, contracts);
@@ -2922,8 +3444,8 @@ function ReviewDecisionDetails({ item, lot, contracts, compatibleContracts, deci
   lot: ContractStockLot;
   contracts: ExportContract[];
   compatibleContracts: ExportContract[];
-  decision: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR";
-  onDecisionChange: (value: "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR") => void;
+  decision: "" | "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR";
+  onDecisionChange: (value: "" | "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR") => void;
   reprocessDate: string;
   onReprocessDateChange: (value: string) => void;
   saving: boolean;
@@ -2940,10 +3462,17 @@ function ReviewDecisionDetails({ item, lot, contracts, compatibleContracts, deci
   const [targetContractId, setTargetContractId] = useState<number | null>(firstCompatibleContract?.SEQCONTRATO ?? null);
   const [targetWeight, setTargetWeight] = useState(() => allocationInputValue(suggestedWeight(firstCompatibleContract)));
   const selectedContract = compatibleContracts.find((contract) => contract.SEQCONTRATO === targetContractId) || null;
+  useEffect(() => {
+    if (decision !== "ALOCAR") return;
+    const contract = selectedContract || firstCompatibleContract;
+    setTargetContractId(contract?.SEQCONTRATO ?? null);
+    setTargetWeight(allocationInputValue(suggestedWeight(contract)));
+  }, [decision]);
   const selectTargetContract = (contract: ExportContract) => {
     setTargetContractId(contract.SEQCONTRATO);
     setTargetWeight(allocationInputValue(suggestedWeight(contract)));
   };
+  const maximumTargetWeight = suggestedWeight(selectedContract);
   const numericWeight = Math.max(0, Number(String(targetWeight).replace(",", ".")) || 0);
   const currentDecision = lot.DECISAO_LOTE;
   return <Card className="h-fit border-[#CBD8E3] shadow-sm xl:sticky xl:top-4">
@@ -2966,17 +3495,17 @@ function ReviewDecisionDetails({ item, lot, contracts, compatibleContracts, deci
         </div>
       </div>
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-950"><p className="font-black">Regra de estoque</p><p className="mt-1">A data não restringe contratos específicos. Lotes com mais de seis meses ficam retidos até uma decisão do PCP.</p></div>
-      <div><h3 className="mb-2 text-sm font-black text-[#102F53]">Ação operacional</h3><select value={decision} onChange={(event) => onDecisionChange(event.target.value as typeof decision)} className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm font-bold"><option value="SEPARADO">Manter separado</option><option value="DISPONIVEL">Disponibilizar para alocação</option><option value="REPROCESSO">Encaminhar para reprocesso</option><option value="ALOCAR">Disponibilizar e alocar</option></select></div>
+      <div><h3 className="mb-2 text-sm font-black text-[#102F53]">Ação operacional</h3><select value={decision} onChange={(event) => onDecisionChange(event.target.value as typeof decision)} className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm font-bold"><option value="">Selecionar decisão</option><option value="SEPARADO">Manter separado</option><option value="DISPONIVEL">Disponibilizar para alocação</option><option value="REPROCESSO">Encaminhar para reprocesso</option><option value="ALOCAR">Disponibilizar e alocar</option></select></div>
       {decision === "DISPONIVEL" && <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 text-xs font-semibold leading-5 text-orange-950"><strong>Liberação excepcional:</strong> este lote antigo voltará ao estoque disponível para alocação em qualquer contrato que utilize o produto. A decisão poderá ser revertida depois.</div>}
       {decision === "REPROCESSO" && <div className="space-y-2"><FilterField label="Data prevista de reprocesso"><Input type="date" value={reprocessDate} onChange={(event) => onReprocessDateChange(event.target.value)} /></FilterField><p className="text-xs font-semibold text-orange-800">O lote continuará nesta revisão, identificado como “Em reprocesso”.</p></div>}
-      {decision === "ALOCAR" && <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-3"><div><p className="text-xs font-black text-[#173D6E]">Escolha o contrato</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">A liberação por idade será registrada e a tela de alocação abrirá com o contrato e o peso preenchidos.</p></div><div className="max-h-44 space-y-2 overflow-auto">{compatibleContracts.map((contract) => { const product = contract.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO)!; const checked = contract.SEQCONTRATO === targetContractId; return <button key={contract.SEQCONTRATO} type="button" onClick={() => selectTargetContract(contract)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left ${checked ? "border-blue-500 bg-white ring-1 ring-blue-200" : "border-blue-200 bg-blue-50 hover:bg-white"}`}><div><p className="font-mono text-xs font-black text-[#173D6E]">{contract.NROCONTRATO}</p><p className="max-w-[230px] truncate text-[10px] font-semibold text-[#60758A]">{contract.NOMERAZAO}</p></div><div className="text-right"><p className="text-[9px] font-black uppercase text-[#71869A]">Saldo</p><p className="text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</p></div></button>; })}</div><FilterField label="Peso que deseja alocar"><Input type="number" min="0" step="0.001" value={targetWeight} onChange={(event) => setTargetWeight(event.target.value)} className="h-11 text-base font-black" /></FilterField></div>}
-      <Button type="button" disabled={saving || (decision === "REPROCESSO" && !reprocessDate) || (decision === "ALOCAR" && (!selectedContract || numericWeight <= 0))} onClick={() => void onSave(item, lot, decision, decision === "REPROCESSO" ? reprocessDate : undefined, targetContractId ?? undefined, numericWeight)} className="h-11 w-full bg-[#173D6E] hover:bg-[#102F53]">{saving ? "Salvando..." : decision === "ALOCAR" ? "Salvar e abrir alocação" : "Confirmar decisão"}</Button>
+      {decision === "ALOCAR" && <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-3"><div><p className="text-xs font-black text-[#173D6E]">Escolha o contrato</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">Ao escolher o contrato, o campo recebe automaticamente o menor valor entre o peso livre do lote e o saldo do contrato.</p></div><div className="max-h-44 space-y-2 overflow-auto">{compatibleContracts.map((contract) => { const product = contract.PRODUTOS.find((entry) => entry.SEQPRODUTO === item.SEQPRODUTO)!; const checked = contract.SEQCONTRATO === targetContractId; return <button key={contract.SEQCONTRATO} type="button" onClick={() => selectTargetContract(contract)} className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left ${checked ? "border-blue-500 bg-white ring-1 ring-blue-200" : "border-blue-200 bg-blue-50 hover:bg-white"}`}><div><p className="font-mono text-xs font-black text-[#173D6E]">{contract.NROCONTRATO}</p><p className="max-w-[230px] truncate text-[10px] font-semibold text-[#60758A]">{contract.NOMERAZAO}</p></div><div className="text-right"><p className="text-[9px] font-black uppercase text-[#71869A]">Saldo</p><p className="text-xs font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</p></div></button>; })}</div><FilterField label="Peso que deseja alocar"><Input type="number" min="0" max={maximumTargetWeight} step="0.001" value={targetWeight} onChange={(event) => setTargetWeight(event.target.value)} className="h-11 text-base font-black" /></FilterField><p className="text-[10px] font-semibold text-blue-900">Máximo permitido neste lote e contrato: {formatKg(maximumTargetWeight)}.</p></div>}
+      <Button type="button" disabled={saving || !decision || (decision === "REPROCESSO" && !reprocessDate) || (decision === "ALOCAR" && (!selectedContract || numericWeight <= 0))} onClick={() => decision && void onSave(item, lot, decision, decision === "REPROCESSO" ? reprocessDate : undefined, targetContractId ?? undefined, numericWeight)} className="h-11 w-full bg-[#173D6E] hover:bg-[#102F53]">{saving ? "Salvando..." : decision === "ALOCAR" ? "Salvar e abrir alocação" : "Confirmar decisão"}</Button>
     </CardContent>
   </Card>;
 }
 
 function LotDecisionBadge({ decision }: { decision?: ContractStockLot["DECISAO_LOTE"] }) {
-  if (!decision) return null;
+  if (!decision) return <span className="inline-flex rounded-full border border-red-300 bg-red-50 px-2 py-1 text-[9px] font-black uppercase text-red-700">A definir</span>;
   const config = decision === "REPROCESSO"
     ? ["Em reprocesso", "border-orange-300 bg-orange-50 text-orange-800"]
     : decision === "DISPONIVEL"
@@ -2991,6 +3520,23 @@ function ReviewMetric({ title, rows, tone }: { title: string; rows: Array<{ lot:
   const weight = rows.reduce((sum, row) => sum + Number(row.lot.PESO_LIVRE_ESTIMADO || 0), 0);
   const styles = tone === "red" ? "border-l-red-500 text-red-700" : tone === "green" ? "border-l-emerald-500 text-emerald-700" : tone === "orange" ? "border-l-orange-500 text-orange-700" : "border-l-blue-500 text-blue-700";
   return <Card className={`border-[#CBD8E3] border-l-4 ${styles}`}><CardContent className="p-4"><p className="text-xs font-black text-[#263F58]">{title}</p><div className="mt-2 flex items-end justify-between"><p className="text-2xl font-black">{rows.length} lotes</p><p className="text-sm font-black text-[#304D68]">{formatKg(weight)}</p></div></CardContent></Card>;
+}
+
+type ReviewDecisionFilterValue = "TODOS" | "A_DEFINIR" | "REPROCESSO" | "SEPARADO" | "DISPONIVEL";
+
+function ReviewDecisionFilter({ value, onChange, counts }: {
+  value: ReviewDecisionFilterValue;
+  onChange: (value: ReviewDecisionFilterValue) => void;
+  counts: Record<ReviewDecisionFilterValue, number>;
+}) {
+  const options: Array<{ value: ReviewDecisionFilterValue; label: string; active: string; dot: string }> = [
+    { value: "TODOS", label: "Todos", active: "border-[#173D6E] bg-[#173D6E] text-white", dot: "bg-slate-400" },
+    { value: "A_DEFINIR", label: "A definir", active: "border-red-600 bg-red-600 text-white", dot: "bg-red-500" },
+    { value: "REPROCESSO", label: "Reprocesso", active: "border-orange-600 bg-orange-600 text-white", dot: "bg-orange-500" },
+    { value: "SEPARADO", label: "Separado", active: "border-emerald-700 bg-emerald-700 text-white", dot: "bg-emerald-600" },
+    { value: "DISPONIVEL", label: "Disponibilizados", active: "border-blue-700 bg-blue-700 text-white", dot: "bg-blue-600" },
+  ];
+  return <Card className="border-[#CBD8E3] shadow-sm"><CardContent className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center"><div className="shrink-0"><p className="text-xs font-black uppercase tracking-wider text-[#173D6E]">Filtrar por decisão</p><p className="mt-0.5 text-[10px] font-semibold text-[#667B90]">Clique em uma situação para limitar a lista.</p></div><div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 lg:justify-end lg:pb-0">{options.map((option) => { const selected = option.value === value; return <button key={option.value} type="button" onClick={() => onChange(option.value)} aria-pressed={selected} className={`flex min-w-[132px] items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${selected ? option.active : "border-[#C8D6E2] bg-white text-[#304D68] hover:border-[#8EABC3] hover:bg-[#F5F8FA]"}`}><span className="flex items-center gap-2 text-xs font-black"><span className={`h-2.5 w-2.5 rounded-full ${selected ? "bg-white" : option.dot}`} />{option.label}</span><strong className={`text-lg font-black ${selected ? "text-white" : "text-[#173D6E]"}`}>{counts[option.value]}</strong></button>; })}</div></CardContent></Card>;
 }
 
 function ValidityBadge({ status }: { status?: ContractStockLot["SITUACAO_VALIDADE"] }) {
@@ -3245,14 +3791,14 @@ function ContractDetails({ contract, configured, saving, notes, setNotes, onSave
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-2">
                         {detail.ORIGEM === "ORDEM_PRODUCAO" ? <Factory className="h-4 w-4 text-blue-700" /> : <LockKeyhole className={`h-4 w-4 ${detail.ORIGEM === "RESERVA_PEDIDO" ? "text-emerald-700" : "text-amber-700"}`} />}
-                        <div><p className="text-xs font-black text-[#173D6E]">{detail.ORIGEM === "EXPEDICAO" || detail.ORIGEM === "RESERVA_PEDIDO" ? `Pedido ${detail.NROPEDIDO || "não informado"}` : detail.ORIGEM === "ORDEM_PRODUCAO" ? `Ordem de produção ${detail.NUMERO_ORDEM}` : detail.ORIGEM === "MAIS_6_MESES" ? "Alocação de estoque +6 meses" : "Alocação manual sem vínculo de ordem"}</p><p className="text-[10px] text-[#6B7F92]">{detail.ORIGEM === "EXPEDICAO" ? `Carga ${detail.NROCARGA || "não informada"} • peso efetivamente expedido` : detail.ORIGEM === "RESERVA_PEDIDO" ? `Reserva no ERP • embarque ${formatDate(detail.DATA_EMBARQUE)}` : detail.ORIGEM === "ORDEM_PRODUCAO" ? `Contrato industrial ${detail.CODCONTRATO} • vínculo protegido` : `Incluído por ${detail.USUARIO || "usuário não informado"}`}</p></div>
+                        <div><p className="text-xs font-black text-[#173D6E]">{detail.ORIGEM === "EXPEDICAO" || detail.ORIGEM === "RESERVA_PEDIDO" ? `Pedido ${detail.NROPEDIDO || "não informado"}` : detail.ORIGEM === "ORDEM_PRODUCAO" ? `Ordem de produção ${detail.NUMERO_ORDEM}` : detail.ORIGEM === "MAIS_6_MESES" ? "Alocação de estoque +6 meses" : detail.ORIGEM === "FILA" ? "Alocação automática pela fila" : "Alocação manual sem vínculo de ordem"}</p><p className="text-[10px] text-[#6B7F92]">{detail.ORIGEM === "EXPEDICAO" ? `Carga ${detail.NROCARGA || "não informada"} • peso efetivamente expedido` : detail.ORIGEM === "RESERVA_PEDIDO" ? `Reserva no ERP • embarque ${formatDate(detail.DATA_EMBARQUE)}` : detail.ORIGEM === "ORDEM_PRODUCAO" ? `Contrato industrial ${detail.CODCONTRATO} • vínculo protegido` : `Incluído por ${detail.USUARIO || "usuário não informado"}`}</p></div>
                       </div>
                       <p className="whitespace-nowrap text-sm font-black text-[#173D6E]">{formatKg(detail.PESO)}</p>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-[#526A80] sm:grid-cols-3">
                       <p><span className="block font-black uppercase">Início produção</span>{formatDate(detail.DATA_INICIO)}</p>
                       <p><span className="block font-black uppercase">Data rendimento</span>{formatDate(detail.DATA_RENDIMENTO)}</p>
-                      <p><span className="block font-black uppercase">Origem</span>{detail.ORIGEM === "EXPEDICAO" ? "Expedição no ERP" : detail.ORIGEM === "RESERVA_PEDIDO" ? "Reserva de pedido no ERP" : detail.ORIGEM === "ORDEM_PRODUCAO" ? "Automática pelo ERP" : detail.ORIGEM === "MAIS_6_MESES" ? "Estoque +6 meses" : "Manual no Vértice"}</p>
+                      <p><span className="block font-black uppercase">Origem</span>{detail.ORIGEM === "EXPEDICAO" ? "Expedição no ERP" : detail.ORIGEM === "RESERVA_PEDIDO" ? "Reserva de pedido no ERP" : detail.ORIGEM === "ORDEM_PRODUCAO" ? "Automática pelo ERP" : detail.ORIGEM === "MAIS_6_MESES" ? "Estoque +6 meses" : detail.ORIGEM === "FILA" ? "Fila automática no Vértice" : "Manual no Vértice"}</p>
                     </div>
                   </div>
                 ))}

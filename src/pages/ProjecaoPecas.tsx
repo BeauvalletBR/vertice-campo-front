@@ -15,11 +15,14 @@ import {
 const numero = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 });
 const percentual = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const hojeLocal = () => {
+const dataLocalComDeslocamento = (dias: number) => {
   const agora = new Date();
+  agora.setDate(agora.getDate() + dias);
   agora.setMinutes(agora.getMinutes() - agora.getTimezoneOffset());
   return agora.toISOString().slice(0, 10);
 };
+
+const diaAnteriorLocal = () => dataLocalComDeslocamento(-1);
 
 const formatarData = (valor?: string | null) => {
   if (!valor) return "-";
@@ -44,10 +47,11 @@ interface RealizadoPersistido {
 }
 
 const carregarRealizadoPersistido = (): RealizadoPersistido => {
+  const diaAnterior = diaAnteriorLocal();
   const estadoPadrao: RealizadoPersistido = {
-    dataAbate: hojeLocal(),
-    rendimentoInicio: "",
-    rendimentoFim: "",
+    dataAbate: "",
+    rendimentoInicio: diaAnterior,
+    rendimentoFim: diaAnterior,
     ordem: "",
     produto: "",
     produtoExcluir: "",

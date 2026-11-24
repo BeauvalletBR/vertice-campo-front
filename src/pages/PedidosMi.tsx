@@ -192,6 +192,7 @@ export default function PedidosMi() {
   const [inlineOrderId, setInlineOrderId] = useState<number | null>(null);
   const [inlineOrderValue, setInlineOrderValue] = useState("");
   const [savingInlineOrder, setSavingInlineOrder] = useState<number | null>(null);
+  const [savingInlineStatus, setSavingInlineStatus] = useState<number | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; direction: "asc" | "desc" }>({
     key: "embarque",
     direction: "asc",
@@ -376,7 +377,11 @@ export default function PedidosMi() {
     }
   };
 
-  const payloadFromOrder = (order: PedidoMi, nropedido: number | null): PedidoMiPayload => ({
+  const payloadFromOrder = (
+    order: PedidoMi,
+    nropedido: number | null,
+    nextStatus: PedidoMiStatus = order.STATUS,
+  ): PedidoMiPayload => ({
     nroempresa: order.NROEMPRESA,
     nome_carga: order.NOME_CARGA,
     nropedido,
@@ -385,7 +390,7 @@ export default function PedidosMi() {
     seqcliente: order.SEQCLIENTE,
     cliente: order.CLIENTE,
     uf: order.UF || null,
-    status: order.STATUS,
+    status: nextStatus,
     observacao: order.OBSERVACAO || null,
     versao: order.VERSAO,
     itens: order.ITENS.map((item, index) => ({
@@ -418,6 +423,23 @@ export default function PedidosMi() {
       toast.error(error instanceof Error ? error.message : "Não foi possível atualizar o pedido.");
     } finally {
       setSavingInlineOrder(null);
+    }
+  };
+
+  const saveInlineStatus = async (order: PedidoMi, nextStatus: PedidoMiStatus) => {
+    if (nextStatus === order.STATUS) return;
+    setSavingInlineStatus(order.ID_PEDIDO_MI);
+    try {
+      await pedidosMiApi.update(
+        order.ID_PEDIDO_MI,
+        payloadFromOrder(order, order.NROPEDIDO || null, nextStatus),
+      );
+      toast.success("Status atualizado.");
+      await loadPanel(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível atualizar o status.");
+    } finally {
+      setSavingInlineStatus(null);
     }
   };
 
@@ -610,7 +632,27 @@ export default function PedidosMi() {
                         </td>
                         <td className="max-w-[260px] px-3 py-3 font-bold text-[#173D6E]">{order.CLIENTE}<span className="block text-[10px] font-semibold text-[#7790A7]">{order.UF || "UF não informada"}</span></td>
                         <td className="px-3 py-3 font-bold text-[#365675]">{formatDate(order.DTA_EMBARQUE)}</td>
-                        <td className="px-3 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${statusStyle[order.STATUS]}`}>{order.STATUS}</span>{order.STATUS_PEDIDO_ERP && <span className="mt-1 block text-[9px] font-semibold text-[#7890A6]">ERP: {order.STATUS_PEDIDO_ERP}</span>}</td>
+                        <td className="px-3 py-3">
+                          <Select
+                            value={order.STATUS}
+                            disabled={savingInlineStatus === order.ID_PEDIDO_MI}
+                            onValueChange={(value: PedidoMiStatus) => void saveInlineStatus(order, value)}
+                          >
+                            <SelectTrigger
+                              title="Clique para alterar o status"
+                              className={`h-auto w-auto gap-1 rounded-full px-2.5 py-1 text-[10px] font-black ${statusStyle[order.STATUS]}`}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="PENDENTE">Pendente</SelectItem>
+                              <SelectItem value="PROGRAMADO">Programado</SelectItem>
+                              <SelectItem value="CARREGADO">Carregado</SelectItem>
+                              <SelectItem value="CANCELADO">Cancelado</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {order.STATUS_PEDIDO_ERP && <span className="mt-1 block text-[9px] font-semibold text-[#7890A6]">ERP: {order.STATUS_PEDIDO_ERP}</span>}
+                        </td>
                         <td className="px-3 py-3 font-black text-[#123A68]">{kg.format(planned)} kg</td>
                         <td className={`px-3 py-3 font-black ${difference < 0 ? "text-red-600" : difference > 0 ? "text-emerald-700" : "text-[#365675]"}`}>{kg.format(difference)} kg</td>
                         <td className="px-3 py-3 font-black text-[#123A68]">{kg.format(system)} kg</td>
@@ -667,9 +709,9 @@ export default function PedidosMi() {
       </Dialog>
 
       <Dialog open={Boolean(form)} onOpenChange={(open) => !open && !saving && setForm(null)}>
-        <DialogContent className="max-h-[94vh] max-w-[96vw] overflow-y-auto border-[#C7D7E5] xl:max-w-6xl">
+        <DialogContent className="max-h-[94vh] max-w-[96vw] overflow-x-hidden overflow-y-auto border-[#C7D7E5] xl:max-w-[96vw] 2xl:max-w-7xl">
           <DialogHeader><DialogTitle className="flex items-center gap-2 text-xl font-black text-[#123A68]"><Truck className="h-5 w-5" />{form?.id ? "Editar lançamento MI" : "Novo lançamento MI"}</DialogTitle><DialogDescription>Informe o pedido para preencher pelo ERP ou deixe em branco para um lançamento totalmente manual.</DialogDescription></DialogHeader>
-          {form && <div className="space-y-5">
+          {form && <div className="min-w-0 space-y-5">
             <div className="grid gap-3 rounded-xl border border-[#D2DFEA] bg-[#F7FAFD] p-4 sm:grid-cols-2 lg:grid-cols-4">
               <div><Label>Nº pedido ERP</Label><div className="mt-1.5 flex gap-2"><Input inputMode="numeric" value={form.nropedido} onChange={(event) => setForm({ ...form, nropedido: event.target.value.replace(/\D/g, "") })} placeholder="Opcional" /><Button type="button" onClick={() => void lookupErp()} disabled={!form.nropedido || lookingUp} className="shrink-0 bg-[#1B58A0] hover:bg-[#154781]">{lookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}<span className="ml-2 hidden xl:inline">Buscar</span></Button></div></div>
               <div><Label>Nome da carga *</Label><Input className="mt-1.5" value={form.nomeCarga} onChange={(event) => setForm({ ...form, nomeCarga: event.target.value })} placeholder="Ex.: BITRUCK VALCIR" /></div>
@@ -714,19 +756,31 @@ export default function PedidosMi() {
               <div><Label>Status</Label><Select value={form.status} onValueChange={(value: PedidoMiStatus) => setForm({ ...form, status: value })}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDENTE">Pendente</SelectItem><SelectItem value="PROGRAMADO">Programado</SelectItem><SelectItem value="CARREGADO">Carregado</SelectItem><SelectItem value="CANCELADO">Cancelado</SelectItem></SelectContent></Select></div>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-[#CAD9E6]">
+            <div className="min-w-0 overflow-hidden rounded-xl border border-[#CAD9E6]">
               <div className="flex items-center justify-between bg-[#EAF1F7] px-4 py-3"><div><h3 className="font-black text-[#123A68]">Produtos do pedido</h3><p className="text-xs text-[#668096]">Pedido é o valor planejado; Sistema vem do ERP.</p></div><Button type="button" size="sm" variant="outline" onClick={() => setForm({ ...form, itens: [...form.itens, newItem()] })} className="border-[#AFC5D8] text-[#173D6E]"><Plus className="mr-1 h-4 w-4" />Produto</Button></div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1250px] text-xs">
+              <div className="min-w-0 overflow-hidden">
+                <table className="w-full table-fixed text-xs">
+                  <colgroup>
+                    <col className="w-[10%]" />
+                    <col className="w-[15%]" />
+                    <col className="w-[6%]" />
+                    <col className="w-[13%]" />
+                    <col className="w-[13%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[5%]" />
+                  </colgroup>
                   <thead className="bg-[#F5F8FB] text-[#526C84]"><tr><th className="px-3 py-2 text-left">Cód. produto</th><th className="px-3 py-2 text-left">Descrição</th><th className="px-3 py-2 text-left">Un.</th><th className="px-3 py-2 text-left">Produção mínima</th><th className="px-3 py-2 text-left">Produção máxima</th><th className="px-3 py-2 text-right">Total pedido</th><th className="px-3 py-2 text-right">Preço pedido</th><th className="px-3 py-2 text-right">Sistema</th><th className="px-3 py-2 text-right">Preço sistema</th><th className="w-10" /></tr></thead>
                   <tbody>{form.itens.map((item) => <tr key={item.key} className="border-t border-[#DFE7EF]">
-                    <td className="p-2 align-top"><Input inputMode="numeric" value={item.seqproduto} onChange={(event) => setForm((current) => current && ({ ...current, itens: current.itens.map((currentItem) => currentItem.key === item.key ? { ...currentItem, seqproduto: event.target.value.replace(/\D/g, ""), produto: "", productLookup: "idle" } : currentItem) }))} onBlur={() => void lookupProduct(item.key)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void lookupProduct(item.key); } }} placeholder="Opcional" /></td>
-                    <td className="p-2 align-top"><Input value={item.produto} disabled={item.productLookup === "loading" || Boolean(item.seqproduto)} onChange={(event) => updateItem(item.key, "produto", event.target.value)} placeholder={item.productLookup === "loading" ? "Buscando..." : item.productLookup === "error" ? "Produto não encontrado" : "Descrição do produto"} className={item.productLookup === "error" ? "border-red-400 bg-red-50 text-red-700" : ""} />{item.productLookup === "error" && <span className="mt-1 block text-[10px] font-bold text-red-600">Código não encontrado.</span>}</td>
-                    <td className="p-2 align-top"><Input value={item.unidade} onChange={(event) => updateItem(item.key, "unidade", event.target.value.toUpperCase())} /></td>
-                    <td className="p-2 align-top"><Input type="date" value={item.dtaMinProducao} onChange={(event) => updateItem(item.key, "dtaMinProducao", event.target.value)} /></td>
-                    <td className="p-2 align-top"><Input type="date" value={item.dtaMaxProducao} onChange={(event) => updateItem(item.key, "dtaMaxProducao", event.target.value)} /></td>
-                    <td className="p-2 align-top"><Input inputMode="decimal" value={item.pesoPedido} onChange={(event) => updateItem(item.key, "pesoPedido", event.target.value)} className="text-right font-bold" /></td>
-                    <td className="p-2 align-top"><Input inputMode="decimal" value={item.precoPedido} onChange={(event) => updateItem(item.key, "precoPedido", event.target.value)} className="text-right" /></td>
+                    <td className="p-1.5 align-top"><Input className="min-w-0 px-2" inputMode="numeric" value={item.seqproduto} onChange={(event) => setForm((current) => current && ({ ...current, itens: current.itens.map((currentItem) => currentItem.key === item.key ? { ...currentItem, seqproduto: event.target.value.replace(/\D/g, ""), produto: "", productLookup: "idle" } : currentItem) }))} onBlur={() => void lookupProduct(item.key)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void lookupProduct(item.key); } }} placeholder="Opcional" /></td>
+                    <td className="p-1.5 align-top"><Input value={item.produto} disabled={item.productLookup === "loading" || Boolean(item.seqproduto)} onChange={(event) => updateItem(item.key, "produto", event.target.value)} placeholder={item.productLookup === "loading" ? "Buscando..." : item.productLookup === "error" ? "Produto não encontrado" : "Descrição do produto"} className={`min-w-0 px-2 ${item.productLookup === "error" ? "border-red-400 bg-red-50 text-red-700" : ""}`} />{item.productLookup === "error" && <span className="mt-1 block text-[10px] font-bold text-red-600">Código não encontrado.</span>}</td>
+                    <td className="p-1.5 align-top"><Input className="min-w-0 px-2" value={item.unidade} onChange={(event) => updateItem(item.key, "unidade", event.target.value.toUpperCase())} /></td>
+                    <td className="p-1.5 align-top"><Input className="min-w-0 px-2" type="date" value={item.dtaMinProducao} onChange={(event) => updateItem(item.key, "dtaMinProducao", event.target.value)} /></td>
+                    <td className="p-1.5 align-top"><Input className="min-w-0 px-2" type="date" value={item.dtaMaxProducao} onChange={(event) => updateItem(item.key, "dtaMaxProducao", event.target.value)} /></td>
+                    <td className="p-1.5 align-top"><Input inputMode="decimal" value={item.pesoPedido} onChange={(event) => updateItem(item.key, "pesoPedido", event.target.value)} className="min-w-0 px-2 text-right font-bold" /></td>
+                    <td className="p-1.5 align-top"><Input inputMode="decimal" value={item.precoPedido} onChange={(event) => updateItem(item.key, "precoPedido", event.target.value)} className="min-w-0 px-2 text-right" /></td>
                     <td className="px-3 py-3 text-right align-top font-black text-[#173D6E]">{kg.format(item.pesoSistema)} kg</td>
                     <td className="px-3 py-3 text-right align-top">{item.precoSistema == null ? "-" : money.format(item.precoSistema)}</td>
                     <td className="p-2 align-top"><Button type="button" size="icon" variant="ghost" disabled={form.itens.length === 1} onClick={() => setForm({ ...form, itens: form.itens.filter((current) => current.key !== item.key) })} className="h-8 w-8 text-red-600 hover:bg-red-50"><X className="h-4 w-4" /></Button></td>
