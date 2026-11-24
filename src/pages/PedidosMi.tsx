@@ -75,6 +75,7 @@ const money = new Intl.NumberFormat("pt-BR", {
 });
 
 const PEDIDOS_MI_CONSULTA_SQL = `SELECT
+    H.ID_CARGA_MI,
     H.NOME_CARGA AS CARGA,
     H.NROCARGA,
     H.DTA_EMBARQUE,
@@ -96,7 +97,7 @@ const PEDIDOS_MI_CONSULTA_SQL = `SELECT
     I.DTA_MIN_PRODUCAO,
     I.DTA_MAX_PRODUCAO,
     SUM(I.PESO_PEDIDO) OVER (
-        PARTITION BY H.NOME_CARGA, H.NROCARGA, H.DTA_EMBARQUE
+        PARTITION BY H.ID_CARGA_MI
     ) AS PESO_TOTAL_CARGA,
     SUM(I.PESO_PEDIDO) OVER (
         PARTITION BY H.ID_PEDIDO_MI
@@ -106,7 +107,8 @@ LEFT JOIN VERTICE.VCO_PEDIDO_MI_ITEM I
        ON I.ID_PEDIDO_MI = H.ID_PEDIDO_MI
 WHERE H.ATIVO = 'S'
 ORDER BY
-    H.DTA_EMBARQUE,
+    H.ID_CARGA_MI DESC,
+    H.DTA_EMBARQUE DESC,
     H.NOME_CARGA,
     H.NROPEDIDO,
     I.ORDEM;`;
@@ -161,6 +163,7 @@ type FormItem = {
 
 type FormState = {
   id?: number;
+  idCargaMi?: number | null;
   versao?: number;
   addingToLoad?: boolean;
   nomeCarga: string;
@@ -224,9 +227,10 @@ export default function PedidosMi() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [loadId, setLoadId] = useState("");
   const [dateStart, setDateStart] = useState("");
   const [dateEnd, setDateEnd] = useState("");
-  const [status, setStatus] = useState("TODOS");
+  const [status, setStatus] = useState("PENDENTE");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -243,7 +247,7 @@ export default function PedidosMi() {
   const [savingInlineStatus, setSavingInlineStatus] = useState<number | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; direction: "asc" | "desc" }>({
     key: "embarque",
-    direction: "asc",
+    direction: "desc",
   });
 
   const loadPanel = async (silent = false) => {
@@ -251,10 +255,11 @@ export default function PedidosMi() {
     else setLoading(true);
     try {
       const data = await pedidosMiApi.getPanel({
+        idCargaMi: loadId,
         dataInicio: dateStart,
         dataFim: dateEnd,
         busca: search,
-        status: status === "TODOS" ? "" : status,
+        status,
       });
       setPanel(data);
     } catch (error) {
@@ -315,6 +320,7 @@ export default function PedidosMi() {
   const loadGroups = useMemo(() => {
     const groups = new Map<string, {
       key: string;
+      id: number;
       name: string;
       loadNumber: string;
       shippingDate: string;
@@ -324,9 +330,11 @@ export default function PedidosMi() {
       const name = order.NOME_CARGA.trim() || "Carga sem nome";
       const loadNumber = String(order.NROCARGA || "");
       const shippingDate = inputDate(order.DTA_EMBARQUE);
-      const key = `${name.toLocaleUpperCase("pt-BR")}|${loadNumber}|${shippingDate}`;
+      const id = Number(order.ID_CARGA_MI || order.ID_PEDIDO_MI);
+      const key = String(id);
       const group = groups.get(key) || {
         key,
+        id,
         name,
         loadNumber,
         shippingDate,
@@ -335,7 +343,7 @@ export default function PedidosMi() {
       group.orders.push(order);
       groups.set(key, group);
     });
-    return Array.from(groups.values());
+    return Array.from(groups.values()).sort((first, second) => second.id - first.id);
   }, [sortedOrders]);
 
   const changeSort = (key: SortKey) =>
@@ -348,10 +356,11 @@ export default function PedidosMi() {
     setSearch("");
     setDateStart("");
     setDateEnd("");
-    setStatus("TODOS");
+    setStatus("PENDENTE");
+    setLoadId("");
     setRefreshing(true);
     try {
-      setPanel(await pedidosMiApi.getPanel());
+      setPanel(await pedidosMiApi.getPanel({ status: "PENDENTE" }));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível limpar os filtros.");
     } finally {
@@ -362,6 +371,7 @@ export default function PedidosMi() {
   const openEdit = (order: PedidoMi) => {
     setForm({
       id: order.ID_PEDIDO_MI,
+      idCargaMi: order.ID_CARGA_MI,
       versao: order.VERSAO,
       nomeCarga: order.NOME_CARGA,
       nropedido: order.NROPEDIDO ? String(order.NROPEDIDO) : "",
@@ -394,6 +404,7 @@ export default function PedidosMi() {
     if (!reference) return;
     setForm({
       ...emptyForm(),
+      idCargaMi: reference.ID_CARGA_MI,
       addingToLoad: true,
       nomeCarga: reference.NOME_CARGA,
       nrocarga: String(reference.NROCARGA || ""),
@@ -484,6 +495,7 @@ export default function PedidosMi() {
     nropedido: number | null,
     nextStatus: PedidoMiStatus = order.STATUS,
   ): PedidoMiPayload => ({
+    id_carga_mi: order.ID_CARGA_MI,
     nroempresa: order.NROEMPRESA,
     nome_carga: order.NOME_CARGA,
     nropedido,
@@ -572,6 +584,7 @@ export default function PedidosMi() {
       ordem: index + 1,
     }));
     const payload: PedidoMiPayload = {
+      id_carga_mi: form.idCargaMi,
       nome_carga: form.nomeCarga.trim(),
       nropedido: form.nropedido ? Number(form.nropedido) : null,
       nrocarga: form.nrocarga.trim() || null,
@@ -655,7 +668,8 @@ export default function PedidosMi() {
         </header>
 
         <Card className="border-[#CFDCE8] bg-white p-3 shadow-sm">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_0.72fr_0.72fr_0.72fr_auto_auto]">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[0.55fr_1.35fr_0.72fr_0.72fr_0.72fr_auto_auto]">
+            <div><Label className="text-[10px] font-black uppercase tracking-wider text-[#526B83]">ID da carga</Label><Input inputMode="numeric" value={loadId} onChange={(event) => setLoadId(event.target.value.replace(/\D/g, ""))} onKeyDown={(event) => event.key === "Enter" && void loadPanel(true)} placeholder="Ex.: 125" className="mt-1.5" /></div>
             <div>
               <Label className="text-[10px] font-black uppercase tracking-wider text-[#526B83]">Carga, pedido, cliente ou produto</Label>
               <div className="relative mt-1.5">
@@ -667,7 +681,7 @@ export default function PedidosMi() {
             <div><Label className="text-[10px] font-black uppercase tracking-wider text-[#526B83]">Embarque final</Label><Input type="date" value={dateEnd} onChange={(event) => setDateEnd(event.target.value)} className="mt-1.5" /></div>
             <div>
               <Label className="text-[10px] font-black uppercase tracking-wider text-[#526B83]">Status</Label>
-              <Select value={status} onValueChange={setStatus}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TODOS">Todos</SelectItem><SelectItem value="PENDENTE">Pendente</SelectItem><SelectItem value="PROGRAMADO">Programado</SelectItem><SelectItem value="CARREGADO">Carregado</SelectItem><SelectItem value="CANCELADO">Cancelado</SelectItem></SelectContent></Select>
+              <Select value={status} onValueChange={setStatus}><SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDENTE">Pendente</SelectItem><SelectItem value="CARREGADO">Carregado</SelectItem><SelectItem value="CANCELADO">Cancelado</SelectItem></SelectContent></Select>
             </div>
             <Button onClick={() => void loadPanel(true)} className="self-end bg-[#1B58A0] hover:bg-[#154781]"><Search className="mr-2 h-4 w-4" />Filtrar</Button>
             <Button variant="outline" onClick={() => void clearFilters()} disabled={refreshing} className="self-end border-[#B8CADB] text-[#173D6E]"><RotateCcw className="mr-2 h-4 w-4" />Limpar filtros</Button>
@@ -702,6 +716,7 @@ export default function PedidosMi() {
                 return <section key={`excel-${group.key}`} className="overflow-hidden rounded-xl border border-[#CFDCE8] bg-white shadow-sm">
                   <header className="flex flex-col gap-3 border-b border-[#D4E0EA] bg-[#F7FAFD] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-[#365675]">
+                      <span className="rounded-md border border-[#B8CADB] bg-white px-2 py-1 font-black text-[#1B58A0]">ID #{group.id}</span>
                       <span className="flex items-center gap-2 text-base font-black text-[#123A68]"><Truck className="h-4 w-4" />{group.name}</span>
                       <span><strong>{group.orders.length}</strong> pedido(s)</span>
                       <span>Carga ERP: <strong>{group.loadNumber || "-"}</strong></span>
@@ -927,6 +942,7 @@ export default function PedidosMi() {
               {form.addingToLoad && <div className="sm:col-span-2 lg:col-span-4 rounded-xl border border-[#B8CADB] bg-white p-4">
                 <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm text-[#365675]">
                   <span className="font-black text-[#123A68]"><Truck className="mr-2 inline h-4 w-4" />Carga selecionada</span>
+                  <span>ID do sistema: <strong>#{form.idCargaMi || "-"}</strong></span>
                   <span>Nome: <strong>{form.nomeCarga}</strong></span>
                   <span>Nº da carga: <strong>{form.nrocarga || "-"}</strong></span>
                   <span>Embarque: <strong>{formatDate(form.dtaEmbarque)}</strong></span>
@@ -1192,10 +1208,12 @@ function NewMiLoadDialog({
     }
     setSaving(true);
     let savedOrders = 0;
+    let createdLoadId: number | null = null;
     try {
       for (const order of draft.orders) {
         const items = order.itens.filter((item) => item.produto.trim());
-        await pedidosMiApi.create({
+        const created = await pedidosMiApi.create({
+          id_carga_mi: createdLoadId,
           nome_carga: draft.nomeCarga.trim(),
           nropedido: order.nropedido ? Number(order.nropedido) : null,
           nrocarga: draft.nrocarga.trim() || null,
@@ -1216,6 +1234,7 @@ function NewMiLoadDialog({
             ordem: index + 1,
           })),
         });
+        createdLoadId = created.id_carga_mi;
         savedOrders += 1;
       }
       toast.success(`Carga criada com ${savedOrders} pedido(s).`);

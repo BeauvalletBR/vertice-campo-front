@@ -20,6 +20,7 @@ export interface PedidoMiItem {
 
 export interface PedidoMi {
   ID_PEDIDO_MI: number;
+  ID_CARGA_MI?: number | null;
   NROEMPRESA: number;
   NOME_CARGA: string;
   NROPEDIDO?: number | null;
@@ -102,6 +103,7 @@ export interface PedidoMiItemPayload {
 }
 
 export interface PedidoMiPayload {
+  id_carga_mi?: number | null;
   nroempresa?: number;
   nome_carga: string;
   nropedido?: number | null;
@@ -143,12 +145,14 @@ const request = async <T>(path: string, init?: RequestInit) =>
 
 export const pedidosMiApi = {
   getPanel: (filters?: {
+    idCargaMi?: string;
     dataInicio?: string;
     dataFim?: string;
     busca?: string;
     status?: string;
   }) => {
     const params = new URLSearchParams();
+    if (filters?.idCargaMi?.trim()) params.set("id_carga_mi", filters.idCargaMi.trim());
     if (filters?.dataInicio) params.set("data_inicio", filters.dataInicio);
     if (filters?.dataFim) params.set("data_fim", filters.dataFim);
     if (filters?.busca?.trim()) params.set("busca", filters.busca.trim());
@@ -167,7 +171,7 @@ export const pedidosMiApi = {
     return request<PedidoMiCatalogClient[]>(`/pedidos-mi/catalogo/clientes?${params.toString()}`);
   },
   create: (payload: PedidoMiPayload) =>
-    request<{ success: boolean; id_pedido_mi: number; message: string }>("/pedidos-mi", {
+    request<{ success: boolean; id_pedido_mi: number; id_carga_mi: number; message: string }>("/pedidos-mi", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
