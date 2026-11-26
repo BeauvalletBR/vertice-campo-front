@@ -77,6 +77,19 @@ const pedidosMiUser: User = {
   nivel: 1,
 };
 
+const planejamentoSemanalUser: User = {
+  id: 7,
+  name: "Planejamento semanal",
+  login: "planejamento.semanal",
+  role: "COMPRADOR",
+  modulos: [],
+  sistemas: ["VERTICEPCP"],
+  modulosPorSistema: {
+    VERTICEPCP: ["PLANEJAMENTO_SEMANAL"],
+  },
+  nivel: 1,
+};
+
 describe("navegação após o login", () => {
   it("prioriza a rota originalmente solicitada e preserva seus parâmetros", () => {
     expect(
@@ -145,6 +158,14 @@ describe("navegação após o login", () => {
     expect(canAccessAuthenticatedRoute(contractsUser, "/projecao-pecas/projecao")).toBe(true);
     expect(canAccessAuthenticatedRoute(fieldUser, "/projecao-pecas")).toBe(false);
     expect(canAccessAuthenticatedRoute(fieldUser, "/projecao-pecas/projecao")).toBe(false);
+  });
+
+  it("libera Planejamento semanal somente pelo módulo específico", () => {
+    expect(canAccessAuthenticatedRoute(planejamentoSemanalUser, "/planejamento-semanal")).toBe(true);
+    expect(canAccessAuthenticatedRoute(planejamentoSemanalUser, "/planejamento-semanal/configuracao")).toBe(true);
+    expect(canAccessAuthenticatedRoute(contractsUser, "/planejamento-semanal")).toBe(false);
+    expect(canAccessAuthenticatedRoute(fieldUser, "/planejamento-semanal")).toBe(false);
+    expect(canAccessAuthenticatedRoute(adminUser, "/planejamento-semanal")).toBe(true);
   });
 
   it("não libera Campo ou Escala para usuário exclusivo do VERTICEPCP", () => {

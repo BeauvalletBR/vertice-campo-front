@@ -49,6 +49,7 @@ import EscalaTVScreen from "./pages/EscalaTVScreen";
 import StartPage from "./pages/StartPage";
 import VisitaLocalizacaoPublica from "./pages/VisitaLocalizacaoPublica";
 import Contratos from "./pages/Contratos";
+import PlanejamentoSemanal from "./pages/PlanejamentoSemanal";
 import ProjecaoPecas from "./pages/ProjecaoPecas";
 import ProjecaoPecasProjecao from "./pages/ProjecaoPecasProjecao";
 import ProjecaoPecasConfiguracao from "./pages/ProjecaoPecasConfiguracao";
@@ -191,6 +192,14 @@ function ProtectedLayout() {
 
               <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.contratos} />}>
                 <Route path="/contratos/*" element={<Contratos />} />
+              </Route>
+
+              <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.planejamentoSemanal} />}>
+                <Route path="/planejamento-semanal/*" element={<PlanejamentoSemanal />} />
+                <Route
+                  path="/contratos/configuracao/desossa"
+                  element={<Navigate to="/planejamento-semanal/configuracao" replace />}
+                />
               </Route>
 
               <Route element={<ProtectedRoute {...APP_ROUTE_ACCESS.projecaoPecas} />}>

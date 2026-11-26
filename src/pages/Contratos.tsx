@@ -295,7 +295,7 @@ const contractWorkspaceMeta = (view: ContractWorkspaceView) => {
   if (view === "IMPORTACAO") return { icon: FileSpreadsheet, eyebrow: "Configuração PCP", title: "Importar planilha", description: "Revise e aplique os dados operacionais da planilha de contratos." };
   if (view === "CALENDARIO_EMBARQUE") return { icon: CalendarDays, eyebrow: "Configuração PCP", title: "Calendário de embarques", description: "Visualize contratos, cobertura e risco agrupados por data planejada." };
   if (view === "RECOMENDACAO") return { icon: ShieldAlert, eyebrow: "Configuração PCP", title: "Recomendação PCP", description: "Painel de recomendação temporariamente em manutenção." };
-  if (view === "LINHA_TEMPO") return { icon: BarChart3, eyebrow: "Configuração PCP", title: "Ocupação do estoque", description: "Projeção de capacidade temporariamente em manutenção." };
+  if (view === "LINHA_TEMPO") return { icon: BarChart3, eyebrow: "Configuração PCP", title: "Mapa de ocupação do estoque", description: "Acompanhe diariamente o percentual projetado de ocupação dos estoques congelado e resfriado." };
   return { icon: FileSignature, eyebrow: "PCP", title: "Manual operacional", description: "Regras e orientações do módulo de contratos." };
 };
 
@@ -441,6 +441,9 @@ export default function Contratos() {
     try {
       await contractsApi.getPanel(true);
       const queueResult = await contractsApi.processProductQueue();
+      if (!queueResult.success) {
+        throw new Error(queueResult.erros?.filter(Boolean).join(" ") || queueResult.message || "Não foi possível distribuir o estoque pela fila.");
+      }
       setData(await contractsApi.getPanel(true));
       toast.success(queueResult.peso_alocado > 0 ? queueResult.message : "Estoque, ordens e filas sincronizados.");
     } catch (error) {
@@ -660,8 +663,11 @@ export default function Contratos() {
       ? Math.round((currentManual + enteredWeight) * 1000) / 1000
       : enteredWeight;
 
-    const updateReservationLocally = () => {
-      const delta = weight - currentManual;
+    const updateReservationLocally = (
+      nextManual: number,
+      delta: number,
+      nextVersion: number | null,
+    ) => {
       setData((current) => {
         if (!current) return current;
         return {
@@ -683,13 +689,13 @@ export default function Contratos() {
                 }
                 return {
                   ...itemProduct,
-                  PESO_RESERVADO_MANUAL: weight,
+                  PESO_RESERVADO_MANUAL: nextManual,
                   PESO_RESERVADO_CONTRATO: Math.max(0, Number(itemProduct.PESO_RESERVADO_CONTRATO || 0) + delta),
                   PESO_ATRELADO_TOTAL: Math.max(0, Number(itemProduct.PESO_ATRELADO_TOTAL || 0) + delta),
                   PESO_RESERVADO_TOTAL_VERTICE: Math.max(0, Number(itemProduct.PESO_RESERVADO_TOTAL_VERTICE || 0) + delta),
                   PESO_LIVRE_VERTICE: Math.max(0, Number(itemProduct.PESO_LIVRE_VERTICE || 0) - delta),
                   SALDO_CONTRATO: Math.max(0, Number(itemProduct.SALDO_CONTRATO || 0) - delta),
-                  VERSAO_RESERVA: weight === 0 ? null : Number(itemProduct.VERSAO_RESERVA || 0) + 1,
+                  VERSAO_RESERVA: nextVersion,
                 };
               }),
             };
@@ -716,7 +722,10 @@ export default function Contratos() {
       }, 4000);
     };
 
+    const delta = weight - currentManual;
+    const optimisticVersion = weight === 0 ? null : Number(product.VERSAO_RESERVA || 0) + 1;
     setSaving(key);
+    updateReservationLocally(weight, delta, optimisticVersion);
     try {
       const result = await contractsApi.saveReservation({
         seqcontrato: contract.SEQCONTRATO,
@@ -725,7 +734,6 @@ export default function Contratos() {
         versao: product.VERSAO_RESERVA ?? null,
       });
       toast.success(result.message);
-      updateReservationLocally();
       setReservationInputs((current) => {
         const next = { ...current };
         if (inputMode === "TOTAL" || inputMode === "REMOVE") {
@@ -738,6 +746,7 @@ export default function Contratos() {
       schedulePanelRefresh();
     } catch (error) {
       const message = errorMessage(error);
+      updateReservationLocally(currentManual, -delta, product.VERSAO_RESERVA ?? null);
       toast.error(message);
       if (/validade|data de produ[cç][aã]o|produ[cç][aã]o m[ií]nima/i.test(message)) {
         setStockSearch(String(product.SEQPRODUTO));
@@ -789,6 +798,9 @@ export default function Contratos() {
 
   const refreshAfterQueueChange = async (productId: number, message: string) => {
     const result = await contractsApi.processProductQueue(productId);
+    if (!result.success) {
+      throw new Error(result.erros?.filter(Boolean).join(" ") || result.message || "Não foi possível distribuir o estoque pela fila.");
+    }
     toast.success(result.peso_alocado > 0 ? result.message : message);
     await loadPanel(true);
   };
@@ -808,10 +820,7 @@ export default function Contratos() {
         ],
       }));
       toast.success(result.message);
-      void refreshAfterQueueChange(productId, "Fila processada.").catch((error) => {
-        toast.error(errorMessage(error));
-        void loadPanel(true);
-      });
+      await refreshAfterQueueChange(productId, "Contrato incluído na fila; não havia estoque livre para distribuir.");
     } catch (error) {
       toast.error(errorMessage(error));
       await loadPanel(true);
@@ -836,13 +845,28 @@ export default function Contratos() {
 
   const removeFromProductQueue = async (item: ContractProductQueueItem) => {
     setSaving(`queue-remove-${item.ID_FILA_PRODUTO}`);
+    setData((current) => current && ({
+      ...current,
+      fila_produtos: (current.fila_produtos || []).filter(
+        (queueItem) => queueItem.ID_FILA_PRODUTO !== item.ID_FILA_PRODUTO,
+      ),
+    }));
     try {
       const result = await contractsApi.removeProductQueue(item.ID_FILA_PRODUTO, item.VERSAO);
       toast.success(result.message);
-      await loadPanel(true);
+      void loadPanel(true);
     } catch (error) {
+      setData((current) => current && ({
+        ...current,
+        fila_produtos: [
+          ...(current.fila_produtos || []).filter(
+            (queueItem) => queueItem.ID_FILA_PRODUTO !== item.ID_FILA_PRODUTO,
+          ),
+          item,
+        ],
+      }));
       toast.error(errorMessage(error));
-      await loadPanel(true);
+      void loadPanel(true);
     } finally {
       setSaving(null);
     }
@@ -2768,7 +2792,7 @@ function ModernStockOperationsLayout({
   const allocatedTableScrollRef = useRef<HTMLDivElement | null>(null);
   const [reviewDecision, setReviewDecision] = useState<"" | "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR">("");
   const [reviewReprocessDate, setReviewReprocessDate] = useState("");
-  const [availableSort, setAvailableSort] = useState<TableSortState<"PRODUTO" | "DESCRICAO" | "ESTOQUE" | "OP" | "PEDIDO" | "MANUAL" | "LIVRE" | "CONTRATOS">>({ key: "LIVRE", direction: "desc" });
+  const [availableSort, setAvailableSort] = useState<TableSortState<"PRODUTO" | "DESCRICAO" | "ESTOQUE" | "OP" | "MANUAL" | "LIVRE" | "CONTRATOS">>({ key: "LIVRE", direction: "desc" });
   const [lotSort, setLotSort] = useState<TableSortState<"DATA" | "PESO" | "SITUACAO">>({ key: "DATA", direction: "asc" });
   const [candidateSort, setCandidateSort] = useState<TableSortState<"CONTRATO" | "CLIENTE" | "EMBARQUE" | "SALDO" | "ELEGIVEL">>({ key: "EMBARQUE", direction: "asc" });
   const [allocatedSort, setAllocatedSort] = useState<TableSortState<"PRODUTO" | "CONTRATO" | "CONTRATADO" | "EXPEDIDO" | "OP" | "PEDIDO" | "MANUAL" | "MOVIMENTACAO" | "TOTAL" | "ATENDIDO" | "SALDO" | "SITUACAO">>({ key: "CONTRATO", direction: "asc" });
@@ -2847,7 +2871,6 @@ function ModernStockOperationsLayout({
       DESCRICAO: item.DESCRPRODUTO,
       ESTOQUE: Number(item.PESODISPONIVEL || 0),
       OP: Number(item.PESO_ATRELADO_ORDEM || 0),
-      PEDIDO: Number(item.PESO_RESERVADO_PEDIDO_LIQUIDO ?? item.PESO_RESERVADO_PEDIDO ?? 0),
       MANUAL: Number(item.PESO_RESERVADO_VERTICE || 0),
       LIVRE: Number(item.PESO_LIVRE_VERTICE || 0),
       CONTRATOS: contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)).length,
@@ -2952,7 +2975,7 @@ function ModernStockOperationsLayout({
     return <div className="space-y-4">
       {!selectedStock ? <>
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><OverviewMetric icon={Weight} label="Estoque físico ERP" value={formatKg(totalErpStock)} tone="blue" /><OverviewMetric icon={Factory} label="Protegido por OP" value={formatKg(totalOrderStock)} tone="blue" /><OverviewMetric icon={LockKeyhole} label="Reservado em pedido" value={formatKg(totalOrderReservation)} tone="blue" /><OverviewMetric icon={Boxes} label="Estoque realmente livre" value={formatKg(totalFreeStock)} tone="green" /><OverviewMetric icon={ShieldAlert} label="Lotes em revisão" value={String(validityAlertCount)} tone={validityAlertCount > 0 ? "red" : "green"} /></section>
-        <Card className="overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><WorkspaceToolbar title="Produtos disponíveis para alocação" description="Selecione um produto para comparar os contratos candidatos." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="max-h-[66vh] overflow-auto"><Table><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Descrição" sortKey="DESCRICAO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Estoque físico" sortKey="ESTOQUE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="OP" sortKey="OP" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Pedido" sortKey="PEDIDO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Manual" sortKey="MANUAL" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Livre" sortKey="LIVRE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="center" /><TableHead className="text-right">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedStock.map((item) => <AvailableStockRows key={item.SEQPRODUTO} item={item} candidateCount={contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)).length} onSelect={onSelectProduct} />)}</TableBody></Table></div></CardContent></Card>
+        <Card className="overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><WorkspaceToolbar title="Produtos disponíveis para alocação" description="Selecione um produto para comparar os contratos candidatos." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="max-h-[66vh] overflow-auto"><Table><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Descrição" sortKey="DESCRICAO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Estoque físico" sortKey="ESTOQUE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="OP" sortKey="OP" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Manual" sortKey="MANUAL" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Livre" sortKey="LIVRE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="center" /><TableHead className="text-right">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedStock.map((item) => <AvailableStockRows key={item.SEQPRODUTO} item={item} candidateCount={contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)).length} onSelect={onSelectProduct} />)}</TableBody></Table></div></CardContent></Card>
       </> : <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(250px,0.68fr)_minmax(400px,1.18fr)_minmax(285px,0.78fr)]">
         <ProductAllocationQueue
           product={selectedStock}
@@ -3129,7 +3152,7 @@ function AvailableStockRows({ item, candidateCount, onSelect }: { item: Contract
   const regularPhysical = Math.max(0, Number(item.PESODISPONIVEL || 0) - (splitRows ? oldReleased : 0));
 
   const action = (label = "Analisar e alocar") => <TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => onSelect(item.SEQPRODUTO)} className="border-[#8FB1CE] text-[#174A78]"><Boxes className="mr-2 h-3.5 w-3.5" />{label}</Button></TableCell>;
-  const allocationCells = <><NumberCell value={item.PESO_ATRELADO_ORDEM} /><NumberCell value={item.PESO_RESERVADO_PEDIDO_LIQUIDO ?? item.PESO_RESERVADO_PEDIDO} /><NumberCell value={item.PESO_RESERVADO_VERTICE} /></>;
+  const allocationCells = <><NumberCell value={item.PESO_ATRELADO_ORDEM} /><NumberCell value={item.PESO_RESERVADO_VERTICE} /></>;
 
   if (!splitRows) {
     return <TableRow className={hasOldReleased ? "bg-orange-50/50 hover:bg-orange-50" : "hover:bg-[#F7FAFC]"}><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell><TableCell className="text-xs font-bold text-[#304D68]"><span>{item.DESCRPRODUTO}</span>{hasOldReleased && <span className="ml-2 inline-flex rounded-full border border-orange-300 bg-orange-50 px-2 py-1 text-[9px] font-black uppercase text-orange-800">Produto antigo liberado</span>}</TableCell><NumberCell value={item.PESODISPONIVEL} />{allocationCells}<TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(totalFree)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell>{action()}</TableRow>;
@@ -3137,7 +3160,7 @@ function AvailableStockRows({ item, candidateCount, onSelect }: { item: Contract
 
   return <>
     <TableRow className="hover:bg-[#F7FAFC]"><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell><TableCell><p className="text-xs font-bold text-[#304D68]">{item.DESCRPRODUTO}</p><span className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8px] font-black uppercase text-emerald-700">Estoque regular</span></TableCell><NumberCell value={regularPhysical} />{allocationCells}<TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(regularFree)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell>{action()}</TableRow>
-    <TableRow className="border-t border-orange-200 bg-orange-50/70 hover:bg-orange-50"><TableCell className="font-mono text-xs font-black text-orange-800">{item.SEQPRODUTO}</TableCell><TableCell><p className="text-xs font-bold text-[#304D68]">{item.DESCRPRODUTO}</p><span className="mt-1 inline-flex rounded-full border border-orange-300 bg-white px-2 py-0.5 text-[8px] font-black uppercase text-orange-800">Produto antigo liberado</span></TableCell><TableCell className="text-right text-xs font-black text-orange-800">{formatKg(oldReleased)}</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-black text-orange-800">{formatKg(oldReleased)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell>{action("Alocar antigo")}</TableRow>
+    <TableRow className="border-t border-orange-200 bg-orange-50/70 hover:bg-orange-50"><TableCell className="font-mono text-xs font-black text-orange-800">{item.SEQPRODUTO}</TableCell><TableCell><p className="text-xs font-bold text-[#304D68]">{item.DESCRPRODUTO}</p><span className="mt-1 inline-flex rounded-full border border-orange-300 bg-white px-2 py-0.5 text-[8px] font-black uppercase text-orange-800">Produto antigo liberado</span></TableCell><TableCell className="text-right text-xs font-black text-orange-800">{formatKg(oldReleased)}</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-black text-orange-800">{formatKg(oldReleased)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell>{action("Alocar antigo")}</TableRow>
   </>;
 }
 

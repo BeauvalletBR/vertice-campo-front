@@ -5,6 +5,7 @@ export interface AccessRule {
   allowedRoles?: string[];
   allowedModules?: string[];
   requireAllowedModule?: boolean;
+  allowAdminBypass?: boolean;
   minNivel?: number;
 }
 
@@ -41,6 +42,12 @@ export const APP_ROUTE_ACCESS = {
   contratos: {
     allowedSystems: ["VERTICEPCP"],
   },
+  planejamentoSemanal: {
+    allowedSystems: ["VERTICEPCP"],
+    allowedModules: ["PLANEJAMENTO_SEMANAL"],
+    requireAllowedModule: true,
+    allowAdminBypass: true,
+  },
   projecaoPecas: {
     allowedSystems: ["VERTICEPCP"],
   },
@@ -63,6 +70,7 @@ const DESKTOP_DEFAULT_ROUTE_ORDER = [
   "/agendamento",
   "/escala",
   "/contratos",
+  "/planejamento-semanal",
   "/projecao-pecas",
   "/pedidos-mi",
   "/rendimento/testes",
@@ -76,6 +84,7 @@ const MOBILE_DEFAULT_ROUTE_ORDER = [
   "/agendamento",
   "/escala",
   "/contratos",
+  "/planejamento-semanal",
   "/projecao-pecas",
   "/pedidos-mi",
   "/rendimento/testes",
@@ -90,6 +99,8 @@ const ACCESS_BY_PATH: Record<string, AccessRule> = {
   "/agendamento": APP_ROUTE_ACCESS.agendamento,
   "/escala": APP_ROUTE_ACCESS.escala,
   "/contratos": APP_ROUTE_ACCESS.contratos,
+  "/planejamento-semanal": APP_ROUTE_ACCESS.planejamentoSemanal,
+  "/planejamento-semanal/configuracao": APP_ROUTE_ACCESS.planejamentoSemanal,
   "/projecao-pecas": APP_ROUTE_ACCESS.projecaoPecas,
   "/projecao-pecas/projecao": APP_ROUTE_ACCESS.projecaoPecas,
   "/projecao-pecas/configuracao": APP_ROUTE_ACCESS.projecaoPecas,
@@ -133,12 +144,14 @@ export function hasAccessToRule(
   if (!user) return false;
 
   const userRole = normalize(user.role);
+  const isAdminRole = userRole === "ADMIN";
   const userSystems = getUserSystems(user);
   const allowedSystems = (rule.allowedSystems || []).map(normalize);
 
   if (
     allowedSystems.length > 0 &&
-    !allowedSystems.some((system) => userSystems.includes(system))
+    !allowedSystems.some((system) => userSystems.includes(system)) &&
+    !(rule.allowAdminBypass && isAdminRole)
   ) {
     return false;
   }
@@ -146,11 +159,14 @@ export function hasAccessToRule(
   const relevantSystems = allowedSystems.length > 0 ? allowedSystems : userSystems;
   const userModules = getUserModules(user, relevantSystems);
   const userNivel = Number(user.nivel || 0);
-  const isAdmin = userRole === "ADMIN" || userModules.includes("ADMIN");
+  const isAdmin = isAdminRole || userModules.includes("ADMIN");
 
   if (rule.requireAllowedModule) {
     const allowedModules = (rule.allowedModules || []).map(normalize);
-    if (!allowedModules.some((module) => userModules.includes(module))) {
+    if (
+      !allowedModules.some((module) => userModules.includes(module))
+      && !(rule.allowAdminBypass && isAdmin)
+    ) {
       return false;
     }
   }

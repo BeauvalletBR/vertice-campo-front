@@ -12,6 +12,7 @@ interface ProtectedRouteProps {
   allowedRoles?: string[];
   allowedModules?: string[];
   requireAllowedModule?: boolean;
+  allowAdminBypass?: boolean;
   minNivel?: number;
   redirectTo?: string;
 }
@@ -21,6 +22,7 @@ export function ProtectedRoute({
   allowedRoles = [],
   allowedModules = [],
   requireAllowedModule = false,
+  allowAdminBypass = false,
   minNivel,
   redirectTo,
 }: ProtectedRouteProps) {
@@ -34,6 +36,7 @@ export function ProtectedRoute({
         allowedRoles,
         allowedModules,
         requireAllowedModule,
+        allowAdminBypass,
         minNivel,
       }),
   );

@@ -25,6 +25,7 @@ import {
   UserCog,
   Users,
   Upload,
+  Warehouse,
   Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -93,6 +94,7 @@ export function AppSidebar() {
   const isUsuariosActive = location.pathname.startsWith("/admin/usuarios");
   const isEscalaActive = location.pathname.startsWith("/escala");
   const isContratosActive = location.pathname.startsWith("/contratos");
+  const isPlanejamentoSemanalActive = location.pathname.startsWith("/planejamento-semanal");
   const isProjecaoPecasActive = location.pathname.startsWith("/projecao-pecas");
   const isPedidosMiActive = location.pathname.startsWith("/pedidos-mi");
   const isRendimentoActive = location.pathname.startsWith("/rendimento");
@@ -102,6 +104,8 @@ export function AppSidebar() {
       ? "escala"
       : isPedidosMiActive
         ? "pedidos-mi"
+      : isPlanejamentoSemanalActive
+        ? "planejamento-semanal"
       : isContratosActive
         ? "contratos"
         : isProjecaoPecasActive
@@ -115,6 +119,7 @@ export function AppSidebar() {
     campo: activeGroupId === "campo",
     escala: activeGroupId === "escala",
     contratos: activeGroupId === "contratos",
+    "planejamento-semanal": activeGroupId === "planejamento-semanal",
     "projecao-pecas": activeGroupId === "projecao-pecas",
     "pedidos-mi": activeGroupId === "pedidos-mi",
     rendimento: activeGroupId === "rendimento",
@@ -344,12 +349,6 @@ export function AppSidebar() {
           access: APP_ROUTE_ACCESS.contratos,
           subItems: [
             {
-              title: "Configuração desossa",
-              url: "/contratos/configuracao/desossa",
-              icon: Settings2,
-              access: APP_ROUTE_ACCESS.contratos,
-            },
-            {
               title: "Importar planilha",
               url: "/contratos/configuracao/importacao",
               icon: Upload,
@@ -368,12 +367,33 @@ export function AppSidebar() {
               access: APP_ROUTE_ACCESS.contratos,
             },
             {
-              title: "Ocupação do estoque",
+              title: "Mapa de ocupação",
               url: "/contratos/configuracao/ocupacao",
-              icon: Wrench,
+              icon: Warehouse,
               access: APP_ROUTE_ACCESS.contratos,
             },
           ],
+        },
+      ],
+    },
+    {
+      id: "planejamento-semanal",
+      title: "Planejamento semanal",
+      icon: CalendarRange,
+      items: [
+        {
+          id: "planejamento-semanal-inicio",
+          title: "Planejamento",
+          url: "/planejamento-semanal",
+          icon: CalendarDays,
+          access: APP_ROUTE_ACCESS.planejamentoSemanal,
+        },
+        {
+          id: "planejamento-semanal-configuracao",
+          title: "Configuração produção",
+          url: "/planejamento-semanal/configuracao",
+          icon: Settings2,
+          access: APP_ROUTE_ACCESS.planejamentoSemanal,
         },
       ],
     },
@@ -643,7 +663,7 @@ export function AppSidebar() {
           return (
             <SidebarGroup
               key={group.id}
-              className={`mx-2.5 mb-3 w-auto overflow-hidden rounded-xl border bg-[#F8FAFC] p-0 shadow-[0_6px_16px_rgba(4,25,49,0.18)] transition-all duration-200 ${
+              className={`mx-2.5 mb-3 w-auto shrink-0 overflow-hidden rounded-xl border bg-[#F8FAFC] p-0 shadow-[0_6px_16px_rgba(4,25,49,0.18)] transition-all duration-200 ${
                 isGroupActive
                   ? "border-[#C9D5E2] shadow-[0_8px_20px_rgba(4,25,49,0.24)]"
                   : "border-[#DCE4EC] hover:border-[#C7D3DF]"
