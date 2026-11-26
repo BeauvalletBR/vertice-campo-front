@@ -2,6 +2,7 @@ import type { ContractStock, ExportContract } from "@/services/contracts";
 
 interface ContractsExcelOptions {
   contracts: ExportContract[];
+  allActiveContracts?: ExportContract[];
   stock: ContractStock[];
   title?: string;
 }
@@ -45,6 +46,7 @@ const border = {
 
 export async function exportContractsPlanningToExcel({
   contracts,
+  allActiveContracts = contracts,
   stock,
   title = "PLANILHA DE CONTRATOS EXPORTAÇÃO BEAUVALLET",
 }: ContractsExcelOptions) {
@@ -226,6 +228,158 @@ export async function exportContractsPlanningToExcel({
       });
     });
   stockSheet.autoFilter = `A1:H${Math.max(1, stockSheet.rowCount)}`;
+
+  const stockCoverageAnalysis = stock.map((item) => {
+      const relatedContracts = allActiveContracts.filter((contract) =>
+        !contract.DESCONSIDERADO
+        && contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO),
+      );
+      const contractsWithBalance = relatedContracts.filter((contract) =>
+        contract.PRODUTOS.some((product) =>
+          product.SEQPRODUTO === item.SEQPRODUTO
+          && asNumber(product.SALDO_CONTRATO) > 0.0005,
+        ),
+      );
+      const availableContractBalance = contractsWithBalance.reduce((sum, contract) => sum + contract.PRODUTOS
+        .filter((product) => product.SEQPRODUTO === item.SEQPRODUTO)
+        .reduce((productSum, product) => productSum + Math.max(0, asNumber(product.SALDO_CONTRATO)), 0), 0);
+      return { item, relatedContracts, contractsWithBalance, availableContractBalance };
+    });
+  const stockWithoutDestination = stockCoverageAnalysis
+    .filter(({ item, contractsWithBalance }) =>
+      asNumber(item.PESO_LIVRE_VERTICE) > 0.0005
+      && contractsWithBalance.length === 0,
+    )
+    .sort((first, second) => asNumber(second.item.PESO_LIVRE_VERTICE) - asNumber(first.item.PESO_LIVRE_VERTICE));
+  const stockWithInsufficientBalance = stockCoverageAnalysis
+    .filter(({ item, contractsWithBalance, availableContractBalance }) =>
+      contractsWithBalance.length > 0
+      && asNumber(item.PESO_LIVRE_VERTICE) > availableContractBalance + 0.0005,
+    )
+    .sort((first, second) =>
+      (asNumber(second.item.PESO_LIVRE_VERTICE) - second.availableContractBalance)
+      - (asNumber(first.item.PESO_LIVRE_VERTICE) - first.availableContractBalance),
+    );
+
+  const withoutDestinationSheet = workbook.addWorksheet("SEM CONTRATO COM SALDO", {
+    views: [{ state: "frozen", ySplit: 1, activeCell: "A2", showGridLines: false }],
+  });
+  withoutDestinationSheet.columns = [
+    { header: "PRODUTO", key: "produto", width: 13 },
+    { header: "DESCRIÇÃO", key: "descricao", width: 54 },
+    { header: "ESTOQUE ERP", key: "erp", width: 18 },
+    { header: "PROTEGIDO POR OP", key: "op", width: 19 },
+    { header: "RESERVADO EM PEDIDO", key: "pedido", width: 22 },
+    { header: "ALOCADO MANUAL", key: "manual", width: 19 },
+    { header: "LIVRE SEM DESTINO", key: "livre", width: 21 },
+    { header: "CONTRATOS COM PRODUTO", key: "relacionados", width: 24 },
+    { header: "CONTRATOS COM SALDO", key: "comSaldo", width: 22 },
+    { header: "MOTIVO", key: "motivo", width: 62 },
+  ];
+  const withoutDestinationHeader = withoutDestinationSheet.getRow(1);
+  withoutDestinationHeader.height = 34;
+  withoutDestinationHeader.eachCell((cell) => {
+    cell.font = { name: "Arial", size: 9, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFB45309" } };
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border = border;
+  });
+  stockWithoutDestination.forEach(({ item, relatedContracts }) => {
+    const row = withoutDestinationSheet.addRow({
+      produto: item.SEQPRODUTO,
+      descricao: item.DESCRPRODUTO,
+      erp: asNumber(item.PESODISPONIVEL),
+      op: asNumber(item.PESO_ATRELADO_ORDEM),
+      pedido: asNumber(item.PESO_RESERVADO_PEDIDO_LIQUIDO ?? item.PESO_RESERVADO_PEDIDO),
+      manual: asNumber(item.PESO_RESERVADO_VERTICE),
+      livre: asNumber(item.PESO_LIVRE_VERTICE),
+      relacionados: relatedContracts.length,
+      comSaldo: 0,
+      motivo: relatedContracts.length === 0
+        ? "Produto sem contrato ativo disponível para receber o estoque livre."
+        : `Produto presente em ${relatedContracts.length} contrato(s), mas todos estão sem saldo pendente.`,
+    });
+    row.height = 24;
+    row.font = { name: "Arial", size: 9 };
+    row.alignment = { vertical: "middle" };
+    row.eachCell({ includeEmpty: true }, (cell, column) => {
+      cell.border = border;
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFBEB" } };
+      if (column >= 3 && column <= 7) cell.numFmt = '#,##0.000 "kg"';
+      if (column === 8 || column === 9) cell.alignment = { horizontal: "center", vertical: "middle" };
+    });
+    row.getCell(1).font = { name: "Arial", size: 9, bold: true, color: { argb: "FF92400E" } };
+    row.getCell(7).font = { name: "Arial", size: 9, bold: true, color: { argb: "FF047857" } };
+  });
+  withoutDestinationSheet.autoFilter = `A1:J${Math.max(1, withoutDestinationSheet.rowCount)}`;
+  withoutDestinationSheet.pageSetup = {
+    orientation: "landscape",
+    paperSize: 9,
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.2, right: 0.2, top: 0.35, bottom: 0.35, header: 0.15, footer: 0.15 },
+    printArea: `A1:J${Math.max(1, withoutDestinationSheet.rowCount)}`,
+  };
+  withoutDestinationSheet.headerFooter.oddFooter = "Vértice PCP · Estoque livre sem contrato com saldo";
+
+  const insufficientBalanceSheet = workbook.addWorksheet("SALDO INSUFICIENTE", {
+    views: [{ state: "frozen", ySplit: 1, activeCell: "A2", showGridLines: false }],
+  });
+  insufficientBalanceSheet.columns = [
+    { header: "PRODUTO", key: "produto", width: 13 },
+    { header: "DESCRIÇÃO", key: "descricao", width: 54 },
+    { header: "ESTOQUE ERP", key: "erp", width: 18 },
+    { header: "LIVRE PARA ALOCAR", key: "livre", width: 20 },
+    { header: "CONTRATOS COM SALDO", key: "contratos", width: 22 },
+    { header: "SALDO TOTAL DOS CONTRATOS", key: "saldo", width: 29 },
+    { header: "PESO QUE FICARÁ SEM VENDA", key: "semVenda", width: 29 },
+    { header: "SITUAÇÃO", key: "situacao", width: 68 },
+  ];
+  const insufficientBalanceHeader = insufficientBalanceSheet.getRow(1);
+  insufficientBalanceHeader.height = 38;
+  insufficientBalanceHeader.eachCell((cell) => {
+    cell.font = { name: "Arial", size: 9, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF9A3412" } };
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border = border;
+  });
+  stockWithInsufficientBalance.forEach(({ item, contractsWithBalance, availableContractBalance }) => {
+    const freeWeight = asNumber(item.PESO_LIVRE_VERTICE);
+    const uncoveredWeight = Math.max(0, freeWeight - availableContractBalance);
+    const row = insufficientBalanceSheet.addRow({
+      produto: item.SEQPRODUTO,
+      descricao: item.DESCRPRODUTO,
+      erp: asNumber(item.PESODISPONIVEL),
+      livre: freeWeight,
+      contratos: contractsWithBalance.length,
+      saldo: availableContractBalance,
+      semVenda: uncoveredWeight,
+      situacao: `${contractsWithBalance.length} contrato(s) possuem saldo de ${availableContractBalance.toFixed(3)} kg, abaixo do estoque livre. Restarão ${uncoveredWeight.toFixed(3)} kg sem venda.`,
+    });
+    row.height = 26;
+    row.font = { name: "Arial", size: 9 };
+    row.alignment = { vertical: "middle" };
+    row.eachCell({ includeEmpty: true }, (cell, column) => {
+      cell.border = border;
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFEDE5" } };
+      if ([3, 4, 6, 7].includes(column)) cell.numFmt = '#,##0.000 "kg"';
+      if (column === 5) cell.alignment = { horizontal: "center", vertical: "middle" };
+    });
+    row.getCell(1).font = { name: "Arial", size: 9, bold: true, color: { argb: "FF9A3412" } };
+    row.getCell(7).font = { name: "Arial", size: 9, bold: true, color: { argb: "FF9A3412" } };
+  });
+  insufficientBalanceSheet.autoFilter = `A1:H${Math.max(1, insufficientBalanceSheet.rowCount)}`;
+  insufficientBalanceSheet.pageSetup = {
+    orientation: "landscape",
+    paperSize: 9,
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.2, right: 0.2, top: 0.35, bottom: 0.35, header: 0.15, footer: 0.15 },
+    printArea: `A1:H${Math.max(1, insufficientBalanceSheet.rowCount)}`,
+  };
+  insufficientBalanceSheet.headerFooter.oddFooter = "Vértice PCP · Estoque livre acima do saldo dos contratos";
 
   const withoutSaleSheet = workbook.addWorksheet("ESTOQUE SEM VENDA", {
     views: [{ state: "frozen", ySplit: 1, activeCell: "A2", showGridLines: false }],

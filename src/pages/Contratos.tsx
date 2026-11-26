@@ -364,7 +364,6 @@ export default function Contratos() {
   );
   const workspaceViewRef = useRef<ContractWorkspaceView>(workspaceView);
   const workspaceScrollPositions = useRef<Partial<Record<ContractWorkspaceView, number>>>({});
-  const reservationRefreshTimerRef = useRef<number | null>(null);
   const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncingStock, setSyncingStock] = useState(false);
@@ -398,11 +397,6 @@ export default function Contratos() {
 
   useEffect(() => {
     void loadPanel();
-    return () => {
-      if (reservationRefreshTimerRef.current !== null) {
-        window.clearTimeout(reservationRefreshTimerRef.current);
-      }
-    };
   }, []);
 
   useEffect(() => {
@@ -595,6 +589,7 @@ export default function Contratos() {
     try {
       await exportContractsPlanningToExcel({
         contracts,
+        allActiveContracts: activeContracts,
         stock: data.estoque,
         title: contractTab === "ATIVOS"
           ? "PLANILHA DE CONTRATOS EXPORTAÇÃO BEAUVALLET"
@@ -626,10 +621,10 @@ export default function Contratos() {
         versao: contract.VERSAO_CONFIG ?? null,
       });
       toast.success(result.message);
-      await loadPanel(true);
+      await loadPanel(true, true, true);
     } catch (error) {
       toast.error(errorMessage(error));
-      await loadPanel(true);
+      await loadPanel(true, true, true);
     } finally {
       setSaving(null);
     }
@@ -712,16 +707,6 @@ export default function Contratos() {
       });
     };
 
-    const schedulePanelRefresh = () => {
-      if (reservationRefreshTimerRef.current !== null) {
-        window.clearTimeout(reservationRefreshTimerRef.current);
-      }
-      reservationRefreshTimerRef.current = window.setTimeout(() => {
-        reservationRefreshTimerRef.current = null;
-        void loadPanel(true, false, true);
-      }, 4000);
-    };
-
     const delta = weight - currentManual;
     const optimisticVersion = weight === 0 ? null : Number(product.VERSAO_RESERVA || 0) + 1;
     setSaving(key);
@@ -743,7 +728,7 @@ export default function Contratos() {
         }
         return next;
       });
-      schedulePanelRefresh();
+      await loadPanel(true, true, true);
     } catch (error) {
       const message = errorMessage(error);
       updateReservationLocally(currentManual, -delta, product.VERSAO_RESERVA ?? null);
@@ -755,7 +740,7 @@ export default function Contratos() {
         navigateToWorkspace("REVISAR_DATAS", "/contratos/revisao-datas");
         toast.info(`Produto ${product.SEQPRODUTO} aberto em Revisão de Datas.`);
       }
-      await loadPanel(true);
+      await loadPanel(true, true, true);
     } finally {
       setSaving(null);
     }
@@ -787,10 +772,10 @@ export default function Contratos() {
         delete next[key];
         return next;
       });
-      await loadPanel(true);
+      await loadPanel(true, true, true);
     } catch (error) {
       toast.error(errorMessage(error));
-      await loadPanel(true);
+      await loadPanel(true, true, true);
     } finally {
       setSaving(null);
     }
@@ -802,7 +787,7 @@ export default function Contratos() {
       throw new Error(result.erros?.filter(Boolean).join(" ") || result.message || "Não foi possível distribuir o estoque pela fila.");
     }
     toast.success(result.peso_alocado > 0 ? result.message : message);
-    await loadPanel(true);
+    await loadPanel(true, true, true);
   };
 
   const addToProductQueue = async (productId: number, contractId: number) => {
@@ -823,7 +808,7 @@ export default function Contratos() {
       await refreshAfterQueueChange(productId, "Contrato incluído na fila; não havia estoque livre para distribuir.");
     } catch (error) {
       toast.error(errorMessage(error));
-      await loadPanel(true);
+      await loadPanel(true, true, true);
     } finally {
       setSaving(null);
     }
@@ -834,10 +819,10 @@ export default function Contratos() {
     try {
       const result = await contractsApi.moveProductQueue(item.ID_FILA_PRODUTO, { direcao: direction, versao: item.VERSAO });
       toast.success(result.message);
-      await loadPanel(true);
+      await refreshAfterQueueChange(item.SEQPRODUTO, "Ordem da fila atualizada.");
     } catch (error) {
       toast.error(errorMessage(error));
-      await loadPanel(true);
+      await loadPanel(true, true, true);
     } finally {
       setSaving(null);
     }
@@ -854,7 +839,7 @@ export default function Contratos() {
     try {
       const result = await contractsApi.removeProductQueue(item.ID_FILA_PRODUTO, item.VERSAO);
       toast.success(result.message);
-      void loadPanel(true);
+      await refreshAfterQueueChange(item.SEQPRODUTO, "Contrato retirado da fila e pesos atualizados.");
     } catch (error) {
       setData((current) => current && ({
         ...current,
@@ -866,7 +851,7 @@ export default function Contratos() {
         ],
       }));
       toast.error(errorMessage(error));
-      void loadPanel(true);
+      await loadPanel(true, true, true);
     } finally {
       setSaving(null);
     }
@@ -2793,6 +2778,7 @@ function ModernStockOperationsLayout({
   const [reviewDecision, setReviewDecision] = useState<"" | "SEPARADO" | "DISPONIVEL" | "REPROCESSO" | "ALOCAR">("");
   const [reviewReprocessDate, setReviewReprocessDate] = useState("");
   const [availableSort, setAvailableSort] = useState<TableSortState<"PRODUTO" | "DESCRICAO" | "ESTOQUE" | "OP" | "MANUAL" | "LIVRE" | "CONTRATOS">>({ key: "LIVRE", direction: "desc" });
+  const [availableDestinationFilter, setAvailableDestinationFilter] = useState<"TODOS" | "SEM_DESTINO" | "SALDO_INSUFICIENTE">("TODOS");
   const [lotSort, setLotSort] = useState<TableSortState<"DATA" | "PESO" | "SITUACAO">>({ key: "DATA", direction: "asc" });
   const [candidateSort, setCandidateSort] = useState<TableSortState<"CONTRATO" | "CLIENTE" | "EMBARQUE" | "SALDO" | "ELEGIVEL">>({ key: "EMBARQUE", direction: "asc" });
   const [allocatedSort, setAllocatedSort] = useState<TableSortState<"PRODUTO" | "CONTRATO" | "CONTRATADO" | "EXPEDIDO" | "OP" | "PEDIDO" | "MANUAL" | "MOVIMENTACAO" | "TOTAL" | "ATENDIDO" | "SALDO" | "SITUACAO">>({ key: "CONTRATO", direction: "asc" });
@@ -2847,7 +2833,10 @@ function ModernStockOperationsLayout({
       ...current,
       [key]: allocationInputValue(Number(selected.product.PESO_RESERVADO_MANUAL || 0)),
     }));
-  }, [selectedAllocatedKey]);
+  }, [
+    selectedAllocatedKey,
+    allocatedItems.map(({ contract, product }) => `${contract.SEQCONTRATO}-${product.SEQPRODUTO}:${product.PESO_RESERVADO_MANUAL || 0}:${product.VERSAO_RESERVA || 0}`).join("|"),
+  ]);
   useEffect(() => {
     const keys = reviewRowsByDecision.map(({ item, lot }) => lot.CHAVE_LOTE || `${item.SEQPRODUTO}-${lot.DTAPRODUCAO}-${lot.LOTE}-${lot.SEQEMBALAGEM}`);
     if (!keys.includes(selectedReviewKey)) setSelectedReviewKey(keys[0] || "");
@@ -2873,10 +2862,43 @@ function ModernStockOperationsLayout({
       OP: Number(item.PESO_ATRELADO_ORDEM || 0),
       MANUAL: Number(item.PESO_RESERVADO_VERTICE || 0),
       LIVRE: Number(item.PESO_LIVRE_VERTICE || 0),
-      CONTRATOS: contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)).length,
+      CONTRATOS: contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO && Number(product.SALDO_CONTRATO || 0) > 0.0005)).length,
     });
     return compareTableValues(value(first)[availableSort.key], value(second)[availableSort.key], availableSort.direction);
   });
+  const availableStockRows = sortedStock.map((item) => {
+    const relatedContracts = contracts.filter((contract) =>
+      !contract.DESCONSIDERADO
+      && contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO),
+    );
+    const eligibleContracts = relatedContracts.filter((contract) =>
+      contract.PRODUTOS.some((product) =>
+        product.SEQPRODUTO === item.SEQPRODUTO
+        && Number(product.SALDO_CONTRATO || 0) > 0.0005,
+      ),
+    );
+    const eligibleBalance = eligibleContracts.reduce((sum, contract) => sum + contract.PRODUTOS
+      .filter((product) => product.SEQPRODUTO === item.SEQPRODUTO)
+      .reduce((productSum, product) => productSum + Math.max(0, Number(product.SALDO_CONTRATO || 0)), 0), 0);
+    return { item, relatedContractCount: relatedContracts.length, eligibleContractCount: eligibleContracts.length, eligibleBalance };
+  });
+  const noDestinationCount = availableStockRows.filter(({ item, eligibleContractCount }) =>
+    Number(item.PESO_LIVRE_VERTICE || 0) > 0.0005 && eligibleContractCount === 0,
+  ).length;
+  const insufficientBalanceCount = availableStockRows.filter(({ item, eligibleContractCount, eligibleBalance }) =>
+    eligibleContractCount > 0
+    && Number(item.PESO_LIVRE_VERTICE || 0) > eligibleBalance + 0.0005,
+  ).length;
+  const filteredAvailableStockRows = availableDestinationFilter === "SEM_DESTINO"
+    ? availableStockRows.filter(({ item, eligibleContractCount }) =>
+      Number(item.PESO_LIVRE_VERTICE || 0) > 0.0005 && eligibleContractCount === 0,
+    )
+    : availableDestinationFilter === "SALDO_INSUFICIENTE"
+      ? availableStockRows.filter(({ item, eligibleContractCount, eligibleBalance }) =>
+        eligibleContractCount > 0
+        && Number(item.PESO_LIVRE_VERTICE || 0) > eligibleBalance + 0.0005,
+      )
+    : availableStockRows;
   const sortedLots = [...(selectedStock?.LOTES_ALOCAVEIS || selectedStock?.LOTES_LIVRES || [])].sort((first, second) => {
     const value = (lot: ContractStockLot) => ({ DATA: lot.DTAPRODUCAO, PESO: Number(lot.PESO_LIVRE_ESTIMADO || 0), SITUACAO: lot.SITUACAO_VALIDADE });
     return compareTableValues(value(first)[lotSort.key], value(second)[lotSort.key], lotSort.direction);
@@ -2975,7 +2997,7 @@ function ModernStockOperationsLayout({
     return <div className="space-y-4">
       {!selectedStock ? <>
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><OverviewMetric icon={Weight} label="Estoque físico ERP" value={formatKg(totalErpStock)} tone="blue" /><OverviewMetric icon={Factory} label="Protegido por OP" value={formatKg(totalOrderStock)} tone="blue" /><OverviewMetric icon={LockKeyhole} label="Reservado em pedido" value={formatKg(totalOrderReservation)} tone="blue" /><OverviewMetric icon={Boxes} label="Estoque realmente livre" value={formatKg(totalFreeStock)} tone="green" /><OverviewMetric icon={ShieldAlert} label="Lotes em revisão" value={String(validityAlertCount)} tone={validityAlertCount > 0 ? "red" : "green"} /></section>
-        <Card className="overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><WorkspaceToolbar title="Produtos disponíveis para alocação" description="Selecione um produto para comparar os contratos candidatos." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="max-h-[66vh] overflow-auto"><Table><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Descrição" sortKey="DESCRICAO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Estoque físico" sortKey="ESTOQUE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="OP" sortKey="OP" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Manual" sortKey="MANUAL" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Livre" sortKey="LIVRE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos" sortKey="CONTRATOS" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="center" /><TableHead className="text-right">Ação</TableHead></TableRow></TableHeader><TableBody>{sortedStock.map((item) => <AvailableStockRows key={item.SEQPRODUTO} item={item} candidateCount={contracts.filter((contract) => contract.PRODUTOS.some((product) => product.SEQPRODUTO === item.SEQPRODUTO)).length} onSelect={onSelectProduct} />)}</TableBody></Table></div></CardContent></Card>
+        <Card className="overflow-hidden border-[#CBD8E3] shadow-sm"><CardContent className="p-0"><WorkspaceToolbar title="Produtos disponíveis para alocação" description="Selecione um produto para comparar os contratos candidatos." search={search} onSearchChange={onSearchChange} syncing={syncing} onSync={onSync} /><div className="flex flex-wrap items-center gap-2 border-y border-[#DCE5ED] bg-[#F8FAFC] px-4 py-3"><span className="mr-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-[#526A80]"><SlidersHorizontal className="h-3.5 w-3.5" />Destino do estoque</span><button type="button" onClick={() => setAvailableDestinationFilter("TODOS")} className={`rounded-full border px-3 py-1.5 text-[10px] font-black transition ${availableDestinationFilter === "TODOS" ? "border-[#173D6E] bg-[#173D6E] text-white" : "border-[#B9CAD8] bg-white text-[#405D79] hover:bg-blue-50"}`}>Todos ({availableStockRows.length})</button><button type="button" onClick={() => setAvailableDestinationFilter("SEM_DESTINO")} className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] font-black transition ${availableDestinationFilter === "SEM_DESTINO" ? "border-amber-600 bg-amber-600 text-white" : "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"}`}><AlertTriangle className="h-3.5 w-3.5" />Sem contrato com saldo ({noDestinationCount})</button><button type="button" onClick={() => setAvailableDestinationFilter("SALDO_INSUFICIENTE")} className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] font-black transition ${availableDestinationFilter === "SALDO_INSUFICIENTE" ? "border-orange-900 bg-orange-900 text-white" : "border-orange-700 bg-orange-100 text-orange-950 hover:bg-orange-200"}`}><AlertTriangle className="h-3.5 w-3.5" />Saldo insuficiente ({insufficientBalanceCount})</button></div><div className="max-h-[66vh] overflow-auto"><Table><TableHeader className="sticky top-0 z-10 bg-[#EDF3F7]"><TableRow><SortableTableHead label="Produto" sortKey="PRODUTO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Descrição" sortKey="DESCRICAO" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} /><SortableTableHead label="Estoque físico" sortKey="ESTOQUE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="OP" sortKey="OP" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Manual" sortKey="MANUAL" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Livre" sortKey="LIVRE" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="right" /><SortableTableHead label="Contratos com saldo" sortKey="CONTRATOS" sort={availableSort} onSort={(key) => setAvailableSort((current) => nextTableSort(current, key))} align="center" /><TableHead className="text-right">Ação</TableHead></TableRow></TableHeader><TableBody>{filteredAvailableStockRows.length === 0 ? <TableRow><TableCell colSpan={8} className="h-28 text-center text-sm font-semibold text-[#667B90]">Nenhum produto encontrado para este filtro.</TableCell></TableRow> : filteredAvailableStockRows.map(({ item, relatedContractCount, eligibleContractCount, eligibleBalance }) => <AvailableStockRows key={item.SEQPRODUTO} item={item} candidateCount={eligibleContractCount} relatedContractCount={relatedContractCount} eligibleBalance={eligibleBalance} onSelect={onSelectProduct} />)}</TableBody></Table></div></CardContent></Card>
       </> : <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(250px,0.68fr)_minmax(400px,1.18fr)_minmax(285px,0.78fr)]">
         <ProductAllocationQueue
           product={selectedStock}
@@ -3143,24 +3165,40 @@ function ModernStockOperationsLayout({
   </div>;
 }
 
-function AvailableStockRows({ item, candidateCount, onSelect }: { item: ContractStock; candidateCount: number; onSelect: (productId: number | null) => void }) {
+function AvailableStockRows({ item, candidateCount, relatedContractCount, eligibleBalance, onSelect }: { item: ContractStock; candidateCount: number; relatedContractCount: number; eligibleBalance: number; onSelect: (productId: number | null) => void }) {
+  const [destinationAlertOpen, setDestinationAlertOpen] = useState(false);
   const oldReleased = releasedOldStockWeight(item);
   const totalFree = Math.max(0, Number(item.PESO_LIVRE_VERTICE || 0));
   const regularFree = Math.max(0, totalFree - oldReleased);
   const hasOldReleased = oldReleased > 0.0005;
   const splitRows = hasOldReleased && regularFree > 0.0005;
   const regularPhysical = Math.max(0, Number(item.PESODISPONIVEL || 0) - (splitRows ? oldReleased : 0));
+  const hasNoDestination = totalFree > 0.0005 && candidateCount === 0;
+  const hasInsufficientBalance = candidateCount > 0 && totalFree > eligibleBalance + 0.0005;
+  const uncoveredWeight = Math.max(0, totalFree - eligibleBalance);
+  const hasDestinationAlert = hasNoDestination || hasInsufficientBalance;
+  const alertButtonClass = hasInsufficientBalance
+    ? "border-orange-800 bg-orange-100 text-orange-950 hover:bg-orange-200"
+    : "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100";
+  const rowAlertClass = hasInsufficientBalance
+    ? "bg-orange-100/80 hover:bg-orange-100"
+    : hasNoDestination
+      ? "bg-amber-50/60 hover:bg-amber-50"
+      : "";
 
   const action = (label = "Analisar e alocar") => <TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => onSelect(item.SEQPRODUTO)} className="border-[#8FB1CE] text-[#174A78]"><Boxes className="mr-2 h-3.5 w-3.5" />{label}</Button></TableCell>;
   const allocationCells = <><NumberCell value={item.PESO_ATRELADO_ORDEM} /><NumberCell value={item.PESO_RESERVADO_VERTICE} /></>;
+  const description = (badge?: "REGULAR" | "ANTIGO") => <TableCell><div className="flex min-w-0 items-center gap-2">{hasDestinationAlert && <button type="button" onClick={(event) => { event.stopPropagation(); setDestinationAlertOpen(true); }} className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border shadow-sm transition ${alertButtonClass}`} title={hasInsufficientBalance ? "Contratos com saldo insuficiente para o estoque livre" : "Estoque livre sem contrato com saldo"} aria-label={`Explicar a situação comercial do produto ${item.SEQPRODUTO}`}><AlertTriangle className="h-4 w-4" /></button>}<p className="min-w-0 truncate text-xs font-bold text-[#304D68]" title={item.DESCRPRODUTO}>{item.DESCRPRODUTO}</p></div>{badge === "REGULAR" && <span className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8px] font-black uppercase text-emerald-700">Estoque regular</span>}{badge === "ANTIGO" && <span className="mt-1 inline-flex rounded-full border border-orange-300 bg-white px-2 py-0.5 text-[8px] font-black uppercase text-orange-800">Produto antigo liberado</span>}{!badge && hasOldReleased && <span className="ml-2 inline-flex rounded-full border border-orange-300 bg-orange-50 px-2 py-1 text-[9px] font-black uppercase text-orange-800">Produto antigo liberado</span>}</TableCell>;
+  const destinationDialog = <Dialog open={destinationAlertOpen} onOpenChange={setDestinationAlertOpen}><DialogContent className={`max-w-lg ${hasInsufficientBalance ? "border-orange-700" : "border-amber-300"}`}><DialogHeader><DialogTitle className={`flex items-center gap-2 ${hasInsufficientBalance ? "text-orange-950" : "text-amber-900"}`}><AlertTriangle className="h-5 w-5" />{hasInsufficientBalance ? "Saldo dos contratos insuficiente" : "Estoque livre sem contrato com saldo"}</DialogTitle><DialogDescription>Produto {item.SEQPRODUTO} · {item.DESCRPRODUTO}</DialogDescription></DialogHeader><div className="space-y-3"><div className="grid grid-cols-2 gap-2"><AllocationSummary label="Estoque realmente livre" value={totalFree} className="border-emerald-200 bg-emerald-50 text-emerald-800" /><AllocationSummary label={hasInsufficientBalance ? "Peso que ficará sem venda" : "Peso sem destino"} value={hasInsufficientBalance ? uncoveredWeight : totalFree} className={hasInsufficientBalance ? "border-orange-700 bg-orange-100 text-orange-950" : "border-amber-200 bg-amber-50 text-amber-900"} /></div>{hasInsufficientBalance ? <div className="rounded-lg border border-orange-700 bg-orange-100 p-4 text-sm font-semibold leading-6 text-orange-950">Existem {candidateCount} contrato(s) com saldo, somando {formatKg(eligibleBalance)}. Como o estoque livre é de {formatKg(totalFree)}, ainda sobrarão {formatKg(uncoveredWeight)} sem venda após atender todos esses contratos.</div> : <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-950">{relatedContractCount === 0 ? "Este produto não aparece em nenhum contrato ativo. Por isso, o estoque livre ainda não possui um destino para alocação." : `Este produto aparece em ${relatedContractCount} contrato(s), mas todos estão sem saldo pendente. O estoque só poderá ser alocado quando existir um contrato ativo com saldo para este produto.`}</div>}</div><div className="flex justify-end"><Button type="button" onClick={() => setDestinationAlertOpen(false)} className="bg-[#173D6E] text-white hover:bg-[#102F53]">Entendi</Button></div></DialogContent></Dialog>;
 
   if (!splitRows) {
-    return <TableRow className={hasOldReleased ? "bg-orange-50/50 hover:bg-orange-50" : "hover:bg-[#F7FAFC]"}><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell><TableCell className="text-xs font-bold text-[#304D68]"><span>{item.DESCRPRODUTO}</span>{hasOldReleased && <span className="ml-2 inline-flex rounded-full border border-orange-300 bg-orange-50 px-2 py-1 text-[9px] font-black uppercase text-orange-800">Produto antigo liberado</span>}</TableCell><NumberCell value={item.PESODISPONIVEL} />{allocationCells}<TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(totalFree)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell>{action()}</TableRow>;
+    return <><TableRow className={rowAlertClass || (hasOldReleased ? "bg-orange-50/50 hover:bg-orange-50" : "hover:bg-[#F7FAFC]")}><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell>{description()}<NumberCell value={item.PESODISPONIVEL} />{allocationCells}<TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(totalFree)}</TableCell><TableCell className={`text-center text-xs font-black ${hasDestinationAlert ? hasInsufficientBalance ? "text-orange-950" : "text-amber-800" : ""}`}>{candidateCount}</TableCell>{action()}</TableRow>{destinationDialog}</>;
   }
 
   return <>
-    <TableRow className="hover:bg-[#F7FAFC]"><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell><TableCell><p className="text-xs font-bold text-[#304D68]">{item.DESCRPRODUTO}</p><span className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8px] font-black uppercase text-emerald-700">Estoque regular</span></TableCell><NumberCell value={regularPhysical} />{allocationCells}<TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(regularFree)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell>{action()}</TableRow>
-    <TableRow className="border-t border-orange-200 bg-orange-50/70 hover:bg-orange-50"><TableCell className="font-mono text-xs font-black text-orange-800">{item.SEQPRODUTO}</TableCell><TableCell><p className="text-xs font-bold text-[#304D68]">{item.DESCRPRODUTO}</p><span className="mt-1 inline-flex rounded-full border border-orange-300 bg-white px-2 py-0.5 text-[8px] font-black uppercase text-orange-800">Produto antigo liberado</span></TableCell><TableCell className="text-right text-xs font-black text-orange-800">{formatKg(oldReleased)}</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-black text-orange-800">{formatKg(oldReleased)}</TableCell><TableCell className="text-center text-xs font-black">{candidateCount}</TableCell>{action("Alocar antigo")}</TableRow>
+    <TableRow className={rowAlertClass || "hover:bg-[#F7FAFC]"}><TableCell className="font-mono text-xs font-black text-blue-700">{item.SEQPRODUTO}</TableCell>{description("REGULAR")}<NumberCell value={regularPhysical} />{allocationCells}<TableCell className="text-right text-xs font-black text-emerald-700">{formatKg(regularFree)}</TableCell><TableCell className={`text-center text-xs font-black ${hasDestinationAlert ? hasInsufficientBalance ? "text-orange-950" : "text-amber-800" : ""}`}>{candidateCount}</TableCell>{action()}</TableRow>
+    <TableRow className={`border-t border-orange-200 ${rowAlertClass || "bg-orange-50/70 hover:bg-orange-50"}`}><TableCell className="font-mono text-xs font-black text-orange-800">{item.SEQPRODUTO}</TableCell>{description("ANTIGO")}<TableCell className="text-right text-xs font-black text-orange-800">{formatKg(oldReleased)}</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-semibold text-[#9AA8B5]">—</TableCell><TableCell className="text-right text-xs font-black text-orange-800">{formatKg(oldReleased)}</TableCell><TableCell className={`text-center text-xs font-black ${hasDestinationAlert ? hasInsufficientBalance ? "text-orange-950" : "text-amber-800" : ""}`}>{candidateCount}</TableCell>{action("Alocar antigo")}</TableRow>
+    {destinationDialog}
   </>;
 }
 
@@ -3265,11 +3303,12 @@ function ProductAllocationQueue({
 
 function AllocationEditor({ candidate, selectedStock, configured, saving, reservationInputs, setReservationInputs, onSave, onReviewDates }: { candidate: { contract: ExportContract; product: ContractProduct } | null; selectedStock: ContractStock; configured: boolean; saving: string | null; reservationInputs: Record<string, string>; setReservationInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>; onSave: ModernStockOperationsLayoutProps["onSaveReservation"]; onReviewDates: () => void }) {
   const [adjustmentStep, setAdjustmentStep] = useState(500);
+  const [confirmingAllocation, setConfirmingAllocation] = useState(false);
   if (!candidate) return <Card className="h-fit border-[#CBD8E3]"><CardContent className="py-14 text-center"><PackageSearch className="mx-auto h-10 w-10 text-[#A3B3C1]" /><p className="mt-3 text-sm font-bold text-[#60758A]">Selecione um contrato candidato.</p></CardContent></Card>;
   const { contract, product } = candidate;
   const key = `${contract.SEQCONTRATO}-${product.SEQPRODUTO}`;
   const suggestion = suggestedManualAddition(product);
-  const input = reservationInputs[key] ?? allocationInputValue(0);
+  const input = reservationInputs[key] ?? allocationInputValue(suggestion);
   const addition = Math.max(0, Number(String(input).replace(",", ".")) || 0);
   const currentManual = Number(product.PESO_RESERVADO_MANUAL || 0);
   const newManual = currentManual + addition;
@@ -3284,7 +3323,7 @@ function AllocationEditor({ candidate, selectedStock, configured, saving, reserv
     const bounded = Math.min(maximumAddition, Math.max(0, requested));
     setReservationInputs((current) => ({ ...current, [key]: allocationInputValue(bounded) }));
   };
-  return <Card className="h-fit border-[#CBD8E3] shadow-sm xl:sticky xl:top-4"><CardContent className="space-y-3 p-3">
+  return <><Card className="h-fit border-[#CBD8E3] shadow-sm xl:sticky xl:top-4"><CardContent className="space-y-3 p-3">
     <div><h2 className="text-base font-black text-[#102F53]">Painel de alocação</h2><p className="text-[10px] text-[#667B90]">Transfira o peso disponível para este contrato.</p></div>
     <div className="rounded-xl border border-blue-200 bg-blue-50 p-3"><p className="font-mono text-sm font-black text-blue-700">Contrato {contract.NROCONTRATO}</p><p className="mt-1 text-xs font-bold text-[#304D68]">{contract.NOMERAZAO}</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">Produto {product.SEQPRODUTO} · embarque {formatDate(contract.DTA_EMBARQUE_PLANEJADA || contract.DTA_EMBARQUE_ERP)}</p></div>
     <div className="space-y-2"><div className="flex items-center justify-between gap-3 text-xs"><span className="font-semibold text-[#60758A]">Saldo do contrato</span><strong className="font-black text-orange-700">{formatKg(product.SALDO_CONTRATO)}</strong></div><SummaryLine label="Estoque liberado" value={formatKg(product.PESO_ESTOQUE_ELEGIVEL)} /></div>
@@ -3307,9 +3346,25 @@ function AllocationEditor({ candidate, selectedStock, configured, saving, reserv
       <p className="mt-2 text-center text-[9px] font-semibold text-[#71869A]">Máximo disponível para este contrato: {formatKg(maximumAddition)}</p>
     </div>
     {validityBlocked && <Button type="button" variant="outline" onClick={onReviewDates} className="h-11 w-full border-orange-300 bg-orange-50 font-black text-orange-900 hover:bg-orange-100"><CalendarDays className="mr-2 h-4 w-4" />Revisar estoque com mais de 6 meses</Button>}
-    <Button type="button" disabled={!configured || addition <= 0 || saving === key || validityBlocked} onClick={() => void onSave(contract, product, addition, "ADDITION")} className="h-12 w-full bg-emerald-700 text-white hover:bg-emerald-800"><CheckCircle2 className="mr-2 h-5 w-5" />{saving === key ? "Confirmando..." : validityBlocked ? "Revisar estoque com mais de 6 meses" : "Confirmar alocação"}</Button>
+    <Button type="button" disabled={!configured || addition <= 0 || saving === key || validityBlocked} onClick={() => setConfirmingAllocation(true)} className="h-12 w-full bg-emerald-700 text-white hover:bg-emerald-800"><CheckCircle2 className="mr-2 h-5 w-5" />{saving === key ? "Confirmando..." : validityBlocked ? "Revisar estoque com mais de 6 meses" : "Confirmar alocação"}</Button>
     <div><h3 className="mb-2 text-sm font-black text-[#102F53]">Prévia do resultado</h3><div className="space-y-2 rounded-lg border border-[#D5E0E9] p-3"><SummaryLine label="Peso a adicionar" value={formatKg(addition)} /><SummaryLine label="Saldo restante do contrato" value={formatKg(remaining)} /><SummaryLine label="Estoque livre após operação" value={formatKg(freeAfter)} /></div></div>
-  </CardContent></Card>;
+  </CardContent></Card>
+  <Dialog open={confirmingAllocation} onOpenChange={setConfirmingAllocation}>
+    <DialogContent className="max-w-lg border-[#CBD8E3]">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-[#173D6E]"><Boxes className="h-5 w-5 text-emerald-700" />Alocar no contrato principal?</DialogTitle>
+        <DialogDescription>Confirme se deseja transferir agora o estoque disponível para o contrato selecionado. Após confirmar, Alocação de estoque e Já alocado serão atualizados automaticamente.</DialogDescription>
+      </DialogHeader>
+      <div className="space-y-3">
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="font-mono text-sm font-black text-blue-700">Contrato {contract.NROCONTRATO}</p><p className="mt-1 text-xs font-bold text-[#304D68]">{contract.NOMERAZAO}</p><p className="mt-1 text-[10px] font-semibold text-[#60758A]">Produto {product.SEQPRODUTO} · {product.DESCRICAO}</p></div>
+        <div className="grid grid-cols-2 gap-2"><AllocationSummary label="Peso que será alocado" value={addition} className="border-emerald-200 bg-emerald-50 text-emerald-800" /><AllocationSummary label="Saldo após alocar" value={remaining} className="border-orange-200 bg-orange-50 text-orange-800" /></div>
+      </div>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="outline" onClick={() => setConfirmingAllocation(false)} disabled={saving === key}>Não, voltar</Button>
+        <Button type="button" onClick={() => { setConfirmingAllocation(false); void onSave(contract, product, addition, "ADDITION"); }} disabled={saving === key} className="bg-emerald-700 text-white hover:bg-emerald-800"><CheckCircle2 className="mr-2 h-4 w-4" />Sim, alocar {formatKg(addition)}</Button>
+      </div>
+    </DialogContent>
+  </Dialog></>;
 }
 
 function ManualAllocationEditor({ allocation, totalFreeStock, configured, saving, reservationInputs, setReservationInputs, onSave, onReviewDates }: { allocation: { contract: ExportContract; product: ContractProduct } | null; totalFreeStock: number; configured: boolean; saving: string | null; reservationInputs: Record<string, string>; setReservationInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>; onSave: ModernStockOperationsLayoutProps["onSaveReservation"]; onReviewDates?: () => void }) {
